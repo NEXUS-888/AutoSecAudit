@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  autosec:
+    build: .
+    container_name: autosecaudit
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - AUTOSEC_MOCK_MODE=false
+      - AUTOSEC_LOG_LEVEL=INFO
+    command: server
+    restart: unless-stopped
+
+  cli:
+    build: .
+    container_name: autosec_cli
+    volumes:
+      - ./data:/app/data
+    environment:
+      - AUTOSEC_MOCK_MODE=false
+    command: scan
+    profiles:
+      - cli
