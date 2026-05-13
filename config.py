@@ -6,7 +6,7 @@ DATA_DIR = str(BASE_DIR / "data")
 REPORTS_DIR = str(BASE_DIR / "data" / "reports")
 PLUGINS_DIR = str(BASE_DIR / "plugins")
 
-MOCK_MODE = os.environ.get("AUTOSEC_MOCK_MODE", "false").lower() == "true"
+MOCK_MODE = os.environ.get("AUTOSEC_MOCK_MODE", "true").lower() == "true"
 
 THREAD_COUNT = int(os.environ.get("AUTOSEC_THREAD_COUNT", "4"))
 
