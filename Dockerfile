@@ -4,8 +4,13 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
     nmap \
-    nikto \
+    git \
+    perl \
     && rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/sullo/nikto.git /opt/nikto && \
+    ln -s /opt/nikto/program/nikto.pl /usr/local/bin/nikto && \
+    chmod +x /opt/nikto/program/nikto.pl
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
