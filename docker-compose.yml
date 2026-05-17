@@ -7,7 +7,7 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      - AUTOSEC_MOCK_MODE=false
+      - AUTOSEC_MOCK_MODE=true
       - AUTOSEC_LOG_LEVEL=INFO
     command: server
     restart: unless-stopped

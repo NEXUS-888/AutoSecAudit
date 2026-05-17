@@ -35,7 +35,7 @@ class Engine:
 
         loaded_count = 0
         for importer, modname, _ in pkgutil.iter_modules([str(plugins_path)]):
-            if modname == "base_plugin" or modname.startswith("_"):
+            if modname == "base_plugin" or modname.startswith("_") or modname == "mock_plugin":
                 continue
             
             try:
