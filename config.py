@@ -19,3 +19,9 @@ CIRCL_API_URL = "https://cve.circl.lu/api/cve"
 LOG_LEVEL = os.environ.get("AUTOSEC_LOG_LEVEL", "INFO")
 
 REPORT_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# HTTP scanning settings
+HTTP_TIMEOUT = int(os.environ.get("AUTOSEC_HTTP_TIMEOUT", "10"))
+SCAN_TIMEOUT = int(os.environ.get("AUTOSEC_SCAN_TIMEOUT", "300"))
+USER_AGENT = "AutoSecAudit/2.0"
+

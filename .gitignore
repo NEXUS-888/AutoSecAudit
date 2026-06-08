@@ -26,7 +26,7 @@ data/
 *.json
 *.html
 !config.json.example
-reports/
+!reports/templates/report.html
 
 # OS
 .DS_Store

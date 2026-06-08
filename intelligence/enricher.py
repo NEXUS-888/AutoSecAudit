@@ -15,6 +15,7 @@ class Enricher:
 
     def __init__(self):
         self.cve_cache: Dict[str, Dict[str, Any]] = {}
+        self.mock_mode = getattr(config, 'MOCK_MODE', False)
 
     def enrich(self, findings: List[Finding]) -> List[Finding]:
         """Enrich findings with CVE data."""
@@ -26,6 +27,8 @@ class Enricher:
                 f.cvss_score = cve_data.get("cvss_score")
                 f.references = cve_data.get("references", [])
                 logger.info(f"Enriched {f.cve_id} with CVSS {f.cvss_score}")
+            else:
+                logger.debug(f"No CVE data found for {f.cve_id}, skipping enrichment")
 
         return findings
 
@@ -55,7 +58,10 @@ class Enricher:
         url = f"{config.NVD_API_URL}?cveId={cve_id}"
         headers = {"Accept": "application/json"}
         
-        response = requests.get(url, headers=headers, timeout=10)
+        try:
+            response = requests.get(url, headers=headers, timeout=2)
+        except:
+            return None
         if response.status_code == 200:
             data = response.json()
             return self._parse_nvd_response(data)
@@ -104,7 +110,10 @@ class Enricher:
     def _fetch_from_circl(self, cve_id: str) -> Optional[Dict[str, Any]]:
         url = f"{config.CIRCL_API_URL}/{cve_id}"
         
-        response = requests.get(url, timeout=10)
+        try:
+            response = requests.get(url, timeout=2)
+        except:
+            return None
         if response.status_code == 200:
             data = response.json()
             return {

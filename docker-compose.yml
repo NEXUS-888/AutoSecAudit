@@ -11,6 +11,8 @@ services:
       - AUTOSEC_LOG_LEVEL=INFO
     command: server
     restart: unless-stopped
+    depends_on:
+      - juice-shop
 
   cli:
     build: .
@@ -22,3 +24,13 @@ services:
     command: scan
     profiles:
       - cli
+    depends_on:
+      - juice-shop
+
+  # OWASP Juice Shop — live test target for vulnerability scanning
+  juice-shop:
+    image: bkimminich/juice-shop:latest
+    container_name: juice-shop
+    ports:
+      - "3000:3000"
+    restart: unless-stopped

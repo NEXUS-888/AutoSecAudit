@@ -8,7 +8,7 @@ from pathlib import Path
 import config
 from core.engine import Engine
 from core.models import Report, Finding
-from core.utils import load_json, validate_target
+from core.utils import load_json, validate_target, is_target_allowed
 from reports.generator import ReportGenerator
 from intelligence.correlator import Correlator
 from intelligence.enricher import Enricher
@@ -28,6 +28,12 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
     if not validate_target(target):
         logger.error(f"Invalid target: {target}")
         print(f"Error: Invalid target '{target}'. Please provide a valid URL or IP address.")
+        return 1
+    
+    allowed, reason = is_target_allowed(target)
+    if not allowed:
+        print(f"\n[BLOCKED] SCAN BLOCKED\n")
+        print(reason)
         return 1
     
     engine = Engine()

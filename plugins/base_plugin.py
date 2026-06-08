@@ -42,9 +42,17 @@ class BaseScanner(ABC):
 
     def get_standardized_output(self) -> Dict[str, Any]:
         """Execute run() and parse_output() to get standardized findings."""
-        if self.mock_mode or not self.check_tool_available(self._get_tool_name()):
+        tool_name = self._get_tool_name()
+        tool_available = self.check_tool_available(tool_name)
+        logger.info(f"[DEBUG] {self.__class__.__name__}: mock_mode={self.mock_mode}, tool={tool_name}, available={tool_available}")
+        
+        if self.mock_mode:
             logger.info(f"Running {self.__class__.__name__} in MOCK mode")
             return self._get_mock_output()
+
+        if not tool_available:
+            logger.warning(f"Skipping {self.__class__.__name__}: tool '{tool_name}' not installed and mock mode is OFF")
+            return {"tool_name": tool_name, "findings": []}
 
         self.run()
         return self.parse_output()
