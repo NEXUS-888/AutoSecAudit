@@ -63,7 +63,7 @@ SQLI_PAYLOADS = [
     "'; WAITFOR DELAY '0:0:5'--",
     "' AND SLEEP(3)--",
     # Other common
-    "1; DROP TABLE users--",
+    "1 AND 1=1--",
     "admin'--",
     "1' ORDER BY 1--",
     "1' AND 1=CONVERT(int,(SELECT @@version))--",
@@ -228,7 +228,7 @@ class SQLiScanner(BaseScanner):
         """Try path-based injection on REST-style numeric IDs."""
         paths = ["/api/Products/", "/users/", "/api/users/", "/items/"]
         for path in paths:
-            for payload in ["1 OR 1=1", "1' OR '1'='1", "1; DROP TABLE users--"]:
+            for payload in ["1 OR 1=1", "1' OR '1'='1", "1 AND 1=CONVERT(int,@@version)--"]:
                 url = f"{base_url}{path}{urllib.parse.quote(payload)}"
                 try:
                     resp = requests.get(
@@ -286,6 +286,14 @@ class SQLiScanner(BaseScanner):
             severity = "Critical" if result["type"] == "login_bypass" else "High"
             finding_id = f"SQLI-{idx:03d}"
 
+            # Confidence: SQL error signatures = high, heuristic guesses = low
+            if result.get("matched_signature") == "authentication_bypass_heuristic":
+                confidence = "low"
+            elif result["type"] in ("error_based", "path_injection"):
+                confidence = "high"
+            else:
+                confidence = "medium"
+
             description = (
                 f"SQL Injection detected at endpoint {result['endpoint']}.\n"
                 f"Payload: {result['payload']}\n"
@@ -314,6 +322,7 @@ class SQLiScanner(BaseScanner):
                 "raw_output": result.get("evidence", "")[:500],
                 "owasp_tag": "A03:2021 Injection",
                 "tool_name": "sqli_scanner",
+                "confidence": confidence,
             })
 
         return {"tool_name": "sqli_scanner", "findings": findings}
@@ -342,6 +351,7 @@ class SQLiScanner(BaseScanner):
                     "raw_output": "Error: You have an error in your SQL syntax near '' OR 1=1--'",
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "sqli_scanner",
+                    "confidence": "high",
                 },
                 {
                     "id": "SQLI-002",
@@ -359,6 +369,7 @@ class SQLiScanner(BaseScanner):
                     "raw_output": '{"authentication":{"token":"mock-jwt-token","umail":"admin@example.com"}}',
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "sqli_scanner",
+                    "confidence": "low",
                 },
                 {
                     "id": "SQLI-003",
@@ -376,6 +387,7 @@ class SQLiScanner(BaseScanner):
                     "raw_output": "SQLITE_ERROR: SELECTs to the left and right of UNION do not have the same number of result columns",
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "sqli_scanner",
+                    "confidence": "high",
                 },
                 {
                     "id": "SQLI-004",
@@ -390,9 +402,10 @@ class SQLiScanner(BaseScanner):
                         "HTTP status: 500\n"
                         "Type: path_injection"
                     ),
-                    "raw_output": 'ERROR: syntax error at or near "OR" at character 35',
+                    "raw_output": "ERROR: syntax error at or near 'OR' at character 35",
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "sqli_scanner",
+                    "confidence": "high",
                 },
             ],
         }

@@ -108,7 +108,7 @@ class Engine:
             for future in as_completed(future_to_plugin):
                 plugin = future_to_plugin[future]
                 try:
-                    result = future.result()
+                    result = future.result(timeout=config.SCAN_TIMEOUT)
                     if result:
                         scan_result = ScanResult(
                             tool_name=result.get("tool_name", plugin.__class__.__name__),
@@ -119,6 +119,8 @@ class Engine:
                         )
                         self.scan_results.append(scan_result)
                         logger.info(f"Plugin {plugin.__class__.__name__} completed with {len(scan_result.findings)} findings")
+                except TimeoutError:
+                    logger.error(f"Plugin {plugin.__class__.__name__} timed out after {config.SCAN_TIMEOUT}s")
                 except Exception as e:
                     logger.error(f"Plugin {plugin.__class__.__name__} failed: {e}")
 
@@ -149,7 +151,8 @@ class Engine:
                 cvss_score=f.get("cvss_score"),
                 references=f.get("references"),
                 owasp_tag=f.get("owasp_tag"),
-                tool_name=f.get("tool_name")
+                tool_name=f.get("tool_name"),
+                confidence=f.get("confidence", "medium")
             )
             findings.append(finding)
         return findings

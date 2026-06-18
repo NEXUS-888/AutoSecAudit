@@ -18,6 +18,7 @@ class Finding:
     references: Optional[List[str]] = None
     owasp_tag: Optional[str] = None
     tool_name: Optional[str] = None
+    confidence: str = "medium"  # high, medium, low
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

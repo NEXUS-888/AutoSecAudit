@@ -381,6 +381,15 @@ class XSSScanner(BaseScanner):
                 f"Confidence: {result.get('confidence', 'N/A')}"
             )
 
+            # ---- confidence for Finding model ----
+            confidence_map = {
+                "reflected_xss":     result.get("confidence", "medium"),
+                "dom_xss_indicator": "low",       # pattern matching only, no execution proof
+                "missing_header":    "high",       # deterministic: header is either present or not
+                "weak_header":       "high",
+            }
+            finding_confidence = confidence_map.get(rtype, "medium")
+
             findings.append({
                 "id": finding_id,
                 "title": title,
@@ -391,6 +400,7 @@ class XSSScanner(BaseScanner):
                 "raw_output": result.get("evidence", "")[:500],
                 "owasp_tag": "A03:2021 Injection",
                 "tool_name": "xss_scanner",
+                "confidence": finding_confidence,
             })
 
         return {"tool_name": "xss_scanner", "findings": findings}

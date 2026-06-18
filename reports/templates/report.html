@@ -806,6 +806,35 @@
         }
         .badge-info::before { background: var(--severity-info); box-shadow: 0 0 6px var(--severity-info); }
 
+        /* Confidence badges */
+        .confidence-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 100px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+        .confidence-high {
+            color: #2dd4bf;
+            background: rgba(45, 212, 191, 0.1);
+            border: 1px solid rgba(45, 212, 191, 0.25);
+        }
+        .confidence-medium {
+            color: #fbbf24;
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.2);
+        }
+        .confidence-low {
+            color: #9ca3af;
+            background: rgba(156, 163, 175, 0.1);
+            border: 1px solid rgba(156, 163, 175, 0.2);
+        }
+
         /* ================================================================
            FINDING DETAIL CARDS
            ================================================================ */
@@ -1508,6 +1537,7 @@
                         <thead>
                             <tr>
                                 <th>Severity</th>
+                                <th>Confidence</th>
                                 <th>Title</th>
                                 <th>Host:Port</th>
                                 <th>Tool</th>
@@ -1519,6 +1549,7 @@
                             {% if loop.index <= 50 %}
                             <tr>
                                 <td><span class="badge badge-{{ finding.severity | lower }}">{{ finding.severity }}</span></td>
+                                <td><span class="confidence-badge confidence-{{ finding.confidence | default('medium') | lower }}">{{ finding.confidence | default('medium') }}</span></td>
                                 <td>{{ finding.title }}</td>
                                 <td style="font-family: var(--font-mono); font-size: 12px;">{{ finding.host }}:{{ finding.port }}</td>
                                 <td style="font-family: var(--font-mono); font-size: 12px;">{{ finding.tool_name or 'N/A' }}</td>
@@ -1556,7 +1587,10 @@
                 <!-- Header -->
                 <div class="finding-header">
                     <span class="finding-title">{{ finding.title }}</span>
-                    <span class="badge badge-{{ finding.severity | lower }}">{{ finding.severity }}</span>
+                    <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
+                        <span class="confidence-badge confidence-{{ finding.confidence | default('medium') | lower }}">{{ finding.confidence | default('medium') }}</span>
+                        <span class="badge badge-{{ finding.severity | lower }}">{{ finding.severity }}</span>
+                    </div>
                 </div>
 
                 <!-- Tags -->
