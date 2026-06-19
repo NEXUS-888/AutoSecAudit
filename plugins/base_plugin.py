@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 import logging
 import shutil
+import requests
 import config
 
 logger = logging.getLogger(__name__)
@@ -71,3 +72,91 @@ class BaseScanner(ABC):
     def _get_mock_output(self) -> Dict[str, Any]:
         """Return mock findings for development/demo."""
         pass
+
+    # ------------------------------------------------------------------
+    # Baseline verification helpers
+    # ------------------------------------------------------------------
+    _baseline_cache: Dict[str, Any] = {}
+
+    def _get_baseline(self, url: str, param: str, method: str = "GET",
+                      headers: Optional[Dict] = None, timeout: int = 10) -> Optional[Dict[str, Any]]:
+        """
+        Fetch a baseline (safe) response for an endpoint.
+        Caches results so we only hit each endpoint once.
+        """
+        cache_key = f"{method}:{url}:{param}"
+        if cache_key in self._baseline_cache:
+            return self._baseline_cache[cache_key]
+
+        try:
+            safe_value = "test123"
+            if method.upper() == "GET":
+                resp = requests.get(
+                    url, params={param: safe_value},
+                    headers=headers or {"User-Agent": "AutoSecAudit/2.0"},
+                    timeout=timeout, allow_redirects=True, verify=False,
+                )
+            else:
+                resp = requests.post(
+                    url, json={param: safe_value},
+                    headers=headers or {"User-Agent": "AutoSecAudit/2.0",
+                                        "Content-Type": "application/json"},
+                    timeout=timeout, allow_redirects=True, verify=False,
+                )
+
+            baseline = {
+                "status_code": resp.status_code,
+                "length": len(resp.text),
+                "content": resp.text[:500],
+            }
+            self._baseline_cache[cache_key] = baseline
+            return baseline
+        except requests.RequestException:
+            return None
+
+    @staticmethod
+    def _verify_against_baseline(
+        baseline: Dict[str, Any],
+        malicious_response: requests.Response,
+    ) -> Tuple[bool, str]:
+        """
+        Compare a malicious response against the baseline.
+
+        Returns (is_verified, confidence):
+        - is_verified: True if behavior actually changed (likely real vulnerability)
+        - confidence: 'high' if strong evidence, 'medium' if moderate, 'low' if weak
+        """
+        mal_status = malicious_response.status_code
+        mal_length = len(malicious_response.text)
+        base_status = baseline["status_code"]
+        base_length = baseline["length"]
+
+        # Status code changed significantly (e.g. 200 → 500)
+        status_changed = mal_status != base_status
+
+        # Response length changed by more than 20%
+        if base_length > 0:
+            length_ratio = abs(mal_length - base_length) / base_length
+        else:
+            length_ratio = 1.0 if mal_length > 0 else 0.0
+        length_changed = length_ratio > 0.20
+
+        # Both changed = high confidence the payload caused a real effect
+        if status_changed and length_changed:
+            return True, "high"
+
+        # Only status changed (e.g. 200 → 500 = server error from payload)
+        if status_changed and mal_status >= 500:
+            return True, "high"
+
+        # Only length changed significantly
+        if length_changed and length_ratio > 0.50:
+            return True, "medium"
+
+        # Minor changes — could be noise
+        if status_changed or length_changed:
+            return True, "low"
+
+        # No meaningful change — likely false positive
+        return False, "low"
+

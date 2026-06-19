@@ -137,10 +137,13 @@ class SQLiScanner(BaseScanner):
     # Core scanning logic
     # ------------------------------------------------------------------
     def _test_get_endpoint(self, base_url: str, endpoint: Dict[str, Any]) -> None:
-        """Inject payloads into a single GET endpoint."""
+        """Inject payloads into a single GET endpoint with baseline verification."""
         path = endpoint["path"]
         param = endpoint["param"]
         url = f"{base_url}{path}"
+
+        # Fetch baseline (safe) response first
+        baseline = self._get_baseline(url, param, headers=HEADERS, timeout=REQUEST_TIMEOUT)
 
         for payload in SQLI_PAYLOADS:
             try:
@@ -154,20 +157,33 @@ class SQLiScanner(BaseScanner):
                 )
                 match = self._check_sql_errors(resp.text)
                 if match:
-                    self.results.append({
-                        "endpoint": f"{path}?{param}=<payload>",
-                        "payload": payload,
-                        "matched_signature": match,
-                        "status_code": resp.status_code,
-                        "evidence": resp.text[:300],
-                        "type": "error_based",
-                    })
-                    logger.info(
-                        f"[SQLi] Possible injection at {path}?{param} "
-                        f"with payload: {payload!r}"
-                    )
-                    # One confirmed hit per endpoint is enough
-                    return
+                    # Verify against baseline to reduce false positives
+                    if baseline:
+                        is_verified, confidence = self._verify_against_baseline(baseline, resp)
+                    else:
+                        # No baseline available — trust the SQL error signature
+                        is_verified, confidence = True, "medium"
+
+                    if is_verified:
+                        self.results.append({
+                            "endpoint": f"{path}?{param}=<payload>",
+                            "payload": payload,
+                            "matched_signature": match,
+                            "status_code": resp.status_code,
+                            "evidence": resp.text[:300],
+                            "type": "error_based",
+                            "verified": True,
+                            "confidence": confidence,
+                        })
+                        logger.info(
+                            f"[SQLi] Verified injection at {path}?{param} "
+                            f"with payload: {payload!r} (confidence: {confidence})"
+                        )
+                        return
+                    else:
+                        logger.debug(
+                            f"[SQLi] SQL error found but baseline unchanged at {path}?{param} — skipping"
+                        )
             except requests.RequestException as exc:
                 logger.debug(f"Request to {url} failed: {exc}")
 
@@ -294,8 +310,10 @@ class SQLiScanner(BaseScanner):
             severity = "Critical" if result["type"] == "login_bypass" else "High"
             finding_id = f"SQLI-{idx:03d}"
 
-            # Confidence: SQL error signatures = high, heuristic guesses = low
-            if result.get("matched_signature") == "authentication_bypass_heuristic":
+            # Confidence: prefer baseline-verified confidence, else use heuristic
+            if result.get("verified") and result.get("confidence"):
+                confidence = result["confidence"]
+            elif result.get("matched_signature") == "authentication_bypass_heuristic":
                 confidence = "low"
             elif result["type"] in ("error_based", "path_injection"):
                 confidence = "high"
