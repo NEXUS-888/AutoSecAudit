@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan History — AutoSecAudit</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        :root {
+            --bg-deep: #020203;
+            --bg-base: #050506;
+            --bg-elevated: #0a0a0c;
+            --surface: rgba(255,255,255,0.05);
+            --surface-hover: rgba(255,255,255,0.08);
+            --fg: #EDEDEF;
+            --fg-muted: #8A8F98;
+            --fg-faint: #555960;
+            --accent: #5E6AD2;
+            --accent-bright: #6872D9;
+            --accent-glow: rgba(94,106,210,0.3);
+            --border: rgba(255,255,255,0.06);
+            --border-hover: rgba(255,255,255,0.10);
+            --sev-critical: #ef4444;
+            --sev-high: #f97316;
+            --sev-medium: #eab308;
+            --sev-low: #22c55e;
+            --sev-info: #3b82f6;
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+            --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg-deep);
+            color: var(--fg);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 40px 24px; }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--fg) 0%, var(--fg-muted) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header-sub {
+            font-size: 14px;
+            color: var(--fg-muted);
+            margin-top: 4px;
+        }
+        .back-link {
+            color: var(--accent-bright);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(94,106,210,0.3);
+            transition: all 0.2s var(--ease-out);
+        }
+        .back-link:hover {
+            background: rgba(94,106,210,0.1);
+            border-color: var(--accent);
+        }
+
+        /* Stats row */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            text-align: center;
+            transition: all 0.3s var(--ease-out);
+        }
+        .stat-card:hover {
+            border-color: var(--border-hover);
+            background: var(--surface-hover);
+            transform: translateY(-2px);
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: var(--fg-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-top: 4px;
+        }
+
+        /* Chart area */
+        .chart-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            margin-bottom: 32px;
+        }
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .chart-title svg { width: 18px; height: 18px; color: var(--accent); }
+
+        /* SVG Chart */
+        .chart-container { width: 100%; overflow-x: auto; }
+        .chart-container svg { width: 100%; min-width: 600px; }
+
+        /* Severity bar chart (horizontal stacked) */
+        .severity-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .sev-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .sev-label {
+            width: 70px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            text-align: right;
+        }
+        .sev-bar-bg {
+            flex: 1;
+            height: 28px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+        .sev-bar {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 1s var(--ease-out);
+            display: flex;
+            align-items: center;
+            padding-left: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            color: rgba(0,0,0,0.7);
+            min-width: fit-content;
+        }
+
+        /* History table */
+        .table-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+        }
+        .table-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .table-header svg { width: 18px; height: 18px; color: var(--accent); }
+        .table-scroll { overflow-x: auto; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--fg-muted);
+            border-bottom: 1px solid var(--border);
+            background: rgba(255,255,255,0.02);
+        }
+        td {
+            padding: 14px 16px;
+            font-size: 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        tr:hover td { background: var(--surface-hover); }
+        tr:last-child td { border-bottom: none; }
+
+        .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+        /* Mini severity dots */
+        .sev-dots {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .sev-dot {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 7px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .sev-dot--c { color: var(--sev-critical); background: rgba(239,68,68,0.1); }
+        .sev-dot--h { color: var(--sev-high); background: rgba(249,115,22,0.1); }
+        .sev-dot--m { color: var(--sev-medium); background: rgba(234,179,8,0.1); }
+        .sev-dot--l { color: var(--sev-low); background: rgba(34,197,94,0.1); }
+        .sev-dot--i { color: var(--sev-info); background: rgba(59,130,246,0.1); }
+
+        .view-btn {
+            color: var(--accent-bright);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 4px 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(94,106,210,0.25);
+            transition: all 0.2s;
+        }
+        .view-btn:hover {
+            background: rgba(94,106,210,0.1);
+            border-color: var(--accent);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--fg-muted);
+        }
+        .empty-state h3 { font-size: 20px; margin-bottom: 8px; color: var(--fg); }
+
+        /* Trend line chart */
+        .trend-line { fill: none; stroke: var(--accent); stroke-width: 2; }
+        .trend-area { fill: url(#trendGradient); }
+        .trend-dot { fill: var(--accent-bright); stroke: var(--bg-deep); stroke-width: 2; }
+        .grid-line { stroke: rgba(255,255,255,0.04); stroke-width: 1; }
+        .axis-label { fill: var(--fg-faint); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        .animate-in { animation: fadeIn 0.5s var(--ease-out) both; }
+        .delay-1 { animation-delay: 0.1s; }
+        .delay-2 { animation-delay: 0.2s; }
+        .delay-3 { animation-delay: 0.3s; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header animate-in">
+            <div>
+                <h1>📊 Scan History</h1>
+                <div class="header-sub">{{ scans|length }} scan{{ 's' if scans|length != 1 }} recorded</div>
+            </div>
+            <a href="/" class="back-link">← New Scan</a>
+        </div>
+
+        {% if scans %}
+        <!-- Summary Stats -->
+        <div class="stats-row animate-in delay-1">
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--accent);">{{ scans|length }}</div>
+                <div class="stat-label">Total Scans</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--fg);">{{ total_findings }}</div>
+                <div class="stat-label">Total Findings</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--sev-critical);">{{ total_critical }}</div>
+                <div class="stat-label">Critical</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--sev-high);">{{ total_high }}</div>
+                <div class="stat-label">High</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--sev-medium);">{{ total_medium }}</div>
+                <div class="stat-label">Medium</div>
+            </div>
+        </div>
+
+        <!-- Severity Distribution -->
+        <div class="chart-section animate-in delay-2">
+            <div class="chart-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                Severity Distribution (All Time)
+            </div>
+            <div class="severity-bars">
+                {% set max_count = [total_critical, total_high, total_medium, total_low, total_info] | max %}
+                {% if max_count > 0 %}
+                <div class="sev-row">
+                    <div class="sev-label" style="color: var(--sev-critical);">Critical</div>
+                    <div class="sev-bar-bg">
+                        <div class="sev-bar" style="width: {{ (total_critical / max_count * 100) | int }}%; background: var(--sev-critical);">{{ total_critical }}</div>
+                    </div>
+                </div>
+                <div class="sev-row">
+                    <div class="sev-label" style="color: var(--sev-high);">High</div>
+                    <div class="sev-bar-bg">
+                        <div class="sev-bar" style="width: {{ (total_high / max_count * 100) | int }}%; background: var(--sev-high);">{{ total_high }}</div>
+                    </div>
+                </div>
+                <div class="sev-row">
+                    <div class="sev-label" style="color: var(--sev-medium);">Medium</div>
+                    <div class="sev-bar-bg">
+                        <div class="sev-bar" style="width: {{ (total_medium / max_count * 100) | int }}%; background: var(--sev-medium);">{{ total_medium }}</div>
+                    </div>
+                </div>
+                <div class="sev-row">
+                    <div class="sev-label" style="color: var(--sev-low);">Low</div>
+                    <div class="sev-bar-bg">
+                        <div class="sev-bar" style="width: {{ (total_low / max_count * 100) | int }}%; background: var(--sev-low);">{{ total_low }}</div>
+                    </div>
+                </div>
+                <div class="sev-row">
+                    <div class="sev-label" style="color: var(--sev-info);">Info</div>
+                    <div class="sev-bar-bg">
+                        <div class="sev-bar" style="width: {{ (total_info / max_count * 100) | int }}%; background: var(--sev-info);">{{ total_info }}</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Findings Trend Chart -->
+        {% if scans|length > 1 %}
+        <div class="chart-section animate-in delay-2">
+            <div class="chart-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                Findings Trend
+            </div>
+            <div class="chart-container">
+                {% set chart_w = 800 %}
+                {% set chart_h = 200 %}
+                {% set pad_l = 50 %}
+                {% set pad_r = 20 %}
+                {% set pad_t = 20 %}
+                {% set pad_b = 40 %}
+                {% set plot_w = chart_w - pad_l - pad_r %}
+                {% set plot_h = chart_h - pad_t - pad_b %}
+                {% set n = scans|length %}
+                {% set max_val = scans|map(attribute='total')|max %}
+                {% set max_val = [max_val, 1]|max %}
+                <svg viewBox="0 0 {{ chart_w }} {{ chart_h }}">
+                    <defs>
+                        <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="rgba(94,106,210,0.3)"/>
+                            <stop offset="100%" stop-color="rgba(94,106,210,0)"/>
+                        </linearGradient>
+                    </defs>
+                    <!-- Grid lines -->
+                    {% for i in range(5) %}
+                    {% set y = pad_t + (plot_h * i / 4) %}
+                    <line x1="{{ pad_l }}" y1="{{ y }}" x2="{{ chart_w - pad_r }}" y2="{{ y }}" class="grid-line"/>
+                    <text x="{{ pad_l - 8 }}" y="{{ y + 4 }}" text-anchor="end" class="axis-label">{{ ((max_val * (4 - i) / 4)|int) }}</text>
+                    {% endfor %}
+
+                    <!-- Area + line -->
+                    {% set points = [] %}
+                    {% for scan in scans %}
+                    {% set x = pad_l + (loop.index0 * plot_w / (n - 1)) if n > 1 else pad_l + plot_w / 2 %}
+                    {% set y = pad_t + plot_h - (scan.total / max_val * plot_h) %}
+                    {% set _ = points.append({'x': x|int, 'y': y|int}) %}
+                    {% endfor %}
+
+                    <path class="trend-area" d="M{{ points[0].x }},{{ pad_t + plot_h }} {% for p in points %}L{{ p.x }},{{ p.y }} {% endfor %}L{{ points[-1].x }},{{ pad_t + plot_h }} Z"/>
+                    <path class="trend-line" d="M{% for p in points %}{{ p.x }},{{ p.y }}{{ ' ' if not loop.last }}{% endfor %}"/>
+
+                    <!-- Dots and labels -->
+                    {% for scan in scans %}
+                    {% set x = pad_l + (loop.index0 * plot_w / (n - 1)) if n > 1 else pad_l + plot_w / 2 %}
+                    {% set y = pad_t + plot_h - (scan.total / max_val * plot_h) %}
+                    <circle cx="{{ x|int }}" cy="{{ y|int }}" r="4" class="trend-dot"/>
+                    <text x="{{ x|int }}" y="{{ chart_h - 8 }}" text-anchor="middle" class="axis-label">{{ scan.date_short }}</text>
+                    {% endfor %}
+                </svg>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Scan History Table -->
+        <div class="table-section animate-in delay-3">
+            <div class="table-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Scan History
+            </div>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date / Time</th>
+                            <th>Target</th>
+                            <th>Findings</th>
+                            <th>Severity Breakdown</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for scan in scans | reverse %}
+                        <tr>
+                            <td class="mono">{{ scan.timestamp }}</td>
+                            <td class="mono">{{ scan.target }}</td>
+                            <td style="font-weight: 700;">{{ scan.total }}</td>
+                            <td>
+                                <div class="sev-dots">
+                                    {% if scan.critical %}<span class="sev-dot sev-dot--c">{{ scan.critical }}C</span>{% endif %}
+                                    {% if scan.high %}<span class="sev-dot sev-dot--h">{{ scan.high }}H</span>{% endif %}
+                                    {% if scan.medium %}<span class="sev-dot sev-dot--m">{{ scan.medium }}M</span>{% endif %}
+                                    {% if scan.low %}<span class="sev-dot sev-dot--l">{{ scan.low }}L</span>{% endif %}
+                                    {% if scan.info %}<span class="sev-dot sev-dot--i">{{ scan.info }}I</span>{% endif %}
+                                </div>
+                            </td>
+                            <td><a href="/report/{{ scan.report_id }}" class="view-btn">View Report →</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {% else %}
+        <div class="empty-state animate-in delay-1">
+            <h3>No scans yet</h3>
+            <p>Run your first scan to see history and trends here.</p>
+            <a href="/" class="back-link" style="display: inline-block; margin-top: 16px;">← Start Scanning</a>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

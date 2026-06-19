@@ -801,6 +801,14 @@ HTML_FORM = """
         <div class="empty-state">No reports yet. Run your first scan above.</div>
         {% endif %}
 
+        <div style="text-align: center; margin-top: 16px;">
+            <a href="/history" style="color: var(--accent-bright); text-decoration: none; font-size: 14px; font-weight: 500; padding: 8px 20px; border: 1px solid rgba(94,106,210,0.3); border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"
+               onmouseover="this.style.background='rgba(94,106,210,0.1)'"
+               onmouseout="this.style.background='transparent'">
+                📊 View All History →
+            </a>
+        </div>
+
         <!-- Footer -->
         <footer class="footer">
             <div class="footer-line"></div>
@@ -1214,6 +1222,61 @@ def index():
     else:
         reports = []
     return render_template_string(HTML_FORM, recent_reports=reports)
+
+
+@app.route("/history")
+def history():
+    """Scan history dashboard with charts and trends."""
+    from jinja2 import Environment, FileSystemLoader
+    reports_dir = Path(config.REPORTS_DIR)
+    scans = []
+
+    if reports_dir.exists():
+        for json_file in sorted(reports_dir.glob("scan_*.json")):
+            try:
+                data = load_json(str(json_file))
+                if not data:
+                    continue
+                summary = data.get("summary", {})
+                timestamp = data.get("timestamp", "")
+                # Extract short date for chart labels
+                date_short = timestamp[:10] if len(timestamp) >= 10 else timestamp
+                scans.append({
+                    "report_id": json_file.stem.replace("scan_", ""),
+                    "timestamp": timestamp,
+                    "date_short": date_short[5:] if len(date_short) >= 5 else date_short,
+                    "target": data.get("target", "unknown"),
+                    "total": summary.get("total", 0),
+                    "critical": summary.get("critical", 0),
+                    "high": summary.get("high", 0),
+                    "medium": summary.get("medium", 0),
+                    "low": summary.get("low", 0),
+                    "info": summary.get("info", 0),
+                })
+            except Exception as e:
+                logger.debug(f"Skipping corrupt report {json_file}: {e}")
+
+    total_findings = sum(s["total"] for s in scans)
+    total_critical = sum(s["critical"] for s in scans)
+    total_high = sum(s["high"] for s in scans)
+    total_medium = sum(s["medium"] for s in scans)
+    total_low = sum(s["low"] for s in scans)
+    total_info = sum(s["info"] for s in scans)
+
+    # Use Jinja2 FileSystemLoader to load from ui/templates/
+    template_dir = Path(__file__).parent / "templates"
+    env = Environment(loader=FileSystemLoader(str(template_dir)), autoescape=True)
+    template = env.get_template("history.html")
+
+    return template.render(
+        scans=scans,
+        total_findings=total_findings,
+        total_critical=total_critical,
+        total_high=total_high,
+        total_medium=total_medium,
+        total_low=total_low,
+        total_info=total_info,
+    )
 
 
 # ---------------------------------------------------------------------------
