@@ -260,8 +260,16 @@ class SQLiScanner(BaseScanner):
         logger.info(f"[SQLiScanner] Starting scan on {base_url}")
         self.results = []
 
-        # 1. GET parameter injection
-        for ep in ENDPOINT_TEMPLATES:
+        # Use discovered endpoints from crawler if available, else fall back to hardcoded
+        if self.discovered_endpoints:
+            endpoints_to_test = self.discovered_endpoints
+            logger.info(f"[SQLiScanner] Using {len(endpoints_to_test)} discovered endpoints from crawler")
+        else:
+            endpoints_to_test = ENDPOINT_TEMPLATES
+            logger.info(f"[SQLiScanner] No discovered endpoints, using {len(endpoints_to_test)} default templates")
+
+        # 1. GET parameter injection on discovered/default endpoints
+        for ep in endpoints_to_test:
             self._test_get_endpoint(base_url, ep)
 
         # 2. Login form injection
@@ -270,7 +278,7 @@ class SQLiScanner(BaseScanner):
         # 3. REST path-based injection
         self._test_url_path_injection(base_url)
 
-        self.raw_output = f"Tested {len(ENDPOINT_TEMPLATES)} GET endpoints, " \
+        self.raw_output = f"Tested {len(endpoints_to_test)} GET endpoints, " \
                           f"{len(LOGIN_ENDPOINTS)} login endpoints. " \
                           f"Found {len(self.results)} potential issue(s)."
         logger.info(f"[SQLiScanner] Finished – {self.raw_output}")

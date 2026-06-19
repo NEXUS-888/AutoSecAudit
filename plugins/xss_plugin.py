@@ -120,9 +120,11 @@ class XSSScanner(BaseScanner):
     # ------------------------------------------------------------------
     # Core scanning logic
     # ------------------------------------------------------------------
-    def _test_reflected_xss(self, base_url: str) -> None:
+    def _test_reflected_xss(self, base_url: str, endpoints: list = None) -> None:
         """Inject XSS payloads into GET parameters and check for reflection."""
-        for ep in ENDPOINT_TEMPLATES:
+        if endpoints is None:
+            endpoints = ENDPOINT_TEMPLATES
+        for ep in endpoints:
             path = ep["path"]
             param = ep["param"]
             url = f"{base_url}{path}"
@@ -322,8 +324,16 @@ class XSSScanner(BaseScanner):
         logger.info(f"[XSSScanner] Starting scan on {base_url}")
         self.results = []
 
+        # Use discovered endpoints from crawler if available
+        if self.discovered_endpoints:
+            endpoints_to_test = self.discovered_endpoints
+            logger.info(f"[XSSScanner] Using {len(endpoints_to_test)} discovered endpoints from crawler")
+        else:
+            endpoints_to_test = ENDPOINT_TEMPLATES
+            logger.info(f"[XSSScanner] No discovered endpoints, using {len(endpoints_to_test)} default templates")
+
         # 1. Reflected XSS via GET parameters
-        self._test_reflected_xss(base_url)
+        self._test_reflected_xss(base_url, endpoints_to_test)
 
         # 2. Hash-fragment / SPA endpoints
         self._test_hash_fragment_endpoints(base_url)
@@ -335,7 +345,7 @@ class XSSScanner(BaseScanner):
         self._test_security_headers(base_url)
 
         self.raw_output = (
-            f"Tested {len(ENDPOINT_TEMPLATES)} endpoints with "
+            f"Tested {len(endpoints_to_test)} endpoints with "
             f"{len(XSS_PAYLOADS)} payloads. "
             f"Found {len(self.results)} potential issue(s)."
         )

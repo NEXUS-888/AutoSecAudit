@@ -14,6 +14,11 @@ class BaseScanner(ABC):
         self.target: str = ""
         self.mock_mode = mock_mode if mock_mode is not None else config.MOCK_MODE
         self._tool_available: Optional[bool] = None
+        self.discovered_endpoints: list = []  # populated by engine from crawler
+
+    def set_discovered_endpoints(self, endpoints: list) -> None:
+        """Set discovered endpoints from the web crawler."""
+        self.discovered_endpoints = endpoints
 
     @abstractmethod
     def configure(self, target: str) -> None:

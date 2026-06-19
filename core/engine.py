@@ -9,6 +9,7 @@ from datetime import datetime
 import config
 from core.models import ScanResult, Finding, Report
 from core.utils import validate_target, normalize_target, get_timestamp, save_json
+from core.crawler import WebCrawler
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ class Engine:
         self.scan_results: List[ScanResult] = []
         self.target: str = ""
         self.previous_report: Optional[Dict[str, Any]] = None
+        self.crawl_result = None  # populated by run_plugins
 
     def load_plugins(self, plugins_dir: Optional[str] = None) -> int:
         """Dynamically load all plugins from the plugins directory."""
@@ -96,6 +98,17 @@ class Engine:
 
         self.scan_results = []
         timestamp = get_timestamp()
+
+        # Run web crawler first to discover real endpoints
+        crawler = WebCrawler(mock_mode=self.mock_mode)
+        self.crawl_result = crawler.crawl(self.target)
+        discovered = self.crawl_result.get_injectable_endpoints()
+        login_endpoints = self.crawl_result.get_login_endpoints()
+        logger.info(f"Crawler discovered {len(discovered)} injectable endpoints, {len(login_endpoints)} login paths")
+
+        # Pass discovered endpoints to all plugins
+        for plugin in self.plugins:
+            plugin.set_discovered_endpoints(discovered)
 
         logger.info(f"Running {len(self.plugins)} plugins on {self.target}")
 
