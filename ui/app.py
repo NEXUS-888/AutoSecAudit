@@ -1,7 +1,11 @@
 import os
 import re
 import logging
-from flask import Flask, render_template_string, request, redirect, url_for, send_file, abort
+import threading
+import uuid
+import queue
+import time
+from flask import Flask, render_template_string, request, redirect, url_for, send_file, abort, Response, jsonify
 from pathlib import Path
 from werkzeug.utils import secure_filename
 import json
@@ -23,6 +27,11 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
+
+# ---------------------------------------------------------------------------
+# SSE Scan Progress: in-memory job store
+# ---------------------------------------------------------------------------
+scan_jobs = {}  # {scan_id: {"status", "target", "progress_queue", "report_name", "error"}}
 
 
 # ---------------------------------------------------------------------------
@@ -1205,6 +1214,198 @@ def index():
     else:
         reports = []
     return render_template_string(HTML_FORM, recent_reports=reports)
+
+
+# ---------------------------------------------------------------------------
+# SSE: Async scan with real-time progress streaming
+# ---------------------------------------------------------------------------
+def _run_scan_background(scan_id: str, target: str, previous_path: str = None):
+    """Run a scan in a background thread, pushing progress events to the queue."""
+    job = scan_jobs[scan_id]
+    q = job["progress_queue"]
+
+    def emit(stage, message, progress=0, detail=""):
+        q.put({"stage": stage, "message": message, "progress": progress, "detail": detail})
+
+    try:
+        job["status"] = "running"
+
+        # 1. Initialize
+        emit("init", "Initializing scan engine...", 5)
+        engine = Engine()
+        engine.load_plugins()
+
+        if not engine.set_target(target):
+            raise ValueError("Invalid target URL")
+        emit("init", f"Target: {target} — {len(engine.plugins)} plugins loaded", 10)
+
+        if previous_path:
+            engine.set_previous_report(previous_path)
+            emit("init", "Previous report loaded for delta comparison", 12)
+
+        # 2. Crawling (happens inside run_plugins, but we show progress)
+        emit("crawling", "Crawling target for endpoints...", 15)
+
+        # 3. Run plugins
+        emit("scanning", "Starting plugin execution...", 20)
+        engine.run_plugins()
+
+        # Report crawler results
+        if engine.crawl_result:
+            cr = engine.crawl_result
+            emit("crawling", f"Discovered {len(cr.endpoints)} endpoints, {len(cr.forms)} forms", 30,
+                 f"Visited {cr.pages_visited} pages")
+
+        # Report plugin results  
+        total_findings = sum(len(sr.findings) for sr in engine.scan_results)
+        emit("scanning", f"All {len(engine.scan_results)} plugins complete — {total_findings} raw findings", 55)
+
+        # 4. Generate report
+        emit("processing", "Generating report...", 60)
+        report = engine.generate_report()
+
+        # 5. Delta analysis
+        if previous_path and engine.previous_report:
+            emit("processing", "Running delta analysis...", 65)
+            from intelligence.delta import DeltaAnalyzer
+            previous_data = load_json(previous_path)
+            if previous_data:
+                from core.models import Finding
+                prev_findings = [Finding(**f) for f in previous_data.get("all_findings", [])]
+                prev_report = Report(
+                    target=previous_data.get("target", ""),
+                    timestamp=previous_data.get("timestamp", ""),
+                    all_findings=prev_findings
+                )
+                delta = DeltaAnalyzer().compare(report, prev_report)
+                report.delta = delta
+
+        # 6. Intelligence pipeline
+        emit("enriching", "Correlating findings...", 70)
+        correlator = Correlator()
+        report.all_findings = correlator.link_related(report.all_findings)
+
+        emit("enriching", "Enriching with CVE data...", 75)
+        enricher_obj = Enricher()
+        report.all_findings = enricher_obj.enrich(report.all_findings)
+
+        emit("enriching", "Mapping compliance standards...", 80)
+        mapper = ComplianceMapper()
+        report.all_findings = mapper.map_findings(report.all_findings)
+
+        emit("enriching", "Adding remediation suggestions...", 85)
+        from intelligence.remediation import enrich_with_remediation
+        report.all_findings = enrich_with_remediation(report.all_findings)
+
+        report.summary = engine._generate_summary(report.all_findings)
+
+        # 7. Save
+        emit("saving", "Saving report...", 90)
+        json_path = engine.save_report(report)
+
+        emit("saving", "Generating HTML report...", 95)
+        generator = ReportGenerator()
+        generator.generate_report(report)
+
+        report_name = Path(json_path).stem.replace("scan_", "")
+        job["report_name"] = report_name
+        job["status"] = "done"
+        emit("done", f"Scan complete — {len(report.all_findings)} findings", 100, report_name)
+
+    except Exception as e:
+        logger.error(f"Async scan failed: {e}")
+        job["status"] = "error"
+        job["error"] = str(e)
+        emit("error", f"Scan failed: {str(e)}", 0)
+    finally:
+        if previous_path and os.path.exists(previous_path):
+            try:
+                os.remove(previous_path)
+            except OSError:
+                pass
+
+
+@app.route("/scan/async", methods=["POST"])
+def scan_async():
+    """Start a scan in the background, return a scan_id for SSE streaming."""
+    target = request.form.get("target", "").strip()
+    if not target:
+        return jsonify({"error": "Target is required"}), 400
+
+    allowed, reason = is_target_allowed(target)
+    if not allowed:
+        return jsonify({"error": reason}), 403
+
+    previous_file = request.files.get("previous_report")
+    previous_path = None
+    if previous_file and previous_file.filename:
+        filename = secure_filename(previous_file.filename)
+        previous_path = f"{config.DATA_DIR}/temp_{filename}"
+        previous_file.save(previous_path)
+
+    scan_id = str(uuid.uuid4())[:8]
+    scan_jobs[scan_id] = {
+        "status": "starting",
+        "target": target,
+        "progress_queue": queue.Queue(),
+        "report_name": None,
+        "error": None,
+    }
+
+    thread = threading.Thread(
+        target=_run_scan_background,
+        args=(scan_id, target, previous_path),
+        daemon=True,
+    )
+    thread.start()
+
+    return jsonify({"scan_id": scan_id})
+
+
+@app.route("/scan/progress/<scan_id>")
+def scan_progress(scan_id):
+    """SSE endpoint — streams scan progress events."""
+    if scan_id not in scan_jobs:
+        return "Scan not found", 404
+
+    def event_stream():
+        job = scan_jobs[scan_id]
+        q = job["progress_queue"]
+        while True:
+            try:
+                event = q.get(timeout=30)
+                data = json.dumps(event)
+                yield f"data: {data}\n\n"
+                if event.get("stage") in ("done", "error"):
+                    break
+            except queue.Empty:
+                # Send keepalive
+                yield f": keepalive\n\n"
+                if job["status"] in ("done", "error"):
+                    break
+
+    return Response(
+        event_stream(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.route("/scan/status/<scan_id>")
+def scan_status(scan_id):
+    """JSON status endpoint — polling fallback."""
+    if scan_id not in scan_jobs:
+        return jsonify({"error": "Scan not found"}), 404
+    job = scan_jobs[scan_id]
+    return jsonify({
+        "status": job["status"],
+        "target": job["target"],
+        "report_name": job["report_name"],
+        "error": job["error"],
+    })
 
 
 @app.route("/scan", methods=["POST"])
