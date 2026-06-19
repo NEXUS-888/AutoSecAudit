@@ -93,6 +93,28 @@ HTML_FORM = """
             --ease-expo:        cubic-bezier(0.16,1,0.3,1);
         }
 
+        /* ── Light Theme ──────────────────────────────────────────── */
+        [data-theme="light"] {
+            --bg-deep:          #f5f5f7;
+            --bg-base:          #eeeef0;
+            --bg-elevated:      #ffffff;
+            --surface:          rgba(0,0,0,0.04);
+            --surface-hover:    rgba(0,0,0,0.07);
+            --fg:               #1a1a2e;
+            --fg-muted:         #6b7280;
+            --accent:           #4f46e5;
+            --accent-bright:    #6366f1;
+            --accent-glow:      rgba(79,70,229,0.20);
+            --border:           rgba(0,0,0,0.08);
+            --border-hover:     rgba(0,0,0,0.15);
+        }
+        [data-theme="light"] .bg-system { background: radial-gradient(ellipse 120% 80% at 50% 0%, #e8e8f0 0%, #f0f0f4 45%, #f5f5f7 100%); }
+        [data-theme="light"] .blob--primary { background: radial-gradient(circle, rgba(79,70,229,0.15) 0%, transparent 70%); }
+        [data-theme="light"] .blob--secondary { background: radial-gradient(circle, rgba(139,92,246,0.10) 0%, transparent 70%); }
+        [data-theme="light"] .blob--tertiary { background: radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%); }
+        [data-theme="light"] .bg-grid { background-image: linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px); }
+        [data-theme="light"] .bg-noise { opacity: 0.02; }
+
         /* ── Reset ─────────────────────────────────────────────────── */
         *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
@@ -679,6 +701,13 @@ HTML_FORM = """
             <span class="version-badge">v2.0</span>
         </header>
 
+        <!-- Theme Toggle -->
+        <button id="themeToggle" onclick="toggleTheme()" style="position: fixed; top: 20px; right: 20px; z-index: 1000; background: var(--surface); border: 1px solid var(--border); border-radius: 50%; width: 40px; height: 40px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--fg-muted); transition: all 0.3s var(--ease-expo); backdrop-filter: blur(10px);" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--fg-muted)'" title="Toggle light/dark mode">
+            <svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            </svg>
+        </button>
+
         <!-- Scan Form Card -->
         <main class="card">
             <form id="scanForm" action="/scan" method="POST" enctype="multipart/form-data">
@@ -816,6 +845,33 @@ HTML_FORM = """
         </footer>
     </div>
 
+    <script>
+        /* ── Theme Toggle ──────────────────────────── */
+        function toggleTheme() {
+            var html = document.documentElement;
+            var current = html.getAttribute('data-theme');
+            var next = current === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', next);
+            localStorage.setItem('autosec-theme', next);
+            updateThemeIcon(next);
+        }
+        function updateThemeIcon(theme) {
+            var icon = document.getElementById('themeIcon');
+            if (!icon) return;
+            if (theme === 'light') {
+                icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+            } else {
+                icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+            }
+        }
+        (function() {
+            var saved = localStorage.getItem('autosec-theme');
+            if (saved) {
+                document.documentElement.setAttribute('data-theme', saved);
+                updateThemeIcon(saved);
+            }
+        })();
+    </script>
     <script>
         document.getElementById('scanForm').addEventListener('submit', function (e) {
             var targetInput = document.getElementById('target');
