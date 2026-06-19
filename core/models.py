@@ -19,6 +19,7 @@ class Finding:
     owasp_tag: Optional[str] = None
     tool_name: Optional[str] = None
     confidence: str = "medium"  # high, medium, low
+    remediation: Optional[str] = None  # how to fix this vulnerability
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
