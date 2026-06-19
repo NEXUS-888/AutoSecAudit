@@ -1582,8 +1582,24 @@
                 Detail View
             </div>
 
+            <!-- Filter Bar -->
+            <div class="reveal" id="filterBar" style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: var(--space-lg); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; position: sticky; top: 0; z-index: 100; backdrop-filter: blur(20px);">
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button class="filter-btn active" data-filter-severity="all" onclick="filterFindings()">All</button>
+                    <button class="filter-btn" data-filter-severity="critical" onclick="filterFindings()" style="--btn-color: var(--severity-critical);">Critical</button>
+                    <button class="filter-btn" data-filter-severity="high" onclick="filterFindings()" style="--btn-color: var(--severity-high);">High</button>
+                    <button class="filter-btn" data-filter-severity="medium" onclick="filterFindings()" style="--btn-color: var(--severity-medium);">Medium</button>
+                    <button class="filter-btn" data-filter-severity="low" onclick="filterFindings()" style="--btn-color: var(--severity-low);">Low</button>
+                    <button class="filter-btn" data-filter-severity="info" onclick="filterFindings()" style="--btn-color: var(--severity-info);">Info</button>
+                </div>
+                <div style="flex: 1; min-width: 180px;">
+                    <input type="text" id="findingSearch" placeholder="Search findings..." oninput="filterFindings()" style="width: 100%; padding: 7px 12px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--fg); font-size: 13px; font-family: var(--font-sans); outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                </div>
+                <span id="filterCount" style="font-size: 12px; color: var(--fg-muted); font-family: var(--font-mono);"></span>
+            </div>
+
             {% for finding in report.all_findings %}
-            <div class="glass-card glass-card--lift finding-card reveal">
+            <div class="glass-card glass-card--lift finding-card reveal" data-severity="{{ finding.severity | lower }}" data-tool="{{ finding.tool_name | default('unknown') }}" data-confidence="{{ finding.confidence | default('medium') | lower }}" data-title="{{ finding.title | lower }}">
                 <!-- Header -->
                 <div class="finding-header">
                     <span class="finding-title">{{ finding.title }}</span>
@@ -1769,6 +1785,67 @@
                 }
             })();
         })();
+
+        /* ── Finding Filters ────────────────────────── */
+        (function() {
+            var btns = document.querySelectorAll('.filter-btn');
+            btns.forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var severity = btn.getAttribute('data-filter-severity');
+                    btns.forEach(function(b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    filterFindings();
+                });
+            });
+        })();
+
+        function filterFindings() {
+            var activeBtn = document.querySelector('.filter-btn.active');
+            var severity = activeBtn ? activeBtn.getAttribute('data-filter-severity') : 'all';
+            var search = (document.getElementById('findingSearch').value || '').toLowerCase();
+            var cards = document.querySelectorAll('.finding-card[data-severity]');
+            var shown = 0;
+            cards.forEach(function(card) {
+                var matchSev = severity === 'all' || card.getAttribute('data-severity') === severity;
+                var matchSearch = !search || (card.getAttribute('data-title') || '').indexOf(search) !== -1
+                    || (card.getAttribute('data-tool') || '').indexOf(search) !== -1;
+                if (matchSev && matchSearch) {
+                    card.style.display = '';
+                    shown++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+            var countEl = document.getElementById('filterCount');
+            if (countEl) countEl.textContent = shown + '/' + cards.length + ' shown';
+        }
+        filterFindings();
     </script>
+    <style>
+        .filter-btn {
+            padding: 5px 14px;
+            border-radius: 100px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--fg-muted);
+            font-size: 12px;
+            font-weight: 600;
+            font-family: var(--font-sans);
+            cursor: pointer;
+            transition: all 0.2s var(--ease-out);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .filter-btn:hover {
+            border-color: var(--btn-color, var(--accent));
+            color: var(--btn-color, var(--accent));
+            background: rgba(255,255,255,0.03);
+        }
+        .filter-btn.active {
+            border-color: var(--btn-color, var(--accent));
+            color: var(--bg-deep);
+            background: var(--btn-color, var(--accent));
+        }
+    </style>
 </body>
 </html>
