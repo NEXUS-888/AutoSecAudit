@@ -1,4 +1,5 @@
 import os
+import secrets
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
@@ -7,6 +8,10 @@ REPORTS_DIR = str(BASE_DIR / "data" / "reports")
 PLUGINS_DIR = str(BASE_DIR / "plugins")
 
 MOCK_MODE = os.environ.get("AUTOSEC_MOCK_MODE", "true").lower() == "true"
+
+# Web application security
+SECRET_KEY = os.environ.get("AUTOSEC_SECRET_KEY", secrets.token_hex(32))
+DEBUG = os.environ.get("AUTOSEC_DEBUG", "false").lower() == "true"
 
 THREAD_COUNT = int(os.environ.get("AUTOSEC_THREAD_COUNT", "4"))
 

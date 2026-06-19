@@ -146,7 +146,7 @@ def main():
         from ui.app import app
         print("Starting AutoSecAudit web interface...")
         print("Open http://localhost:5000 in your browser")
-        app.run(debug=True, host="0.0.0.0", port=5000)
+        app.run(debug=config.DEBUG, host="0.0.0.0", port=5000)
         return 0
     else:
         parser.print_help()

@@ -1,6 +1,7 @@
 import os
+import re
 import logging
-from flask import Flask, render_template_string, request, redirect, url_for, send_file
+from flask import Flask, render_template_string, request, redirect, url_for, send_file, abort
 from pathlib import Path
 from werkzeug.utils import secure_filename
 import json
@@ -21,7 +22,33 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = "autosecaudit_secret_key_change_in_production"
+app.secret_key = config.SECRET_KEY
+
+
+# ---------------------------------------------------------------------------
+# Security: Validate report IDs to prevent path traversal
+# ---------------------------------------------------------------------------
+REPORT_ID_PATTERN = re.compile(r"^[\w-]+$")
+
+
+def _validate_report_id(report_id: str) -> str:
+    """Validate report_id contains only safe characters (alphanumeric, dash, underscore)."""
+    if not REPORT_ID_PATTERN.match(report_id):
+        abort(400, description="Invalid report ID.")
+    return report_id
+
+
+# ---------------------------------------------------------------------------
+# Security: Add security headers to all responses
+# ---------------------------------------------------------------------------
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -1198,55 +1225,65 @@ def scan():
         previous_path = f"{config.DATA_DIR}/temp_{filename}"
         previous_file.save(previous_path)
     
-    engine = Engine()
-    engine.load_plugins()
-    
-    if not engine.set_target(target):
-        return "Invalid target", 400
-    
-    if previous_path:
-        engine.set_previous_report(previous_path)
-    
-    engine.run_plugins()
-    report = engine.generate_report()
-    
-    if previous_path and engine.previous_report:
-        from intelligence.delta import DeltaAnalyzer
-        previous_data = load_json(previous_path)
-        if previous_data:
-            from core.models import Finding
-            prev_findings = [Finding(**f) for f in previous_data.get("all_findings", [])]
-            prev_report = Report(
-                target=previous_data.get("target", ""),
-                timestamp=previous_data.get("timestamp", ""),
-                all_findings=prev_findings
-            )
-            delta = DeltaAnalyzer().compare(report, prev_report)
-            report.delta = delta
-    
-    correlator = Correlator()
-    report.all_findings = correlator.link_related(report.all_findings)
-    
-    enricher = Enricher()
-    report.all_findings = enricher.enrich(report.all_findings)
-    
-    mapper = ComplianceMapper()
-    report.all_findings = mapper.map_findings(report.all_findings)
-    
-    report.summary = engine._generate_summary(report.all_findings)
-    
-    json_path = engine.save_report(report)
-    
-    generator = ReportGenerator()
-    html_path = generator.generate_report(report)
-    
-    report_name = Path(json_path).stem.replace("scan_", "")
-    
-    return redirect(url_for("view_report", report_id=report_name))
+    try:
+        engine = Engine()
+        engine.load_plugins()
+        
+        if not engine.set_target(target):
+            return "Invalid target", 400
+        
+        if previous_path:
+            engine.set_previous_report(previous_path)
+        
+        engine.run_plugins()
+        report = engine.generate_report()
+        
+        if previous_path and engine.previous_report:
+            from intelligence.delta import DeltaAnalyzer
+            previous_data = load_json(previous_path)
+            if previous_data:
+                from core.models import Finding
+                prev_findings = [Finding(**f) for f in previous_data.get("all_findings", [])]
+                prev_report = Report(
+                    target=previous_data.get("target", ""),
+                    timestamp=previous_data.get("timestamp", ""),
+                    all_findings=prev_findings
+                )
+                delta = DeltaAnalyzer().compare(report, prev_report)
+                report.delta = delta
+        
+        correlator = Correlator()
+        report.all_findings = correlator.link_related(report.all_findings)
+        
+        enricher = Enricher()
+        report.all_findings = enricher.enrich(report.all_findings)
+        
+        mapper = ComplianceMapper()
+        report.all_findings = mapper.map_findings(report.all_findings)
+        
+        report.summary = engine._generate_summary(report.all_findings)
+        
+        json_path = engine.save_report(report)
+        
+        generator = ReportGenerator()
+        html_path = generator.generate_report(report)
+        
+        report_name = Path(json_path).stem.replace("scan_", "")
+        
+        return redirect(url_for("view_report", report_id=report_name))
+    finally:
+        # Clean up temporary uploaded files
+        if previous_path and os.path.exists(previous_path):
+            try:
+                os.remove(previous_path)
+                logger.debug(f"Cleaned up temp file: {previous_path}")
+            except OSError:
+                logger.warning(f"Failed to clean up temp file: {previous_path}")
 
 
 @app.route("/report/<report_id>")
 def view_report(report_id):
+    _validate_report_id(report_id)
     json_path = f"{config.REPORTS_DIR}/scan_{report_id}.json"
     report_data = load_json(json_path)
     
@@ -1257,8 +1294,9 @@ def view_report(report_id):
     with open(template_path, "r", encoding="utf-8") as f:
         template_content = f.read()
     
-    from jinja2 import Template
-    template = Template(template_content)
+    from jinja2 import Environment, select_autoescape
+    env = Environment(autoescape=select_autoescape(default=True, default_for_string=True))
+    template = env.from_string(template_content)
     html = template.render(report=report_data)
     
     return html
@@ -1266,9 +1304,12 @@ def view_report(report_id):
 
 @app.route("/download/<report_id>")
 def download_report(report_id):
+    _validate_report_id(report_id)
     json_path = f"{config.REPORTS_DIR}/scan_{report_id}.json"
+    if not os.path.exists(json_path):
+        abort(404, description="Report not found.")
     return send_file(json_path, as_attachment=True, download_name=f"report_{report_id}.json")
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=config.DEBUG, host="0.0.0.0", port=5000)

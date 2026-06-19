@@ -24,8 +24,14 @@ class Enricher:
         for f in cve_findings:
             cve_data = self._fetch_cve_data(f.cve_id)
             if cve_data:
-                f.cvss_score = cve_data.get("cvss_score")
-                f.references = cve_data.get("references", [])
+                if f.cvss_score is None:
+                    f.cvss_score = cve_data.get("cvss_score")
+                # Merge CVE references with existing references (don't overwrite)
+                cve_refs = cve_data.get("references", [])
+                if f.references:
+                    f.references = f.references + [r for r in cve_refs if r not in f.references]
+                else:
+                    f.references = cve_refs
                 logger.info(f"Enriched {f.cve_id} with CVSS {f.cvss_score}")
             else:
                 logger.debug(f"No CVE data found for {f.cve_id}, skipping enrichment")
@@ -60,7 +66,7 @@ class Enricher:
         
         try:
             response = requests.get(url, headers=headers, timeout=2)
-        except:
+        except Exception:
             return None
         if response.status_code == 200:
             data = response.json()
@@ -112,7 +118,7 @@ class Enricher:
         
         try:
             response = requests.get(url, timeout=2)
-        except:
+        except Exception:
             return None
         if response.status_code == 200:
             data = response.json()
