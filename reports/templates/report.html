@@ -1636,6 +1636,19 @@
                 </div>
                 {% endif %}
 
+                <!-- Remediation -->
+                {% if finding.remediation %}
+                <div class="finding-remediation" style="margin-top: var(--space-md); padding: var(--space-md); background: rgba(34, 197, 94, 0.06); border: 1px solid rgba(34, 197, 94, 0.15); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: var(--space-sm); color: #22c55e; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                        </svg>
+                        How to Fix
+                    </div>
+                    <pre style="white-space: pre-wrap; font-family: var(--font-sans); font-size: 13px; color: var(--fg-muted); line-height: 1.7; margin: 0;">{{ finding.remediation }}</pre>
+                </div>
+                {% endif %}
+
                 <!-- Raw output -->
                 {% if finding.raw_output %}
                 <details class="collapsible">

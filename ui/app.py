@@ -1261,6 +1261,10 @@ def scan():
         mapper = ComplianceMapper()
         report.all_findings = mapper.map_findings(report.all_findings)
         
+        # Remediation advice
+        from intelligence.remediation import enrich_with_remediation
+        report.all_findings = enrich_with_remediation(report.all_findings)
+        
         report.summary = engine._generate_summary(report.all_findings)
         
         json_path = engine.save_report(report)

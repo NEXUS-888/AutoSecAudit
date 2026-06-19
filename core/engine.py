@@ -152,7 +152,8 @@ class Engine:
                 references=f.get("references"),
                 owasp_tag=f.get("owasp_tag"),
                 tool_name=f.get("tool_name"),
-                confidence=f.get("confidence", "medium")
+                confidence=f.get("confidence", "medium"),
+                remediation=f.get("remediation")
             )
             findings.append(finding)
         return findings
