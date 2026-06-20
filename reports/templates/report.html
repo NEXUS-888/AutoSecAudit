@@ -1599,7 +1599,7 @@
             </div>
 
             {% for finding in report.all_findings %}
-            <div class="glass-card glass-card--lift finding-card reveal" data-severity="{{ finding.severity | lower }}" data-tool="{{ finding.tool_name | default('unknown') }}" data-confidence="{{ finding.confidence | default('medium') | lower }}" data-title="{{ finding.title | lower }}">
+            <div class="glass-card glass-card--lift finding-card reveal" data-severity="{{ finding.severity | lower }}" data-tool="{{ finding.tool_name | default('unknown') }}" data-confidence="{{ finding.confidence | default('medium') | lower }}" data-title="{{ finding.title | lower }}" data-index="{{ loop.index0 }}" onclick="openFindingModal({{ loop.index0 }})" style="cursor: pointer;" title="Click for full details">
                 <!-- Header -->
                 <div class="finding-header">
                     <span class="finding-title">{{ finding.title }}</span>
@@ -1680,6 +1680,147 @@
             </div>
             {% endfor %}
         </div>
+
+        <!-- Finding Detail Modal -->
+        <div id="findingModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.75); backdrop-filter:blur(8px); overflow-y:auto; animation: modalFadeIn 0.25s ease;">
+            <div id="modalContent" style="max-width:720px; margin:40px auto; background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-lg); padding:0; position:relative; animation: modalSlideIn 0.3s var(--ease-out);">
+                <!-- Close button -->
+                <button onclick="closeFindingModal()" style="position:absolute; top:16px; right:16px; background:var(--surface); border:1px solid var(--border); border-radius:50%; width:32px; height:32px; cursor:pointer; color:var(--fg-muted); display:flex; align-items:center; justify-content:center; font-size:18px; z-index:10; transition:all 0.2s;" onmouseover="this.style.color='var(--fg)';this.style.borderColor='var(--border-hover)'" onmouseout="this.style.color='var(--fg-muted)';this.style.borderColor='var(--border)'">&times;</button>
+
+                <!-- Header -->
+                <div id="modalHeader" style="padding:24px 24px 16px; border-bottom:1px solid var(--border);">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                        <h2 id="modalTitle" style="font-size:18px; font-weight:700; line-height:1.4; padding-right:30px;"></h2>
+                        <div style="display:flex; gap:6px; flex-shrink:0;">
+                            <span id="modalConfidence" class="confidence-badge"></span>
+                            <span id="modalSeverity" class="badge"></span>
+                        </div>
+                    </div>
+                    <div id="modalTags" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;"></div>
+                </div>
+
+                <!-- Body -->
+                <div style="padding:20px 24px;">
+                    <div id="modalDesc" style="font-size:14px; line-height:1.8; color:var(--fg-muted); white-space:pre-wrap; margin-bottom:20px;"></div>
+
+                    <div id="modalRefsSection" style="display:none; margin-bottom:20px;">
+                        <div style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--accent); margin-bottom:8px;">References</div>
+                        <ul id="modalRefs" style="list-style:none; display:flex; flex-direction:column; gap:4px;"></ul>
+                    </div>
+
+                    <div id="modalRemedSection" style="display:none; padding:16px; background:rgba(34,197,94,0.06); border:1px solid rgba(34,197,94,0.15); border-radius:var(--radius-md); margin-bottom:20px;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; color:#22c55e; font-weight:600; font-size:13px; text-transform:uppercase; letter-spacing:0.05em;">
+                            &#x1f6e1; How to Fix
+                        </div>
+                        <pre id="modalRemed" style="white-space:pre-wrap; font-family:var(--font-sans); font-size:13px; color:var(--fg-muted); line-height:1.7; margin:0;"></pre>
+                    </div>
+
+                    <div id="modalRawSection" style="display:none;">
+                        <div style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--fg-muted); margin-bottom:8px;">Raw Output</div>
+                        <div id="modalRaw" class="raw-output" style="max-height:200px; overflow-y:auto;"></div>
+                    </div>
+                </div>
+
+                <!-- Footer with navigation -->
+                <div style="padding:12px 24px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+                    <button onclick="navigateFinding(-1)" id="modalPrev" style="padding:6px 14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--fg-muted); cursor:pointer; font-size:13px; transition:all 0.2s;">← Previous</button>
+                    <span id="modalCounter" style="font-size:12px; color:var(--fg-muted); font-family:var(--font-mono);"></span>
+                    <button onclick="navigateFinding(1)" id="modalNext" style="padding:6px 14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--fg-muted); cursor:pointer; font-size:13px; transition:all 0.2s;">Next →</button>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            var findingsData = [
+                {% for finding in report.all_findings %}
+                {
+                    "title": {{ finding.title | tojson }},
+                    "severity": {{ finding.severity | tojson }},
+                    "confidence": {{ (finding.confidence or 'medium') | tojson }},
+                    "id": {{ finding.id | tojson }},
+                    "host": {{ finding.host | tojson }},
+                    "port": {{ finding.port | tojson }},
+                    "tool_name": {{ (finding.tool_name or 'N/A') | tojson }},
+                    "owasp_tag": {{ (finding.owasp_tag or '') | tojson }},
+                    "cve_id": {{ (finding.cve_id or '') | tojson }},
+                    "cvss_score": {{ (finding.cvss_score or '') | tojson }},
+                    "description": {{ finding.description | tojson }},
+                    "references": {{ finding.references | tojson }},
+                    "remediation": {{ (finding.remediation or '') | tojson }},
+                    "raw_output": {{ (finding.raw_output or '')[:1000] | tojson }}
+                }{{ ',' if not loop.last }}
+                {% endfor %}
+            ];
+            var currentFindingIndex = 0;
+
+            function openFindingModal(index) {
+                currentFindingIndex = index;
+                var f = findingsData[index];
+                document.getElementById('modalTitle').textContent = f.title;
+                var sevEl = document.getElementById('modalSeverity');
+                sevEl.textContent = f.severity;
+                sevEl.className = 'badge badge-' + f.severity.toLowerCase();
+                var confEl = document.getElementById('modalConfidence');
+                confEl.textContent = f.confidence;
+                confEl.className = 'confidence-badge confidence-' + f.confidence.toLowerCase();
+
+                // Tags
+                var tags = '<span class="tag tag--accent">' + f.id + '</span>';
+                tags += '<span class="tag">' + f.host + ':' + f.port + '</span>';
+                if (f.cve_id) tags += '<span class="tag tag--cve">' + f.cve_id + '</span>';
+                if (f.cvss_score) tags += '<span class="tag tag--cvss">CVSS ' + f.cvss_score + '</span>';
+                if (f.owasp_tag) tags += '<span class="tag">' + f.owasp_tag + '</span>';
+                tags += '<span class="tag">' + f.tool_name + '</span>';
+                document.getElementById('modalTags').innerHTML = tags;
+
+                document.getElementById('modalDesc').textContent = f.description;
+
+                // References
+                var refsSection = document.getElementById('modalRefsSection');
+                if (f.references && f.references.length > 0) {
+                    refsSection.style.display = 'block';
+                    var refHtml = '';
+                    f.references.forEach(function(r) { refHtml += '<li><a href="' + r + '" target="_blank" rel="noopener" style="color:var(--accent); font-size:13px; word-break:break-all;">' + r + '</a></li>'; });
+                    document.getElementById('modalRefs').innerHTML = refHtml;
+                } else { refsSection.style.display = 'none'; }
+
+                // Remediation
+                var remSection = document.getElementById('modalRemedSection');
+                if (f.remediation) {
+                    remSection.style.display = 'block';
+                    document.getElementById('modalRemed').textContent = f.remediation;
+                } else { remSection.style.display = 'none'; }
+
+                // Raw output
+                var rawSection = document.getElementById('modalRawSection');
+                if (f.raw_output) {
+                    rawSection.style.display = 'block';
+                    document.getElementById('modalRaw').textContent = f.raw_output;
+                } else { rawSection.style.display = 'none'; }
+
+                document.getElementById('modalCounter').textContent = (index + 1) + ' / ' + findingsData.length;
+                document.getElementById('findingModal').style.display = 'block';
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeFindingModal() {
+                document.getElementById('findingModal').style.display = 'none';
+                document.body.style.overflow = '';
+            }
+
+            function navigateFinding(delta) {
+                var next = currentFindingIndex + delta;
+                if (next >= 0 && next < findingsData.length) openFindingModal(next);
+            }
+
+            // Close on Escape or backdrop click
+            document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeFindingModal(); });
+            document.getElementById('findingModal').addEventListener('click', function(e) { if (e.target === this) closeFindingModal(); });
+        </script>
+        <style>
+            @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes modalSlideIn { from { opacity: 0; transform: translateY(20px) scale(0.98); } to { opacity: 1; transform: none; } }
+        </style>
 
         <!-- ============================================================
              TECHNICAL APPENDIX
