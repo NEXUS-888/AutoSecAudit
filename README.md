@@ -1,238 +1,146 @@
-# AutoSecAudit 2.0
+# AutoSecAudit 2.0 🛡️
 
-An intelligent, extensible security auditing framework that scans web applications, aggregates findings from multiple tools, enriches them with external intelligence, performs correlation and compliance mapping, and generates structured HTML reports.
-
----
-
-## Features
-
-- **Plugin-Based Architecture** - Easily add new scanners
-- **Multi-Tool Support** - Nmap, Nikto, and custom plugins
-- **Intelligence Layer** - CVE enrichment, correlation, OWASP mapping
-- **Delta Reporting** - Compare scans over time
-- **HTML Dashboards** - Professional security reports
-- **Web UI** - Flask-based interface
-- **Docker Support** - Containerized deployment
-- **Mock Mode** - Development without tools
+An intelligent, extensible, multi-plugin security auditing framework that scans web applications and APIs, aggregates findings across 14 security scanners, enriches vulnerabilities with external CVE intelligence, maps findings to OWASP Top 10, CWE, and PCI-DSS v4.0 compliance standards, performs differential delta analysis, and presents interactive HTML and PDF reports.
 
 ---
 
-## Architecture
+## 🌟 Key Features
+
+- **Modular Plugin Architecture** – Includes 14 security scanner plugins:
+  - **Infrastructure**: `NmapPlugin`, `NiktoPlugin`, `DirBruteScanner`
+  - **Web Vulnerabilities**: `SQLiScanner`, `XSSScanner`, `CORSScanner`, `MisconfigScanner`
+  - **API & Auth Auditing**: `APIAbuseScanner`, `AuthScanner`, `JWTScanner`
+  - **Advanced Vectors**: `CommandInjectionScanner`, `SSRFScanner`, `PathTraversalScanner`, `SSTIScanner`
+- **Intelligence Layer** – CVE NVD/CIRCL API enrichment, finding de-duplication correlator, and remediation fix guidance.
+- **Multi-Compliance Mapping** – Auto-tags vulnerabilities with **OWASP Top 10 (2021)**, **CWE IDs**, and **PCI-DSS v4.0** requirements.
+- **Enterprise CI/CD Gating (`--fail-on`)** – Break build pipelines automatically if scan findings equal or exceed severity thresholds (`critical`, `high`, `medium`, `low`).
+- **Slack & Discord Webhook Alerts (`--webhook`)** – Instant notification dispatches upon scan completion.
+- **OpenAPI / Swagger Spec Importer (`--openapi`)** – Parse local or remote `openapi.json` / `swagger.json` specs to automatically extract routes and parameters for scanning.
+- **PDF & HTML Reporting** – Generates interactive HTML dashboards with live search, severity filters, detail modals, dark/light theme, and printable executive PDF summaries.
+- **Real-Time Web UI** – Flask interface with Server-Sent Events (SSE) progress streaming, drag-and-drop OpenAPI upload, and historical scan tracking (`/history`).
+- **Resilient Mock Mode** – Fallback execution mode for offline testing and fast CI/CD validation.
+
+---
+
+## 📁 Repository Architecture
 
 ```
 AutoSecAudit/
-├── main.py              # CLI entry point
+├── main.py                     # CLI entry point (scan, plugins, server)
+├── run_tests.py                # Unified test runner (80 passing tests)
+├── config.py                   # Global configuration & environment settings
 ├── core/
-│   ├── engine.py      # Thread-based scanning engine
-│   ├── models.py     # Data models
-│   └── utils.py      # Utilities
-├── plugins/
-│   ├── base_plugin.py   # Abstract base class
-│   ├── nmap_plugin.py   # Nmap scanner
-│   ├── nikto_plugin.py  # Nikto scanner
-│   └── mock_plugin.py   # Test plugin
-├── intelligence/
-│   ├── correlator.py    # Findings correlation
-│   ├── enricher.py      # CVE enrichment
-│   ├── compliance.py   # OWASP mapping
-│   └── delta.py         # Delta analysis
-├── reports/
-│   ├── generator.py     # HTML generation
-│   └── templates/      # Jinja2 templates
-└── ui/
-    └── app.py          # Flask web interface
+│   ├── engine.py             # Multi-threaded scanner engine
+│   ├── crawler.py            # Web endpoint & form crawler
+│   ├── openapi.py            # OpenAPI / Swagger specification importer
+│   ├── notifications.py      # Slack/Discord webhook alert dispatcher
+│   ├── models.py             # Dataclasses (Finding, ScanResult, Report)
+│   └── utils.py              # Target validation & helper functions
+├── plugins/                    # 14 Scanner plugins
+│   ├── base_plugin.py        # Abstract BaseScanner contract & baseline engine
+│   ├── command_injection_plugin.py
+│   ├── ssrf_plugin.py
+│   ├── path_traversal_plugin.py
+│   ├── ssti_plugin.py
+│   ├── jwt_plugin.py
+│   ├── sqli_plugin.py
+│   ├── xss_plugin.py
+│   ├── cors_plugin.py
+│   ├── dirbuster_plugin.py
+│   ├── misconfig_plugin.py
+│   ├── api_abuse_plugin.py
+│   ├── auth_plugin.py
+│   ├── nikto_plugin.py
+│   └── nmap_plugin.py
+├── intelligence/               # Post-processing intelligence
+│   ├── correlator.py         # Cross-tool finding deduplication
+│   ├── enricher.py           # CVE CVSS enrichment via NVD/CIRCL
+│   ├── compliance.py         # OWASP, CWE, & PCI-DSS v4.0 mapping
+│   ├── delta.py              # Differential scan analysis
+│   └── remediation.py        # Remediation fix recommendations
+├── reports/                    # Report generation
+│   ├── generator.py          # HTML & PDF generator
+│   └── templates/            # Jinja2 templates (report.html)
+├── ui/                         # Flask web application
+│   ├── app.py                # Web server, SSE progress streaming, PDF downloads
+│   └── templates/            # History dashboard (history.html)
+└── .github/workflows/
+    └── ci.yml                # GitHub Actions Continuous Integration
 ```
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
-### Docker (Recommended)
-
-```bash
-git clone https://github.com/NEXUS-888/AutoSecAudit.git
-cd AutoSecAudit
-docker-compose up -d autosec
-# Open http://localhost:5000
-```
-
-### Python Local
+### 1. Local Python Setup
 
 ```bash
 git clone https://github.com/NEXUS-888/AutoSecAudit.git
 cd AutoSecAudit
 pip install -r requirements.txt
-python main.py scan 192.168.1.1
+
+# Run a CLI scan
+python main.py scan http://localhost:3000
+
+# Start the Web UI
+python main.py server
+# Open http://localhost:5000 in your browser
+```
+
+### 2. Docker & Local Benchmark Target (OWASP Juice Shop)
+
+```bash
+# Start Web UI, CLI worker, and local OWASP Juice Shop test target
+docker-compose up -d
+
+# Open Web UI at http://localhost:5000
+# OWASP Juice Shop benchmark target runs at http://localhost:3000
 ```
 
 ---
 
-## Usage
-
-### CLI Commands
+## 🛠️ CLI Usage & Examples
 
 ```bash
-# Run security scan
-python main.py scan 192.168.1.1
-python main.py scan example.com
-python main.py scan example.com --previous old_report.json
+# Basic scan
+python main.py scan http://localhost:3000
 
-# List plugins
+# CI/CD Gating (Fails build exit code 1 if CRITICAL vulnerabilities exist)
+python main.py scan http://localhost:3000 --fail-on critical
+
+# Scan with OpenAPI / Swagger spec import
+python main.py scan http://localhost:3000 --openapi ./swagger.json
+
+# Send Slack/Discord webhook alerts on scan completion
+python main.py scan http://localhost:3000 --webhook https://discord.com/api/webhooks/YOUR_HOOK
+
+# Authenticated scanning with custom headers
+python main.py scan http://localhost:3000 --headers "Authorization: Bearer my_token; X-API-Key: 12345"
+
+# Delta comparison with previous report
+python main.py scan http://localhost:3000 --previous data/reports/scan_20260728.json
+
+# List all 14 active scanner plugins
 python main.py plugins
 
-# Start web UI
-python main.py server
-```
-
-### Web Interface
-
-1. Start server: `python main.py server` or `docker-compose up -d autosec`
-2. Open http://localhost:5000
-3. Enter target URL/IP
-4. Optional: Upload previous report for delta comparison
-5. View and download reports
-
----
-
-## Plugin Development
-
-Create a new plugin by extending `BaseScanner`:
-
-```python
-from plugins.base_plugin import BaseScanner
-
-class MyScanner(BaseScanner):
-    def configure(self, target: str) -> None:
-        self.target = target
-
-    def run(self) -> None:
-        # Run your scanner tool
-        pass
-
-    def parse_output(self) -> dict:
-        return {
-            "tool_name": "my_scanner",
-            "findings": [
-                {
-                    "id": "MY-001",
-                    "title": "Issue Found",
-                    "severity": "High",
-                    "host": self.target,
-                    "port": 80,
-                    "description": "Details here",
-                    "raw_output": "..."
-                }
-            ]
-        }
-
-    def _get_tool_name(self) -> str:
-        return "my_tool"
-
-    def _get_mock_output(self) -> dict:
-        return self.parse_output()
+# Run unified test suite
+python run_tests.py
 ```
 
 ---
 
-## Configuration
+## 🧪 Testing & CI/CD
 
-Environment variables (or in `config.py`):
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AUTOSEC_MOCK_MODE` | `true` | Use mock data |
-| `AUTOSEC_LOG_LEVEL` | `INFO` | Logging level |
-| `AUTOSEC_THREAD_COUNT` | `4` | Parallel threads |
-| `AUTOSEC_NMAP_PATH` | `nmap` | Nmap binary path |
-| `AUTOSEC_NIKTO_PATH` | `nikto` | Nikto binary path |
-
----
-
-## Output Format
-
-### JSON Report
-```json
-{
-  "target": "http://192.168.1.1",
-  "timestamp": "2024-01-01 12:00:00",
-  "summary": {
-    "total": 10,
-    "critical": 2,
-    "high": 3,
-    "medium": 3,
-    "low": 2
-  },
-  "all_findings": [...]
-}
-```
-
-### CSV Report (coming soon)
-
----
-
-## Intelligence Features
-
-### CVE Enrichment
-- Queries NVD API for CVSS scores
-- Queries CIRCL API for additional data
-- Caches results for performance
-
-### Correlation
-- Groups findings by host:port
-- Links related issues across tools
-
-### Compliance Mapping
-- Maps to OWASP Top 10 2021
-- Auto-tags findings with categories
-
-### Delta Analysis
-- Compares current vs previous scan
-- Shows new/fixed/unchanged issues
-
----
-
-## Docker Commands
+AutoSecAudit includes a unified test runner covering all 14 scanner plugins, crawler verification, intelligence mapping, SSE streaming, and enterprise CLI gating:
 
 ```bash
-# Build image
-docker build -t autosecaudit .
-
-# Run web UI
-docker run -p 5000:5000 autosecaudit server
-
-# Run CLI scan
-docker run -v $(pwd)/data:/app/data autosecaudit scan 192.168.1.1
-
-# Using docker-compose
-docker-compose up -d autosec
-docker-compose run --rm autosec_cli scan 192.168.1.1
+python run_tests.py
 ```
 
----
-
-## Requirements
-
-- Python 3.10+
-- flask>=2.3.0
-- jinja2>=3.1.0
-- requests>=2.28.0
-- pyyaml>=6.0
-
-Optional (for real scans):
-- nmap
-- nikto
+The repository includes a **GitHub Actions CI workflow** ([.github/workflows/ci.yml](file:///.github/workflows/ci.yml)) that automatically triggers `python run_tests.py` on every push or pull request.
 
 ---
 
-## License
+## 📜 License
 
 MIT License
-
----
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add your plugin/improvement
-4. Submit a pull request
