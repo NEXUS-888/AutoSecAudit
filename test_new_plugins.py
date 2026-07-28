@@ -120,5 +120,45 @@ class TestAPIAbusePlugin(PluginTestBase, unittest.TestCase):
         cls.EXPECTED_TOOL_NAME = "api_abuse_scanner"
 
 
+class TestCommandInjectionPlugin(PluginTestBase, unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from plugins.command_injection_plugin import CommandInjectionScanner
+        cls.PLUGIN_CLASS = CommandInjectionScanner
+        cls.EXPECTED_TOOL_NAME = "command_injection_scanner"
+
+
+class TestSSRFPlugin(PluginTestBase, unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from plugins.ssrf_plugin import SSRFScanner
+        cls.PLUGIN_CLASS = SSRFScanner
+        cls.EXPECTED_TOOL_NAME = "ssrf_scanner"
+
+
+class TestPathTraversalPlugin(PluginTestBase, unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from plugins.path_traversal_plugin import PathTraversalScanner
+        cls.PLUGIN_CLASS = PathTraversalScanner
+        cls.EXPECTED_TOOL_NAME = "path_traversal_scanner"
+
+
+class TestSSTIPlugin(PluginTestBase, unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from plugins.ssti_plugin import SSTIScanner
+        cls.PLUGIN_CLASS = SSTIScanner
+        cls.EXPECTED_TOOL_NAME = "ssti_scanner"
+
+
+class TestJWTPlugin(PluginTestBase, unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from plugins.jwt_plugin import JWTScanner
+        cls.PLUGIN_CLASS = JWTScanner
+        cls.EXPECTED_TOOL_NAME = "jwt_scanner"
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
