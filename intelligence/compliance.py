@@ -62,20 +62,46 @@ OWASP_MAPPING = {
 
 
 class ComplianceMapper:
-    """Map findings to compliance frameworks like OWASP Top 10."""
+    """Map findings to compliance frameworks like OWASP Top 10, CWE, and PCI-DSS v4.0."""
 
     def __init__(self):
         self.owasp_mapping = OWASP_MAPPING
+        self.cwe_mapping = {
+            "sqli": ("CWE-89", "PCI-DSS 6.2.4"),
+            "xss": ("CWE-79", "PCI-DSS 6.2.4"),
+            "command injection": ("CWE-78", "PCI-DSS 6.2.4"),
+            "ssrf": ("CWE-918", "PCI-DSS 6.2.4"),
+            "path traversal": ("CWE-22", "PCI-DSS 6.2.4"),
+            "ssti": ("CWE-1336", "PCI-DSS 6.2.4"),
+            "jwt": ("CWE-347", "PCI-DSS 8.3.1"),
+            "cors": ("CWE-942", "PCI-DSS 6.4.1"),
+            "dirbrute": ("CWE-538", "PCI-DSS 6.5.1"),
+            "auth": ("CWE-287", "PCI-DSS 8.2.1"),
+            "misconfig": ("CWE-16", "PCI-DSS 2.2.1"),
+            "api_abuse": ("CWE-285", "PCI-DSS 6.5.8")
+        }
 
     def map_findings(self, findings: List[Finding]) -> List[Finding]:
-        """Map each finding to OWASP categories."""
+        """Map each finding to OWASP, CWE, and PCI-DSS categories."""
         for f in findings:
             owasp_tag = self._find_owasp_category(f)
             if owasp_tag:
                 f.owasp_tag = owasp_tag
-                logger.debug(f"Mapped {f.id} to {owasp_tag}")
+
+            cwe, pci = self._find_cwe_pci(f)
+            if cwe:
+                f.cwe_id = cwe
+            if pci:
+                f.pci_dss = pci
 
         return findings
+
+    def _find_cwe_pci(self, finding: Finding) -> tuple:
+        text = f"{finding.title} {finding.description} {finding.tool_name}".lower()
+        for key, (cwe, pci) in self.cwe_mapping.items():
+            if key in text:
+                return cwe, pci
+        return None, None
 
     def _find_owasp_category(self, finding: Finding) -> str:
         text = f"{finding.title} {finding.description}".lower()

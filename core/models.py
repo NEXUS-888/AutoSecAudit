@@ -20,6 +20,8 @@ class Finding:
     tool_name: Optional[str] = None
     confidence: str = "medium"  # high, medium, low
     remediation: Optional[str] = None  # how to fix this vulnerability
+    cwe_id: Optional[str] = None  # Common Weakness Enumeration ID
+    pci_dss: Optional[str] = None  # PCI-DSS v4.0 requirement mapping
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

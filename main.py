@@ -22,7 +22,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run_scan(target: str, previous_report: str = None, output_json: str = None, output_html: str = None):
+def run_scan(target: str, previous_report: str = None, output_json: str = None, output_html: str = None,
+             fail_on: str = None, webhook: str = None, openapi: str = None, headers: str = None):
     logger.info(f"Starting scan for target: {target}")
     
     if not validate_target(target):
@@ -36,12 +37,29 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
         print(reason)
         return 1
     
+    # Process custom headers
+    header_dict = {}
+    if headers:
+        for h in headers.split(";"):
+            if ":" in h:
+                k, v = h.split(":", 1)
+                header_dict[k.strip()] = v.strip()
+
     engine = Engine()
     loaded = engine.load_plugins()
     print(f"Loaded {loaded} plugin(s)")
     
     if not engine.set_target(target):
         return 1
+
+    # OpenAPI import if specified
+    if openapi:
+        from core.openapi import OpenAPIImporter
+        importer = OpenAPIImporter(openapi, headers=header_dict)
+        if importer.load_spec():
+            imported_eps = importer.get_endpoints()
+            print(f"Imported {len(imported_eps)} endpoint(s) from OpenAPI spec")
+            engine.crawler_data["injectable_endpoints"] = imported_eps
     
     if previous_report:
         if engine.set_previous_report(previous_report):
@@ -86,6 +104,12 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
     html_path = generator.generate_report(report)
     print(f"HTML report saved: {html_path}")
     
+    # Webhook Notification
+    if webhook:
+        from core.notifications import WebhookNotifier
+        notifier = WebhookNotifier(webhook)
+        notifier.send_notification(report.summary, report.target)
+
     print(f"\n{'='*50}")
     print(f"Scan Complete!")
     print(f"{'='*50}")
@@ -105,7 +129,23 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
     print(f"\nReports:")
     print(f"  JSON: {json_path}")
     print(f"  HTML: {html_path}")
-    
+
+    # CI/CD Gating Check
+    if fail_on:
+        threshold = fail_on.lower()
+        severities = ["info", "low", "medium", "high", "critical"]
+        if threshold in severities:
+            threshold_idx = severities.index(threshold)
+            failed = False
+            for sev, count in report.summary.items():
+                if count > 0 and sev in severities:
+                    if severities.index(sev) >= threshold_idx:
+                        failed = True
+                        break
+            if failed:
+                print(f"\n[CI/CD GATING] Scan failed: Found findings meeting or exceeding threshold '{fail_on}'")
+                return 1
+
     return 0
 
 
@@ -130,6 +170,10 @@ def main():
     scan_parser.add_argument("-p", "--previous", help="Path to previous report for delta comparison")
     scan_parser.add_argument("--json", help="Output JSON file path")
     scan_parser.add_argument("--html", help="Output HTML file path")
+    scan_parser.add_argument("--fail-on", choices=["critical", "high", "medium", "low"], help="Fail CI/CD pipeline if findings equal or exceed severity threshold")
+    scan_parser.add_argument("--webhook", help="URL for Slack/Discord webhook alerts")
+    scan_parser.add_argument("--openapi", help="Path or URL to OpenAPI/Swagger spec")
+    scan_parser.add_argument("--headers", help="Custom HTTP headers (format 'Header1: val1; Header2: val2')")
     
     subparsers.add_parser("plugins", help="List available plugins")
     
@@ -138,7 +182,8 @@ def main():
     args = parser.parse_args()
     
     if args.command == "scan":
-        return run_scan(args.target, args.previous, args.json, args.html)
+        return run_scan(args.target, args.previous, args.json, args.html, args.fail_on, args.webhook, args.openapi, args.headers)
+
     elif args.command == "plugins":
         list_plugins()
         return 0
