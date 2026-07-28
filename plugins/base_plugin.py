@@ -90,18 +90,19 @@ class BaseScanner(ABC):
 
         try:
             safe_value = "test123"
+            req_timeout = (3.0, float(timeout))
             if method.upper() == "GET":
                 resp = requests.get(
                     url, params={param: safe_value},
                     headers=headers or {"User-Agent": "AutoSecAudit/2.0"},
-                    timeout=timeout, allow_redirects=True, verify=False,
+                    timeout=req_timeout, allow_redirects=True, verify=False,
                 )
             else:
                 resp = requests.post(
                     url, json={param: safe_value},
                     headers=headers or {"User-Agent": "AutoSecAudit/2.0",
                                         "Content-Type": "application/json"},
-                    timeout=timeout, allow_redirects=True, verify=False,
+                    timeout=req_timeout, allow_redirects=True, verify=False,
                 )
 
             baseline = {

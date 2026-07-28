@@ -19,7 +19,8 @@ class Correlator:
         
         port_groups = defaultdict(list)
         for f in findings:
-            key = f"{f.host}:{f.port}"
+            host_clean = f.host.rstrip("/") if f.host else f.host
+            key = f"{host_clean}:{f.port}"
             port_groups[key].append(f)
 
         for key, group in port_groups.items():
@@ -40,7 +41,8 @@ class Correlator:
         """Link related findings and add correlation metadata."""
         port_map = defaultdict(list)
         for i, f in enumerate(findings):
-            key = f"{f.host}:{f.port}"
+            host_clean = f.host.rstrip("/") if f.host else f.host
+            key = f"{host_clean}:{f.port}"
             port_map[key].append(i)
 
         for key, indices in port_map.items():
