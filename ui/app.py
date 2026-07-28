@@ -725,6 +725,17 @@ HTML_FORM = """
                 </div>
 
                 <div class="form-group">
+                    <label for="openapi_spec" class="form-label">OpenAPI / Swagger Spec (optional, drag-and-drop file)</label>
+                    <input
+                        type="file"
+                        id="openapi_spec"
+                        name="openapi_spec"
+                        class="form-input"
+                        accept=".json"
+                    />
+                </div>
+
+                <div class="form-group">
                     <label for="previous_report" class="form-label">Previous Report (optional, for delta analysis)</label>
                     <input
                         type="file"
@@ -1538,6 +1549,13 @@ def scan():
         logger.warning(f"Blocked scan attempt on: {target}")
         return render_template_string(HTML_BLOCKED, reason=reason), 403
     
+    openapi_file = request.files.get("openapi_spec")
+    openapi_path = None
+    if openapi_file and openapi_file.filename:
+        filename = secure_filename(openapi_file.filename)
+        openapi_path = f"{config.DATA_DIR}/temp_openapi_{filename}"
+        openapi_file.save(openapi_path)
+
     previous_file = request.files.get("previous_report")
     previous_path = None
     if previous_file and previous_file.filename:
@@ -1552,6 +1570,12 @@ def scan():
         if not engine.set_target(target):
             return "Invalid target", 400
         
+        if openapi_path:
+            from core.openapi import OpenAPIImporter
+            importer = OpenAPIImporter(openapi_path)
+            if importer.load_spec():
+                engine.crawler_data["injectable_endpoints"] = importer.get_endpoints()
+
         if previous_path:
             engine.set_previous_report(previous_path)
         
@@ -1597,12 +1621,14 @@ def scan():
         return redirect(url_for("view_report", report_id=report_name))
     finally:
         # Clean up temporary uploaded files
-        if previous_path and os.path.exists(previous_path):
-            try:
-                os.remove(previous_path)
-                logger.debug(f"Cleaned up temp file: {previous_path}")
-            except OSError:
-                logger.warning(f"Failed to clean up temp file: {previous_path}")
+        for tmp in [previous_path, openapi_path]:
+            if tmp and os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                    logger.debug(f"Cleaned up temp file: {tmp}")
+                except OSError:
+                    logger.warning(f"Failed to clean up temp file: {tmp}")
+
 
 
 @app.route("/report/<report_id>")
@@ -1633,6 +1659,20 @@ def download_report(report_id):
     if not os.path.exists(json_path):
         abort(404, description="Report not found.")
     return send_file(json_path, as_attachment=True, download_name=f"report_{report_id}.json")
+
+
+@app.route("/download_pdf/<report_id>")
+def download_pdf_report(report_id):
+    _validate_report_id(report_id)
+    json_path = f"{config.REPORTS_DIR}/scan_{report_id}.json"
+    report_data = load_json(json_path)
+    if not report_data:
+        abort(404, description="Report not found.")
+    
+    pdf_path = f"{config.REPORTS_DIR}/report_{report_id}.pdf"
+    generator = ReportGenerator()
+    generator.generate_pdf(report_data, pdf_path)
+    return send_file(pdf_path, as_attachment=True, download_name=f"report_{report_id}.pdf")
 
 
 if __name__ == "__main__":

@@ -56,6 +56,47 @@ class ReportGenerator:
         
         return html_content
 
+    def generate_pdf(self, report_data: Dict[str, Any], output_path: str) -> str:
+        """Generate printable text PDF audit summary report."""
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        target = report_data.get("target", "Unknown")
+        timestamp = report_data.get("timestamp", "N/A")
+        summary = report_data.get("summary", {})
+        findings = report_data.get("all_findings", [])
+        
+        pdf_lines = [
+            "=" * 60,
+            "            AUTOSECAUDIT 2.0 - EXECUTIVE SECURITY REPORT",
+            "=" * 60,
+            f"Target:    {target}",
+            f"Timestamp: {timestamp}",
+            f"Total Findings: {summary.get('total', len(findings))}",
+            f"  Critical: {summary.get('critical', 0)}",
+            f"  High:     {summary.get('high', 0)}",
+            f"  Medium:   {summary.get('medium', 0)}",
+            f"  Low:      {summary.get('low', 0)}",
+            "=" * 60,
+            "\nVULNERABILITY SUMMARY & FINDINGS:\n",
+        ]
+        
+        for idx, f in enumerate(findings, 1):
+            pdf_lines.append(f"[{idx}] {f.get('severity', 'UNKNOWN').upper()} - {f.get('title', 'Untitled')}")
+            pdf_lines.append(f"    Tool:       {f.get('tool_name', 'N/A')}")
+            pdf_lines.append(f"    OWASP Tag:  {f.get('owasp_tag', 'N/A')}")
+            pdf_lines.append(f"    CWE / PCI:  {f.get('cwe_id', 'N/A')} | {f.get('pci_dss', 'N/A')}")
+            pdf_lines.append(f"    Description: {f.get('description', 'N/A')}")
+            if f.get('remediation'):
+                pdf_lines.append(f"    Fix Advice:  {f.get('remediation')}")
+            pdf_lines.append("-" * 60)
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(pdf_lines))
+            
+        logger.info(f"PDF text summary report saved to {output_path}")
+        return str(output_file)
+
     def generate_report(self, report: Report, 
                        previous_report: Optional[Report] = None) -> str:
         """Generate full report with optional delta comparison."""
