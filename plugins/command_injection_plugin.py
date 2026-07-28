@@ -44,8 +44,8 @@ class CommandInjectionScanner(BaseScanner):
         try:
             headers = {"User-Agent": "AutoSecAudit/2.0", "X-AutoSec-Test": payload}
             if method.upper() == "POST":
-                return requests.post(url, json={param: payload}, headers=headers, timeout=8, verify=False)
-            return requests.get(url, params={param: payload}, headers=headers, timeout=8, verify=False)
+                return requests.post(url, json={param: payload}, headers=headers, timeout=(3.0, 8.0), verify=False)
+            return requests.get(url, params={param: payload}, headers=headers, timeout=(3.0, 8.0), verify=False)
         except requests.RequestException as exc:
             logger.debug("Command injection request failed: %s", exc)
             return None

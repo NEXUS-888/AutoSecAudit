@@ -1549,19 +1549,23 @@ def scan():
         logger.warning(f"Blocked scan attempt on: {target}")
         return render_template_string(HTML_BLOCKED, reason=reason), 403
     
+    import tempfile
+
     openapi_file = request.files.get("openapi_spec")
     openapi_path = None
     if openapi_file and openapi_file.filename:
         filename = secure_filename(openapi_file.filename)
-        openapi_path = f"{config.DATA_DIR}/temp_openapi_{filename}"
-        openapi_file.save(openapi_path)
+        with tempfile.NamedTemporaryFile(delete=False, dir=config.DATA_DIR, prefix=f"temp_openapi_{filename}_", suffix=".json") as tmp:
+            openapi_file.save(tmp.name)
+            openapi_path = tmp.name
 
     previous_file = request.files.get("previous_report")
     previous_path = None
     if previous_file and previous_file.filename:
         filename = secure_filename(previous_file.filename)
-        previous_path = f"{config.DATA_DIR}/temp_{filename}"
-        previous_file.save(previous_path)
+        with tempfile.NamedTemporaryFile(delete=False, dir=config.DATA_DIR, prefix=f"temp_prev_{filename}_", suffix=".json") as tmp:
+            previous_file.save(tmp.name)
+            previous_path = tmp.name
     
     try:
         engine = Engine()

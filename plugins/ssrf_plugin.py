@@ -52,7 +52,7 @@ class SSRFScanner(BaseScanner):
                 try:
                     response = requests.request(endpoint.get("method", "GET"), url,
                                                 params={param: payload}, json={param: payload},
-                                                headers={"User-Agent": "AutoSecAudit/2.0"}, timeout=8,
+                                                headers={"User-Agent": "AutoSecAudit/2.0"}, timeout=(3.0, 8.0),
                                                 allow_redirects=False, verify=False)
                 except requests.RequestException as exc:
                     logger.debug("SSRF request failed: %s", exc)
