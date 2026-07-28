@@ -1,146 +1,184 @@
 # AutoSecAudit 2.0 🛡️
 
-An intelligent, extensible, multi-plugin security auditing framework that scans web applications and APIs, aggregates findings across 14 security scanners, enriches vulnerabilities with external CVE intelligence, maps findings to OWASP Top 10, CWE, and PCI-DSS v4.0 compliance standards, performs differential delta analysis, and presents interactive HTML and PDF reports.
+> **An Intelligent, Extensible Security Auditing Engine & Multi-Scanner Orchestrator**
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI Build](https://img.shields.io/badge/CI-Passing-brightgreen.svg)](#-testing--quality-assurance)
+[![Docker Ready](https://img.shields.io/badge/Docker-Ready-blue.svg)](#-quick-start)
 
 ---
 
-## 🌟 Key Features
+## ❓ What Problem Does AutoSecAudit Solve?
 
-- **Modular Plugin Architecture** – Includes 14 security scanner plugins:
-  - **Infrastructure**: `NmapPlugin`, `NiktoPlugin`, `DirBruteScanner`
-  - **Web Vulnerabilities**: `SQLiScanner`, `XSSScanner`, `CORSScanner`, `MisconfigScanner`
-  - **API & Auth Auditing**: `APIAbuseScanner`, `AuthScanner`, `JWTScanner`
-  - **Advanced Vectors**: `CommandInjectionScanner`, `SSRFScanner`, `PathTraversalScanner`, `SSTIScanner`
-- **Intelligence Layer** – CVE NVD/CIRCL API enrichment, finding de-duplication correlator, and remediation fix guidance.
-- **Multi-Compliance Mapping** – Auto-tags vulnerabilities with **OWASP Top 10 (2021)**, **CWE IDs**, and **PCI-DSS v4.0** requirements.
-- **Enterprise CI/CD Gating (`--fail-on`)** – Break build pipelines automatically if scan findings equal or exceed severity thresholds (`critical`, `high`, `medium`, `low`).
-- **Slack & Discord Webhook Alerts (`--webhook`)** – Instant notification dispatches upon scan completion.
-- **OpenAPI / Swagger Spec Importer (`--openapi`)** – Parse local or remote `openapi.json` / `swagger.json` specs to automatically extract routes and parameters for scanning.
-- **PDF & HTML Reporting** – Generates interactive HTML dashboards with live search, severity filters, detail modals, dark/light theme, and printable executive PDF summaries.
-- **Real-Time Web UI** – Flask interface with Server-Sent Events (SSE) progress streaming, drag-and-drop OpenAPI upload, and historical scan tracking (`/history`).
-- **Resilient Mock Mode** – Fallback execution mode for offline testing and fast CI/CD validation.
+### The Security Tooling Dilemma
+In modern software engineering, auditing a web application or API for security vulnerabilities usually requires running multiple fragmented CLI tools:
+- `nmap` in Terminal 1 for open ports.
+- `nikto` in Terminal 2 for web server misconfigurations.
+- Custom scripts or manual browser testing for SQLi, XSS, CORS, and Auth flaws.
+
+This manual workflow causes **four critical pain points**:
+1. **Tool Output Overload & Noise**: Security engineers waste hours sifting through raw text logs, duplicating findings across tools, and manually verifying false positives.
+2. **Lack of CVE & Compliance Context**: Raw scanner outputs don't automatically map vulnerabilities to industry standards (**OWASP Top 10**, **CWE**, **PCI-DSS v4.0**) or lookup live **CVSS risk scores**.
+3. **No Automated CI/CD Gating**: Security testing is often done *after* code reaches production because traditional scanners cannot be embedded into fast GitHub/GitLab build pipelines to block unsafe code.
+4. **Poor Reporting & Delta Tracking**: Traditional tools output messy text logs rather than interactive dashboards, and cannot automatically answer: *"What new vulnerabilities were introduced in today's release compared to last week's build?"*
 
 ---
 
-## 📁 Repository Architecture
+## 💡 The Solution: AutoSecAudit 2.0
+
+**AutoSecAudit 2.0** unifies web crawling, multi-scanner orchestration, intelligence post-processing, differential scan analysis, and interactive reporting into a single, lightweight Python framework.
 
 ```
-AutoSecAudit/
-├── main.py                     # CLI entry point (scan, plugins, server)
-├── run_tests.py                # Unified test runner (80 passing tests)
-├── config.py                   # Global configuration & environment settings
-├── core/
-│   ├── engine.py             # Multi-threaded scanner engine
-│   ├── crawler.py            # Web endpoint & form crawler
-│   ├── openapi.py            # OpenAPI / Swagger specification importer
-│   ├── notifications.py      # Slack/Discord webhook alert dispatcher
-│   ├── models.py             # Dataclasses (Finding, ScanResult, Report)
-│   └── utils.py              # Target validation & helper functions
-├── plugins/                    # 14 Scanner plugins
-│   ├── base_plugin.py        # Abstract BaseScanner contract & baseline engine
-│   ├── command_injection_plugin.py
-│   ├── ssrf_plugin.py
-│   ├── path_traversal_plugin.py
-│   ├── ssti_plugin.py
-│   ├── jwt_plugin.py
-│   ├── sqli_plugin.py
-│   ├── xss_plugin.py
-│   ├── cors_plugin.py
-│   ├── dirbuster_plugin.py
-│   ├── misconfig_plugin.py
-│   ├── api_abuse_plugin.py
-│   ├── auth_plugin.py
-│   ├── nikto_plugin.py
-│   └── nmap_plugin.py
-├── intelligence/               # Post-processing intelligence
-│   ├── correlator.py         # Cross-tool finding deduplication
-│   ├── enricher.py           # CVE CVSS enrichment via NVD/CIRCL
-│   ├── compliance.py         # OWASP, CWE, & PCI-DSS v4.0 mapping
-│   ├── delta.py              # Differential scan analysis
-│   └── remediation.py        # Remediation fix recommendations
-├── reports/                    # Report generation
-│   ├── generator.py          # HTML & PDF generator
-│   └── templates/            # Jinja2 templates (report.html)
-├── ui/                         # Flask web application
-│   ├── app.py                # Web server, SSE progress streaming, PDF downloads
-│   └── templates/            # History dashboard (history.html)
-└── .github/workflows/
-    └── ci.yml                # GitHub Actions Continuous Integration
+                  ┌─────────────────────────────────────────┐
+                  │          TARGET (URL / IP / API)        │
+                  └────────────────────┬────────────────────┘
+                                       │
+                         ┌─────────────▼─────────────┐
+                         │   AutoSecAudit Crawler    │
+                         └─────────────┬─────────────┘
+                                       │
+          ┌────────────────────────────┼────────────────────────────┐
+          │                            │                            │
+ ┌────────▼────────┐          ┌────────▼────────┐          ┌────────▼────────┐
+ │ Network & Ports │          │ Web Injections  │          │  API & Auth     │
+ │ Nmap, Nikto,    │          │ SQLi, XSS, CORS,│          │ Auth, JWT,      │
+ │ DirBrute        │          │ RCE, SSRF, SSTI │          │ API Abuse       │
+ └────────┬────────┘          └────────┬────────┘          └────────┬────────┘
+          │                            │                            │
+          └────────────────────────────┼────────────────────────────┘
+                                       │
+                         ┌─────────────▼─────────────┐
+                         │    Intelligence Engine    │
+                         │ Correlate • Enrich (NVD)  │
+                         │ OWASP • CWE • PCI-DSS     │
+                         │ Delta Diff • Remediation  │
+                         └─────────────┬─────────────┘
+                                       │
+          ┌────────────────────────────┴────────────────────────────┐
+          │                                                         │
+ ┌────────▼────────┐                                       ┌────────▼────────┐
+ │ Interactive UI  │                                       │ CI/CD & Reports │
+ │ Real-time SSE   │                                       │ Build Gating    │
+ │ HTML Dashboard  │                                       │ Webhook Alerts  │
+ │ History Tracker │                                       │ JSON & PDF      │
+ └─────────────────┘                                       └─────────────────┘
 ```
 
 ---
 
-## 🚀 Quick Start
+## ✨ Key Capabilities
 
-### 1. Local Python Setup
+### 1. 🔌 14 Built-in Security Scanner Plugins
+AutoSecAudit auto-discovers and executes 14 specialized scanner plugins:
+- **Infrastructure & Recon**: `NmapPlugin` (Port scanning), `NiktoPlugin` (Server auditing), `DirBruteScanner` (50+ path discovery).
+- **Web Application Injections**: `SQLiScanner` (SQL Injection), `XSSScanner` (Cross-Site Scripting), `CORSScanner` (CORS Misconfigurations), `MisconfigScanner` (Header security).
+- **API & Authentication**: `APIAbuseScanner` (Mass assignment, data leaks), `AuthScanner` (Default creds, IDOR, enumeration), `JWTScanner` (JWT token flaws).
+- **Advanced Attack Vectors**: `CommandInjectionScanner` (RCE), `SSRFScanner` (Server-Side Request Forgery), `PathTraversalScanner` (LFI), `SSTIScanner` (Template injection).
+
+### 2. 🧠 Post-Processing Intelligence Layer
+- **Deduplication Correlator**: Merges overlapping findings from multiple tools for the same endpoint.
+- **Live CVE Enrichment**: Queries NVD and CIRCL APIs for real-time CVSS scoring.
+- **Multi-Compliance Mapping**: Auto-tags findings with **OWASP Top 10 (2021)**, **CWE IDs** (e.g. `CWE-89`), and **PCI-DSS v4.0** requirements (e.g. `PCI-DSS 6.2.4`).
+- **Delta Analysis Engine**: Compares current scans against past baselines to highlight `NEW`, `FIXED`, and `UNCHANGED` issues.
+- **Actionable Remediation**: Generates concrete code snippets and server configuration lines to fix each finding.
+
+### 3. 🚀 Enterprise CI/CD & Automation Features
+- **Build Pipeline Gating (`--fail-on`)**: Exits status code `1` if findings meet or exceed your severity threshold (`critical`, `high`, `medium`, `low`).
+- **Slack & Discord Webhook Alerts (`--webhook`)**: Sends formatted alert notifications upon scan completion.
+- **OpenAPI / Swagger Spec Importer (`--openapi`)**: Parses local files or remote URLs (`swagger.json`) to pre-fill API endpoints.
+- **Custom Authentication Headers (`--headers`)**: Supports `--headers "Authorization: Bearer <token>"` for authenticated route scanning.
+
+### 4. 📊 Modern Web UI & Printable Exports
+- **Real-Time Progress Streaming**: SSE (Server-Sent Events) live scan progress bar and console log output.
+- **Interactive HTML Dashboard**: Filter by severity, search findings, toggle dark/light mode, and inspect pop-up detail modals.
+- **Executive PDF Summaries**: Generate printable PDF security summary reports with a single click.
+
+---
+
+## ⚡ Quick Start & Installation
+
+### Option A: Local Python Setup (Recommended for Dev)
 
 ```bash
+# 1. Clone the repository
 git clone https://github.com/NEXUS-888/AutoSecAudit.git
 cd AutoSecAudit
+
+# 2. Install dependencies
 pip install -r requirements.txt
 
-# Run a CLI scan
+# 3. Run a CLI security scan against a local target
 python main.py scan http://localhost:3000
 
-# Start the Web UI
+# 4. Start the Web UI
 python main.py server
-# Open http://localhost:5000 in your browser
+# Open http://localhost:5000 in your browser!
 ```
 
-### 2. Docker & Local Benchmark Target (OWASP Juice Shop)
+### Option B: Docker Compose (Includes OWASP Juice Shop Target)
+
+Launch AutoSecAudit alongside an intentionally vulnerable benchmark application (**OWASP Juice Shop**):
 
 ```bash
-# Start Web UI, CLI worker, and local OWASP Juice Shop test target
 docker-compose up -d
 
-# Open Web UI at http://localhost:5000
-# OWASP Juice Shop benchmark target runs at http://localhost:3000
+# Open the AutoSecAudit Web UI at http://localhost:5000
+# The OWASP Juice Shop benchmark target runs at http://localhost:3000
 ```
 
 ---
 
-## 🛠️ CLI Usage & Examples
+## 💻 CLI Command Reference
 
 ```bash
-# Basic scan
+# ── Basic Scan ────────────────────────────────────────────────────────────
 python main.py scan http://localhost:3000
 
-# CI/CD Gating (Fails build exit code 1 if CRITICAL vulnerabilities exist)
-python main.py scan http://localhost:3000 --fail-on critical
+# ── CI/CD Build Gating ───────────────────────────────────────────────────
+# Fails build (exit status 1) if CRITICAL or HIGH findings exist
+python main.py scan http://localhost:3000 --fail-on high
 
-# Scan with OpenAPI / Swagger spec import
+# ── OpenAPI / Swagger Specification Import ──────────────────────────────
 python main.py scan http://localhost:3000 --openapi ./swagger.json
 
-# Send Slack/Discord webhook alerts on scan completion
+# ── Slack / Discord Webhook Notifications ─────────────────────────────────
 python main.py scan http://localhost:3000 --webhook https://discord.com/api/webhooks/YOUR_HOOK
 
-# Authenticated scanning with custom headers
+# ── Authenticated Scanning with Custom Headers ───────────────────────────
 python main.py scan http://localhost:3000 --headers "Authorization: Bearer my_token; X-API-Key: 12345"
 
-# Delta comparison with previous report
+# ── Delta Comparison with Previous Scan ─────────────────────────────────
 python main.py scan http://localhost:3000 --previous data/reports/scan_20260728.json
 
-# List all 14 active scanner plugins
+# ── Plugin Directory & Unified Test Runner ────────────────────────────────
 python main.py plugins
-
-# Run unified test suite
 python run_tests.py
 ```
 
 ---
 
-## 🧪 Testing & CI/CD
+## 🎯 Primary Use Cases
 
-AutoSecAudit includes a unified test runner covering all 14 scanner plugins, crawler verification, intelligence mapping, SSE streaming, and enterprise CLI gating:
+1. **DevSecOps & Release Gating**: Embed AutoSecAudit in GitHub Actions or GitLab CI to prevent security regressions before shipping code to production.
+2. **API & Web Application Auditing**: Conduct automated vulnerability assessments across REST APIs and web servers in minutes.
+3. **Security Health & Delta Tracking**: Run weekly automated scans against staging environments to monitor fixed vs newly introduced vulnerabilities.
+4. **Client Deliverables**: Generate interactive HTML dashboards and executive PDF reports for clients and technical leads.
+
+---
+
+## 🧪 Testing & Quality Assurance
+
+AutoSecAudit includes a unified test runner executing 80 unit and integration tests across all 14 scanner plugins, crawler logic, intelligence mapping, and CLI gating:
 
 ```bash
 python run_tests.py
 ```
 
-The repository includes a **GitHub Actions CI workflow** ([.github/workflows/ci.yml](file:///.github/workflows/ci.yml)) that automatically triggers `python run_tests.py` on every push or pull request.
+The project includes an automated **GitHub Actions CI workflow** ([.github/workflows/ci.yml](file:///.github/workflows/ci.yml)) that runs `python run_tests.py` on every commit and pull request.
 
 ---
 
-## 📜 License
+## 🤝 License
 
-MIT License
+Distributed under the MIT License. See `LICENSE` for more information.
