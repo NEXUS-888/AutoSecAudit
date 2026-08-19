@@ -22,80 +22,47 @@ plt.rcParams.update({
 })
 
 # ---------------------------------------------------------------------------
-# Figure 1: Hand-Crafted Layered System Architecture
+# Figure 1: Hand-Crafted Compact 4-Stage Horizontal System Architecture
 # ---------------------------------------------------------------------------
-fig, ax = plt.subplots(figsize=(9.8, 4.4))
+fig, ax = plt.subplots(figsize=(10.2, 2.35))
 ax.set_xlim(0, 100)
 ax.set_ylim(0, 100)
 ax.axis('off')
 
-# Background container canvas
-main_bg = FancyBboxPatch((0.5, 0.5), 99, 99, boxstyle="round,pad=0.2,rounding_size=1.0",
-                         facecolor="#FAFAFA", edgecolor="#E2E8F0", linewidth=1.0, zorder=1)
-ax.add_patch(main_bg)
-
 # Stage 1: Ingestion & Surface Discovery
-ax.add_patch(FancyBboxPatch((2, 48), 21, 47, boxstyle="round,pad=0.2,rounding_size=1.2", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1.2, zorder=2))
-ax.add_patch(Rectangle((2, 87), 21, 8, facecolor="#1E293B", edgecolor="none", zorder=3))
-ax.text(12.5, 91, "1. Surface Discovery", ha="center", va="center", color="#FFFFFF", fontsize=8.5, fontweight="bold", zorder=4)
-ax.text(12.5, 80, "BFS Web Crawler", ha="center", va="center", color="#0F172A", fontsize=8.0, fontweight="bold", zorder=4)
-ax.text(12.5, 73, "• Link & Form Extractor\n• Query String Parsing\n• Depth Bounded ($D_{max}$)", ha="center", va="center", color="#475569", fontsize=7.2, zorder=4)
-ax.text(12.5, 60, "OpenAPI / Swagger", ha="center", va="center", color="#0F172A", fontsize=8.0, fontweight="bold", zorder=4)
-ax.text(12.5, 53, "• v2.0 / v3.0 Spec Parser\n• Schema & Path Variables\n• HTTP Verb Registration", ha="center", va="center", color="#475569", fontsize=7.2, zorder=4)
+ax.add_patch(FancyBboxPatch((1, 4), 22, 92, boxstyle="round,pad=0.1,rounding_size=1.0", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1.1, zorder=2))
+ax.add_patch(Rectangle((1, 78), 22, 18, facecolor="#1E293B", edgecolor="none", zorder=3))
+ax.text(12, 87, "1. Surface Discovery", ha="center", va="center", color="#FFFFFF", fontsize=8.2, fontweight="bold", zorder=4)
+ax.text(12, 60, "BFS Web Crawler\n• Form / Link Ingestion\n• Query Parameter Parser\n• Max Depth Bounded ($D_{max}$)", ha="center", va="center", color="#334155", fontsize=6.8, zorder=4)
+ax.text(12, 26, "OpenAPI / Swagger\n• v2.0 / v3.0 Parser\n• Endpoint Schema Seeding\n• HTTP Verb Registration", ha="center", va="center", color="#334155", fontsize=6.8, zorder=4)
 
 # Stage 2: Concurrent Multi-Scanner Engine
-ax.add_patch(FancyBboxPatch((26, 48), 35, 47, boxstyle="round,pad=0.2,rounding_size=1.2", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1.2, zorder=2))
-ax.add_patch(Rectangle((26, 87), 35, 8, facecolor="#0F766E", edgecolor="none", zorder=3))
-ax.text(43.5, 91, "2. Scanner Engine (14 Plugins)", ha="center", va="center", color="#FFFFFF", fontsize=8.5, fontweight="bold", zorder=4)
-
-sub_scanners = [
-    ("Reconnaissance", "Nmap, Nikto, DirBrute", 28, 68),
-    ("Web Injections", "SQLi, XSS, CORS, Misconfig", 44, 68),
-    ("API & Auth", "APIAbuse, Auth, JWT", 28, 51),
-    ("Exploit Vectors", "CmdInj, SSRF, PathTrav, SSTI", 44, 51),
-]
-for title, items, px, py in sub_scanners:
-    ax.add_patch(FancyBboxPatch((px, py), 15, 14, boxstyle="round,pad=0.1,rounding_size=0.6", facecolor="#FFFFFF", edgecolor="#94A3B8", linewidth=0.8, zorder=3))
-    ax.text(px + 7.5, py + 10.5, title, ha="center", va="center", color="#0F766E", fontsize=7.2, fontweight="bold", zorder=4)
-    ax.text(px + 7.5, py + 5.0, items, ha="center", va="center", color="#334155", fontsize=6.3, zorder=4)
-
-ax.text(43.5, 84, "ThreadPoolExecutor ($k=8$)  |  Baseline Differential Cache", ha="center", va="center", color="#047857", fontsize=7.0, fontweight="bold", zorder=4)
+ax.add_patch(FancyBboxPatch((25.5, 4), 23.5, 92, boxstyle="round,pad=0.1,rounding_size=1.0", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1.1, zorder=2))
+ax.add_patch(Rectangle((25.5, 78), 23.5, 18, facecolor="#0F766E", edgecolor="none", zorder=3))
+ax.text(37.25, 87, "2. Scanner Engine (14)", ha="center", va="center", color="#FFFFFF", fontsize=8.2, fontweight="bold", zorder=4)
+ax.text(37.25, 68, "Recon: Nmap, Nikto, DirBrute\nWeb: SQLi, XSS, CORS, Misconfig", ha="center", va="center", color="#0F766E", fontsize=6.7, fontweight="bold", zorder=4)
+ax.text(37.25, 44, "API/Auth: APIAbuse, Auth, JWT\nExploit: CmdInj, SSRF, PathTrav", ha="center", va="center", color="#0F766E", fontsize=6.7, fontweight="bold", zorder=4)
+ax.text(37.25, 18, "ThreadPool ($k=8$ Workers)\nDifferential Baseline Cache", ha="center", va="center", color="#047857", fontsize=6.7, zorder=4)
 
 # Stage 3: Post-Processing Intelligence Layer
-ax.add_patch(FancyBboxPatch((64, 48), 34, 47, boxstyle="round,pad=0.2,rounding_size=1.2", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1.2, zorder=2))
-ax.add_patch(Rectangle((64, 87), 34, 8, facecolor="#1D4ED8", edgecolor="none", zorder=3))
-ax.text(81, 91, "3. Intelligence & Correlation Layer", ha="center", va="center", color="#FFFFFF", fontsize=8.5, fontweight="bold", zorder=4)
-
-intel_steps = [
-    ("Heuristic Deduplication", "Compound key: host+port+URI+weakness", 66, 75),
-    ("Threat Enrichment", "Live queries to NIST NVD & CIRCL APIs", 66, 64),
-    ("Taxonomy Mapping", "Deterministic OWASP, CWE & PCI-DSS tags", 66, 53),
-]
-for title, desc, px, py in intel_steps:
-    ax.add_patch(FancyBboxPatch((px, py), 30, 9.5, boxstyle="round,pad=0.1,rounding_size=0.5", facecolor="#FFFFFF", edgecolor="#93C5FD", linewidth=0.8, zorder=3))
-    ax.text(px + 15, py + 6.2, title, ha="center", va="center", color="#1E3A8A", fontsize=7.2, fontweight="bold", zorder=4)
-    ax.text(px + 15, py + 2.5, desc, ha="center", va="center", color="#475569", fontsize=6.4, zorder=4)
+ax.add_patch(FancyBboxPatch((51.5, 4), 22.5, 92, boxstyle="round,pad=0.1,rounding_size=1.0", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1.1, zorder=2))
+ax.add_patch(Rectangle((51.5, 78), 22.5, 18, facecolor="#1D4ED8", edgecolor="none", zorder=3))
+ax.text(62.75, 87, "3. Intelligence Layer", ha="center", va="center", color="#FFFFFF", fontsize=8.2, fontweight="bold", zorder=4)
+ax.text(62.75, 62, "Compound Deduplication\n• Key: host+port+URI+CWE\n• Multi-alert merging (-39.5%)", ha="center", va="center", color="#1E3A8A", fontsize=6.7, zorder=4)
+ax.text(62.75, 28, "Enrichment & Compliance\n• NIST NVD & CIRCL CVEs\n• OWASP '21, CWE, PCI-DSS", ha="center", va="center", color="#1E3A8A", fontsize=6.7, zorder=4)
 
 # Stage 4: Delivery, CI/CD Policy Gating & Real-Time Monitoring
-ax.add_patch(FancyBboxPatch((2, 5), 96, 37, boxstyle="round,pad=0.2,rounding_size=1.2", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1.2, zorder=2))
-ax.add_patch(Rectangle((2, 34), 96, 8, facecolor="#475569", edgecolor="none", zorder=3))
-ax.text(50, 38, "4. Delivery, CI/CD Policy Gating & Multi-Channel Reporting", ha="center", va="center", color="#FFFFFF", fontsize=8.5, fontweight="bold", zorder=4)
+ax.add_patch(FancyBboxPatch((76.5, 4), 22.5, 92, boxstyle="round,pad=0.1,rounding_size=1.0", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1.1, zorder=2))
+ax.add_patch(Rectangle((76.5, 78), 22.5, 18, facecolor="#475569", edgecolor="none", zorder=3))
+ax.text(87.75, 87, "4. Policy & Delivery", ha="center", va="center", color="#FFFFFF", fontsize=8.2, fontweight="bold", zorder=4)
+ax.text(87.75, 62, "CI/CD Policy Gating\n• Native exit code (--fail-on)\n• Set-Theoretic Delta Diffing", ha="center", va="center", color="#334155", fontsize=6.7, zorder=4)
+ax.text(87.75, 28, "Multi-Channel Reporting\n• Real-Time SSE Dashboard\n• PDF / HTML & Webhooks", ha="center", va="center", color="#334155", fontsize=6.7, zorder=4)
 
-deliv_blocks = [
-    ("CI/CD Build Gating", "Exit 1 on threshold (>= threshold)\nNon-zero exit on criticals", 6, 9, 26, 21),
-    ("Set-Theoretic Delta", "Partitions Delta_NEW, Delta_FIXED\nTracks regressions vs baseline", 37, 9, 26, 21),
-    ("Multi-Channel Output", "Real-Time SSE Web Dashboard\nPDF / HTML Reports & Webhooks", 68, 9, 26, 21)
-]
-for title, desc, px, py, pw, ph in deliv_blocks:
-    ax.add_patch(FancyBboxPatch((px, py), pw, ph, boxstyle="round,pad=0.1,rounding_size=0.6", facecolor="#FFFFFF", edgecolor="#94A3B8", linewidth=0.8, zorder=3))
-    ax.text(px + pw/2, py + ph - 4.5, title, ha="center", va="center", color="#1E293B", fontsize=7.6, fontweight="bold", zorder=4)
-    ax.text(px + pw/2, py + 6.0, desc, ha="center", va="center", color="#475569", fontsize=6.8, zorder=4)
-
-# Clean connecting arrows
-arrow_props = dict(facecolor='#334155', edgecolor='#334155', width=1.2, headwidth=5.0, shrink=0.01)
-ax.annotate('', xy=(26, 71.5), xytext=(23, 71.5), arrowprops=arrow_props)
-ax.annotate('', xy=(64, 71.5), xytext=(61, 71.5), arrowprops=arrow_props)
-ax.annotate('', xy=(81, 42), xytext=(81, 48), arrowprops=arrow_props)
+# Horizontal arrows
+arrow_props = dict(facecolor='#334155', edgecolor='#334155', width=1.1, headwidth=4.5, shrink=0.01)
+ax.annotate('', xy=(25.5, 50), xytext=(23.0, 50), arrowprops=arrow_props)
+ax.annotate('', xy=(51.5, 50), xytext=(49.0, 50), arrowprops=arrow_props)
+ax.annotate('', xy=(76.5, 50), xytext=(74.0, 50), arrowprops=arrow_props)
 
 plt.savefig("paper/figures/fig1_architecture.pdf")
 plt.savefig("paper/figures/fig1_architecture.png")
