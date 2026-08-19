@@ -1016,9 +1016,25 @@ HTML_FORM = """
                             evtSource.close();
                             progressFill.style.width = '100%';
                             consoleText.textContent = 'Audit complete! Opening interactive dashboard...';
-                            setTimeout(function () {
-                                window.location.href = '/report/' + payload.report_name;
-                            }, 700);
+                            var repName = payload.report_name || payload.detail;
+                            if (repName && repName !== 'undefined' && repName !== 'null') {
+                                setTimeout(function () {
+                                    window.location.href = '/report/' + encodeURIComponent(repName);
+                                }, 600);
+                            } else {
+                                fetch('/scan/status/' + scanId)
+                                .then(function (r) { return r.json(); })
+                                .then(function (statusData) {
+                                    if (statusData.report_name) {
+                                        window.location.href = '/report/' + encodeURIComponent(statusData.report_name);
+                                    } else {
+                                        window.location.href = '/history';
+                                    }
+                                })
+                                .catch(function () {
+                                    window.location.href = '/history';
+                                });
+                            }
                         } else if (payload.stage === 'error') {
                             evtSource.close();
                             consoleText.style.color = '#ef4444';
@@ -1038,7 +1054,12 @@ HTML_FORM = """
                         .then(function (statusData) {
                             if (statusData.status === 'done') {
                                 clearInterval(pollInterval);
-                                window.location.href = '/report/' + statusData.report_name;
+                                var rep = statusData.report_name;
+                                if (rep && rep !== 'undefined') {
+                                    window.location.href = '/report/' + encodeURIComponent(rep);
+                                } else {
+                                    window.location.href = '/history';
+                                }
                             } else if (statusData.status === 'error') {
                                 clearInterval(pollInterval);
                                 consoleText.style.color = '#ef4444';
@@ -1490,7 +1511,15 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
     q = job["progress_queue"]
 
     def emit(stage, message, progress=0, detail=""):
-        q.put({"stage": stage, "message": message, "progress": progress, "detail": detail})
+        rep_name = detail if stage == "done" else (job.get("report_name") if job else None)
+        q.put({
+            "stage": stage,
+            "message": message,
+            "progress": progress,
+            "percent": progress,
+            "detail": detail,
+            "report_name": rep_name
+        })
 
     try:
         job["status"] = "running"
@@ -1887,7 +1916,12 @@ HTML_REPORT_NOT_FOUND = """
 
 @app.route("/report/<report_id>")
 def view_report(report_id):
-    if not report_id or report_id in ("undefined", "null"):
+    if not report_id or report_id in ("undefined", "null", "Unknown", "latest"):
+        import glob
+        reports = sorted(glob.glob(f"{config.REPORTS_DIR}/scan_*.json"), reverse=True)
+        if reports:
+            latest_id = Path(reports[0]).stem.replace("scan_", "")
+            return redirect(url_for("view_report", report_id=latest_id))
         return render_template_string(HTML_REPORT_NOT_FOUND, report_id="Unknown"), 404
         
     _validate_report_id(report_id)
