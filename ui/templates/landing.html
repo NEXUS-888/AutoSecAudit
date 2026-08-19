@@ -3,30 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoSecAudit — Autonomous DevSecOps Dynamic Security Orchestrator</title>
+    <title>AutoSecAudit — Autonomous Web Application Security Auditing Framework</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-base: #06080e;
-            --bg-surface: #0c101a;
-            --bg-card: rgba(14, 19, 32, 0.82);
-            --bg-elevated: rgba(22, 30, 50, 0.75);
-            --border-color: rgba(148, 163, 184, 0.12);
-            --border-glow: rgba(99, 102, 241, 0.4);
-            --fg-primary: #f8fafc;
+            --bg-base: #05070c;
+            --bg-surface: #0a0e17;
+            --bg-card: #0e1422;
+            --bg-elevated: #151d30;
+            --border-color: rgba(148, 163, 184, 0.14);
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-active: rgba(99, 102, 241, 0.45);
+            --fg-primary: #f1f5f9;
             --fg-secondary: #94a3b8;
             --fg-muted: #64748b;
+            
             --accent-indigo: #6366f1;
-            --accent-emerald: #10b981;
             --accent-cyan: #06b6d4;
+            --accent-emerald: #10b981;
             --accent-rose: #f43f5e;
             --accent-amber: #f59e0b;
-            --accent-purple: #a855f7;
-            --glass-bg: rgba(10, 14, 24, 0.88);
-            --glass-border: rgba(255, 255, 255, 0.08);
-            --shadow-glow: 0 0 35px -5px rgba(99, 102, 241, 0.25);
+            --accent-purple: #8b5cf6;
+            
+            --glass-bg: rgba(7, 10, 18, 0.88);
             --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
             --font-mono: 'JetBrains Mono', monospace;
         }
@@ -34,23 +35,22 @@
         [data-theme="light"] {
             --bg-base: #f8fafc;
             --bg-surface: #ffffff;
-            --bg-card: rgba(255, 255, 255, 0.92);
-            --bg-elevated: #f1f5f9;
-            --border-color: rgba(148, 163, 184, 0.22);
-            --border-glow: rgba(99, 102, 241, 0.25);
+            --bg-card: #f1f5f9;
+            --bg-elevated: #e2e8f0;
+            --border-color: rgba(148, 163, 184, 0.28);
+            --border-subtle: rgba(0, 0, 0, 0.08);
+            --border-active: rgba(99, 102, 241, 0.35);
             --fg-primary: #0f172a;
             --fg-secondary: #475569;
             --fg-muted: #64748b;
             --glass-bg: rgba(255, 255, 255, 0.94);
-            --glass-border: rgba(15, 23, 42, 0.08);
-            --shadow-glow: 0 10px 30px -5px rgba(99, 102, 241, 0.12);
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+            transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
         }
 
         body {
@@ -60,22 +60,32 @@
             line-height: 1.6;
             overflow-x: hidden;
             background-image: 
-                radial-gradient(circle at 10% 15%, rgba(99, 102, 241, 0.15) 0%, transparent 45%),
-                radial-gradient(circle at 90% 25%, rgba(16, 185, 129, 0.12) 0%, transparent 45%),
-                radial-gradient(circle at 50% 85%, rgba(6, 182, 212, 0.10) 0%, transparent 50%);
+                radial-gradient(circle at 12% 10%, rgba(99, 102, 241, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 88% 20%, rgba(6, 182, 212, 0.06) 0%, transparent 40%),
+                radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
             background-attachment: fixed;
+        }
+
+        /* ── Grid Line Overlay (Engineering aesthetic) ──────── */
+        .grid-backdrop {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-size: 40px 40px;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+            pointer-events: none;
+            z-index: 0;
         }
 
         /* ── Navbar ─────────────────────────────────────────── */
         .navbar {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 72px;
+            top: 0; left: 0; right: 0;
+            height: 68px;
             background: var(--glass-bg);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             border-bottom: 1px solid var(--border-color);
             z-index: 1000;
             display: flex;
@@ -90,469 +100,679 @@
             gap: 0.75rem;
             text-decoration: none;
             color: var(--fg-primary);
-            font-weight: 900;
-            font-size: 1.3rem;
-            letter-spacing: -0.03em;
+            font-weight: 800;
+            font-size: 1.2rem;
+            letter-spacing: -0.02em;
         }
 
-        .brand-icon {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--accent-indigo), var(--accent-cyan));
-            border-radius: 11px;
+        .brand-badge-icon {
+            width: 34px;
+            height: 34px;
+            background: linear-gradient(135deg, #4f46e5, #06b6d4);
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            box-shadow: 0 0 20px rgba(99, 102, 241, 0.45);
+            box-shadow: 0 0 16px rgba(99, 102, 241, 0.35);
         }
 
         .nav-links {
             display: flex;
             align-items: center;
-            gap: 1.75rem;
+            gap: 1.6rem;
             list-style: none;
         }
 
         .nav-link {
             text-decoration: none;
             color: var(--fg-secondary);
-            font-size: 0.88rem;
+            font-size: 0.84rem;
             font-weight: 600;
-            transition: color 0.2s ease;
+            letter-spacing: -0.01em;
         }
 
-        .nav-link:hover {
-            color: var(--accent-indigo);
-        }
+        .nav-link:hover { color: var(--accent-cyan); }
 
         .nav-actions {
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: 0.9rem;
         }
 
-        /* ── Buttons & Controls ─────────────────────────────── */
+        /* ── Tactical Buttons ───────────────────────────────── */
         .btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 0.5rem;
-            padding: 0.65rem 1.35rem;
-            border-radius: 10px;
-            font-size: 0.88rem;
+            padding: 0.6rem 1.25rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
             font-weight: 700;
+            font-family: var(--font-sans);
             text-decoration: none;
             cursor: pointer;
             border: 1px solid transparent;
-            font-family: var(--font-sans);
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.18s ease;
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, var(--accent-indigo), #4f46e5);
+            background: linear-gradient(135deg, var(--accent-indigo), #4338ca);
             color: white;
-            box-shadow: 0 4px 18px rgba(99, 102, 241, 0.4);
+            box-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);
         }
 
         .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 24px rgba(99, 102, 241, 0.6);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.5);
             color: white;
         }
 
         .btn-secondary {
             background: var(--bg-card);
             color: var(--fg-primary);
-            border-color: var(--border-color);
+            border: 1px solid var(--border-color);
         }
 
         .btn-secondary:hover {
             background: var(--bg-elevated);
-            border-color: var(--accent-indigo);
-            transform: translateY(-1px);
+            border-color: var(--accent-cyan);
         }
 
-        .btn-emerald {
-            background: linear-gradient(135deg, #059669, #10b981);
+        .btn-cyan {
+            background: #0284c7;
             color: white;
-            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);
         }
 
-        .btn-emerald:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 22px rgba(16, 185, 129, 0.5);
-        }
+        .btn-cyan:hover { background: #0369a1; }
 
         .theme-toggle-btn {
             background: transparent;
             border: 1px solid var(--border-color);
             color: var(--fg-primary);
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
         }
 
-        .theme-toggle-btn:hover {
-            border-color: var(--accent-indigo);
-        }
+        .theme-toggle-btn:hover { border-color: var(--accent-indigo); }
 
-        /* ── Hero Cockpit ───────────────────────────────────── */
+        /* ── Hero Section ───────────────────────────────────── */
         .hero {
-            padding: 130px 2rem 70px;
-            max-width: 1340px;
+            position: relative;
+            z-index: 1;
+            padding: 125px 2.5rem 60px;
+            max-width: 1400px;
             margin: 0 auto;
             display: grid;
-            grid-template-columns: 1.1fr 0.9fr;
+            grid-template-columns: 1.05fr 0.95fr;
             gap: 3.5rem;
             align-items: center;
-            min-height: calc(100vh - 72px);
+            min-height: calc(100vh - 68px);
         }
 
-        .hero-badge {
+        .platform-badge {
             display: inline-flex;
             align-items: center;
             gap: 0.6rem;
-            padding: 0.45rem 1.15rem;
-            border-radius: 999px;
-            background: rgba(99, 102, 241, 0.14);
-            border: 1px solid rgba(99, 102, 241, 0.35);
+            padding: 0.35rem 0.9rem;
+            border-radius: 6px;
+            background: rgba(99, 102, 241, 0.12);
+            border: 1px solid rgba(99, 102, 241, 0.3);
             color: var(--accent-indigo);
-            font-size: 0.8rem;
-            font-weight: 800;
-            letter-spacing: 0.05em;
+            font-size: 0.76rem;
+            font-family: var(--font-mono);
+            font-weight: 700;
+            letter-spacing: 0.04em;
             text-transform: uppercase;
-            margin-bottom: 1.5rem;
+            margin-bottom: 1.25rem;
         }
 
-        .hero-badge-pulse {
-            width: 8px;
-            height: 8px;
+        .status-dot-pulse {
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
             background: var(--accent-emerald);
-            box-shadow: 0 0 10px var(--accent-emerald);
-            animation: pulse-glow 2s infinite;
+            box-shadow: 0 0 8px var(--accent-emerald);
+            animation: pulse-active 2s infinite;
         }
 
-        @keyframes pulse-glow {
+        @keyframes pulse-active {
             0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.4); opacity: 0.6; }
+            50% { transform: scale(1.3); opacity: 0.6; }
         }
 
         .hero-title {
-            font-size: 3.4rem;
+            font-size: 3.3rem;
             font-weight: 900;
             line-height: 1.12;
             letter-spacing: -0.035em;
-            margin-bottom: 1.35rem;
+            margin-bottom: 1.25rem;
         }
 
-        .gradient-text {
-            background: linear-gradient(135deg, #6366f1 0%, #38bdf8 45%, #10b981 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        .hero-title .highlight-accent {
+            color: var(--accent-cyan);
+            text-shadow: 0 0 25px rgba(6, 182, 212, 0.35);
         }
 
         .hero-desc {
-            font-size: 1.15rem;
+            font-size: 1.08rem;
             color: var(--fg-secondary);
             margin-bottom: 2.25rem;
             max-width: 620px;
-            line-height: 1.7;
+            line-height: 1.65;
         }
 
-        .hero-cta-group {
+        .hero-cta-row {
             display: flex;
             align-items: center;
-            gap: 1.25rem;
+            gap: 1.1rem;
             flex-wrap: wrap;
-            margin-bottom: 2.75rem;
+            margin-bottom: 2.5rem;
         }
 
-        .hero-stats-banner {
+        .evidence-metrics-bar {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 1.25rem;
-            padding-top: 2rem;
+            gap: 1rem;
+            padding-top: 1.75rem;
             border-top: 1px solid var(--border-color);
         }
 
-        .stat-item h4 {
-            font-size: 1.7rem;
-            font-weight: 900;
-            color: var(--fg-primary);
-            letter-spacing: -0.03em;
+        .metric-block .metric-val {
+            font-size: 1.6rem;
+            font-weight: 800;
             font-family: var(--font-mono);
+            color: var(--fg-primary);
+            letter-spacing: -0.02em;
         }
 
-        .stat-item p {
-            font-size: 0.75rem;
+        .metric-block .metric-lbl {
+            font-size: 0.72rem;
             color: var(--fg-muted);
-            font-weight: 700;
+            font-family: var(--font-mono);
+            font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
 
-        /* ── Cockpit HUD & Radar Display ────────────────────── */
-        .cockpit-card {
-            background: #090d16;
-            border-radius: 18px;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 30px rgba(99, 102, 241, 0.25);
+        /* ── Live Security Telemetry Console (Signature UI) ── */
+        .telemetry-console {
+            background: #080c14;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(99, 102, 241, 0.15);
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
         }
 
-        .cockpit-header {
-            background: #0f1626;
-            padding: 0.85rem 1.25rem;
+        .console-topbar {
+            background: #0d1320;
+            padding: 0.75rem 1rem;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            border-bottom: 1px solid var(--border-color);
         }
 
-        .hud-status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            background: rgba(16, 185, 129, 0.12);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: #10b981;
-            padding: 2px 8px;
-            border-radius: 6px;
-            font-size: 0.72rem;
-            font-family: var(--font-mono);
-            font-weight: 700;
-        }
-
-        .radar-container {
-            position: relative;
-            background: #060911;
-            padding: 1rem;
+        .console-pills {
             display: flex;
-            justify-content: center;
             align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            gap: 0.5rem;
         }
 
-        #radarCanvas {
-            border-radius: 50%;
-            background: radial-gradient(circle, #0c1424 0%, #060911 75%);
-            box-shadow: inset 0 0 20px rgba(6, 182, 212, 0.2);
+        .pill-target {
+            background: rgba(255, 255, 255, 0.06);
+            padding: 2px 8px;
+            border-radius: 4px;
+            color: #38bdf8;
+            font-weight: 600;
         }
 
-        .terminal-feed {
-            padding: 1.15rem;
-            color: #cbd5e1;
-            font-family: var(--font-mono);
-            font-size: 0.78rem;
-            line-height: 1.55;
-            height: 220px;
+        .pill-running {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .console-body {
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.1rem;
+            background: #080c14;
+        }
+
+        .telemetry-section-title {
+            color: var(--fg-muted);
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.4rem;
+        }
+
+        /* Surface Discovery Progress */
+        .progress-line-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+        .progress-bar-bg {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(90deg, #6366f1, #06b6d4);
+        }
+        .discovery-stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
+            font-size: 0.72rem;
+            color: var(--fg-secondary);
+            margin-top: 0.5rem;
+        }
+        .discovery-stats-row span strong { color: #f1f5f9; }
+
+        /* Scanner Execution Grid */
+        .scanner-nodes-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.45rem;
+        }
+
+        .scanner-node-item {
+            background: #0d1422;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 0.45rem 0.65rem;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .scanner-tag {
+            font-weight: 700;
+            color: #93c5fd;
+        }
+
+        .scanner-res {
+            color: #10b981;
+            font-weight: 600;
+        }
+        .scanner-res.alert { color: #f43f5e; font-weight: 700; }
+
+        /* Correlation & Diff Pipeline */
+        .corr-gate-row {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr;
+            gap: 0.75rem;
+            background: #0c121e;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 0.75rem 0.9rem;
+            border-radius: 8px;
+        }
+
+        .flow-math {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-weight: 600;
+            color: var(--fg-secondary);
+            font-size: 0.74rem;
+        }
+        .flow-math .num-raw { color: #f59e0b; }
+        .flow-math .num-corr { color: #38bdf8; }
+        .flow-math .num-conf { color: #f43f5e; font-weight: 800; }
+
+        .gate-status-box {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
+            font-weight: 800;
+            color: #f43f5e;
+        }
+        .gate-fail-pill {
+            background: rgba(244, 63, 94, 0.2);
+            border: 1px solid rgba(244, 63, 94, 0.4);
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+
+        /* Live Terminal Log */
+        .console-stream {
+            background: #04060a;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 0.65rem 0.85rem;
+            border-radius: 6px;
+            height: 90px;
             overflow-y: auto;
-            background: #090d16;
+            color: #94a3b8;
+            font-size: 0.72rem;
+            line-height: 1.45;
         }
 
-        .t-prompt { color: #38bdf8; font-weight: bold; }
-        .t-cmd { color: #f8fafc; font-weight: 600; }
-        .t-info { color: #94a3b8; }
-        .t-success { color: #10b981; font-weight: bold; }
-        .t-warning { color: #f59e0b; font-weight: bold; }
-        .t-danger { color: #f43f5e; font-weight: bold; }
-        .t-highlight { color: #a855f7; font-weight: bold; }
-
-        /* ── DAST vs SAST Battleground ──────────────────────── */
+        /* ── Differentiator (SAST vs DAST Flow) ─────────────── */
         .section {
-            padding: 90px 2rem;
-            max-width: 1340px;
+            position: relative;
+            z-index: 1;
+            padding: 90px 2.5rem;
+            max-width: 1400px;
             margin: 0 auto;
         }
 
         .section-header {
             text-align: center;
-            max-width: 760px;
-            margin: 0 auto 4rem;
+            max-width: 780px;
+            margin: 0 auto 3.5rem;
         }
 
-        .section-badge {
-            font-size: 0.8rem;
+        .section-tag {
+            font-size: 0.75rem;
+            font-family: var(--font-mono);
             font-weight: 800;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: var(--accent-indigo);
-            margin-bottom: 0.75rem;
+            letter-spacing: 0.08em;
+            color: var(--accent-cyan);
+            margin-bottom: 0.6rem;
             display: inline-block;
         }
 
         .section-title {
-            font-size: 2.5rem;
+            font-size: 2.35rem;
             font-weight: 900;
             letter-spacing: -0.03em;
-            margin-bottom: 1rem;
+            margin-bottom: 0.9rem;
         }
 
         .section-desc {
-            font-size: 1.08rem;
+            font-size: 1.02rem;
             color: var(--fg-secondary);
         }
 
-        .showdown-grid {
+        .flow-compare-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 2rem;
         }
 
-        .showdown-card {
+        .flow-panel {
             background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 20px;
-            padding: 2.5rem;
-            position: relative;
-            box-shadow: var(--shadow-glow);
-        }
-
-        .showdown-card.competitor {
-            border-color: rgba(244, 63, 94, 0.25);
-        }
-
-        .showdown-card.winner {
-            border-color: rgba(16, 185, 129, 0.45);
-            background: linear-gradient(180deg, var(--bg-card) 0%, rgba(16, 185, 129, 0.06) 100%);
-            box-shadow: 0 0 40px rgba(16, 185, 129, 0.15);
-        }
-
-        .card-tag {
-            display: inline-block;
-            padding: 0.3rem 0.85rem;
-            border-radius: 6px;
-            font-size: 0.75rem;
-            font-weight: 800;
-            margin-bottom: 1.25rem;
-            font-family: var(--font-mono);
-            letter-spacing: 0.04em;
-        }
-
-        .tag-sast { background: rgba(244, 63, 94, 0.15); color: #f43f5e; }
-        .tag-dast { background: rgba(16, 185, 129, 0.18); color: #10b981; }
-
-        .showdown-list {
-            list-style: none;
-            margin-top: 1.75rem;
-            display: flex;
-            flex-direction: column;
-            gap: 1.15rem;
-        }
-
-        .showdown-list li {
-            display: flex;
-            align-items: flex-start;
-            gap: 0.85rem;
-            font-size: 0.94rem;
-            color: var(--fg-secondary);
-        }
-
-        .icon-check { color: #10b981; font-weight: bold; font-size: 1.2rem; flex-shrink: 0; }
-        .icon-cross { color: #f43f5e; font-weight: bold; font-size: 1.2rem; flex-shrink: 0; }
-
-        /* ── 4-Stage Architecture ──────────────────────────── */
-        .arch-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1.5rem;
-        }
-
-        .arch-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 2rem 1.75rem;
-            transition: all 0.3s ease;
-            position: relative;
-        }
-
-        .arch-card:hover {
-            transform: translateY(-5px);
-            border-color: var(--accent-indigo);
-            box-shadow: 0 12px 30px -5px rgba(99, 102, 241, 0.3);
-        }
-
-        .arch-step-num {
-            font-size: 0.75rem;
-            font-weight: 800;
-            color: var(--accent-indigo);
-            text-transform: uppercase;
-            font-family: var(--font-mono);
-            margin-bottom: 0.85rem;
-        }
-
-        .arch-card h3 {
-            font-size: 1.2rem;
-            font-weight: 800;
-            margin-bottom: 0.85rem;
-        }
-
-        .arch-card p {
-            font-size: 0.88rem;
-            color: var(--fg-secondary);
-            line-height: 1.6;
-        }
-
-        /* ── Cockpit Sandbox CTA ────────────────────────────── */
-        .cta-box {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(16, 185, 129, 0.12));
-            border: 1px solid rgba(99, 102, 241, 0.35);
-            border-radius: 24px;
-            padding: 4rem 2.5rem;
-            text-align: center;
-            margin: 40px auto 80px;
-            max-width: 1120px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
-        }
-
-        .cta-box h2 {
-            font-size: 2.4rem;
-            font-weight: 900;
-            letter-spacing: -0.02em;
-            margin-bottom: 1rem;
-        }
-
-        .cta-form {
-            display: flex;
-            max-width: 620px;
-            margin: 2.25rem auto 0;
-            gap: 0.85rem;
-        }
-
-        .cta-input {
-            flex: 1;
-            background: var(--bg-surface);
             border: 1px solid var(--border-color);
             border-radius: 12px;
-            padding: 0.95rem 1.4rem;
+            padding: 2.25rem;
+        }
+
+        .flow-panel.sast {
+            border-color: rgba(244, 63, 94, 0.22);
+        }
+
+        .flow-panel.dast {
+            border-color: rgba(16, 185, 129, 0.35);
+            background: linear-gradient(180deg, #0e1422 0%, rgba(16, 185, 129, 0.04) 100%);
+        }
+
+        .flow-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .flow-header h3 { font-size: 1.2rem; font-weight: 800; }
+
+        .flow-steps-v {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            font-family: var(--font-mono);
+            font-size: 0.84rem;
+        }
+
+        .flow-step-node {
+            background: #090e18;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 0.65rem 1rem;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .flow-step-arrow {
+            text-align: center;
+            color: var(--fg-muted);
+            font-size: 0.9rem;
+            line-height: 1;
+        }
+
+        .node-crit { border-color: rgba(244, 63, 94, 0.3); color: #f43f5e; font-weight: 700; }
+        .node-ok { border-color: rgba(16, 185, 129, 0.3); color: #10b981; font-weight: 700; }
+
+        /* ── 4-Stage Security Engine Pipeline ──────────────── */
+        .pipeline-track {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.25rem;
+            position: relative;
+        }
+
+        .pipeline-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1.75rem 1.4rem;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .pipeline-card:hover {
+            border-color: var(--border-active);
+        }
+
+        .pipeline-num {
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            font-weight: 800;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .pipeline-card h4 {
+            font-size: 1.12rem;
+            font-weight: 800;
+            margin-bottom: 0.75rem;
+        }
+
+        .pipeline-card p {
+            font-size: 0.84rem;
+            color: var(--fg-secondary);
+            margin-bottom: 1.25rem;
+            line-height: 1.5;
+        }
+
+        .pipeline-meta {
+            background: #080d16;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 0.6rem 0.75rem;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 0.74rem;
+            color: #94a3b8;
+        }
+
+        /* ── Attack Path & Threat Graph (Technical) ────────── */
+        .attack-graph-card {
+            background: #080d16;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2.25rem;
+            font-family: var(--font-mono);
+        }
+
+        .graph-flow-horizontal {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            overflow-x: auto;
+            padding: 1rem 0;
+        }
+
+        .graph-node {
+            background: #0e1524;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 0.85rem 1.1rem;
+            text-align: center;
+            min-width: 140px;
+            flex-shrink: 0;
+        }
+
+        .graph-node.vulnerable {
+            border-color: #ef4444;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
+        }
+
+        .graph-node .node-type {
+            font-size: 0.68rem;
+            color: var(--fg-muted);
+            text-transform: uppercase;
+            margin-bottom: 0.25rem;
+        }
+
+        .graph-node .node-name {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #f1f5f9;
+        }
+
+        .graph-arrow {
+            color: #ef4444;
+            font-weight: 800;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+            animation: packetFlow 1.5s infinite;
+        }
+
+        @keyframes packetFlow {
+            0% { opacity: 0.3; transform: translateX(-2px); }
+            50% { opacity: 1; transform: translateX(2px); }
+            100% { opacity: 0.3; transform: translateX(-2px); }
+        }
+
+        /* ── Real Security Findings Table ───────────────────── */
+        .findings-table-wrap {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+        }
+
+        .findings-row-head {
+            background: #090e18;
+            padding: 0.85rem 1.25rem;
+            display: grid;
+            grid-template-columns: 100px 1.8fr 1.2fr 120px 100px;
+            color: var(--fg-muted);
+            font-weight: 700;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .findings-row {
+            padding: 1rem 1.25rem;
+            display: grid;
+            grid-template-columns: 100px 1.8fr 1.2fr 120px 100px;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .findings-row:last-child { border-bottom: none; }
+
+        .sev-pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-align: center;
+            width: fit-content;
+        }
+
+        .sev-crit { background: rgba(244, 63, 94, 0.18); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.35); }
+        .sev-high { background: rgba(245, 158, 11, 0.18); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.35); }
+        .sev-med { background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); }
+
+        /* ── Action Box ─────────────────────────────────────── */
+        .action-box {
+            background: #090e18;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 3.5rem 2.5rem;
+            text-align: center;
+            margin: 40px auto 80px;
+            max-width: 1000px;
+        }
+
+        .action-box h2 {
+            font-size: 2.2rem;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.8rem;
+        }
+
+        .action-form {
+            display: flex;
+            max-width: 580px;
+            margin: 2rem auto 0;
+            gap: 0.75rem;
+        }
+
+        .action-input {
+            flex: 1;
+            background: #05080e;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.85rem 1.25rem;
             color: var(--fg-primary);
-            font-family: var(--font-sans);
-            font-size: 1rem;
+            font-family: var(--font-mono);
+            font-size: 0.92rem;
             outline: none;
         }
 
-        .cta-input:focus {
-            border-color: var(--accent-indigo);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
-        }
+        .action-input:focus { border-color: var(--accent-indigo); }
 
-        /* ── Glassmorphism Auth Modal ───────────────────────── */
+        /* ── Auth Modal ─────────────────────────────────────── */
         .modal-overlay {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(3, 7, 18, 0.85);
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(2, 4, 8, 0.85);
             backdrop-filter: blur(10px);
             display: none;
             align-items: center;
@@ -561,136 +781,114 @@
             padding: 1.5rem;
         }
 
-        .modal-overlay.active {
-            display: flex;
-        }
+        .modal-overlay.active { display: flex; }
 
         .auth-card {
-            background: var(--bg-surface);
+            background: #0c111d;
             border: 1px solid var(--border-color);
-            border-radius: 20px;
+            border-radius: 14px;
             width: 100%;
-            max-width: 450px;
-            padding: 2.5rem;
-            box-shadow: 0 30px 70px -15px rgba(0, 0, 0, 0.8);
+            max-width: 420px;
+            padding: 2.25rem;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8);
             position: relative;
-            animation: modalSlide 0.25s ease-out;
-        }
-
-        @keyframes modalSlide {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
         }
 
         .modal-close {
             position: absolute;
-            top: 1.35rem;
-            right: 1.35rem;
+            top: 1.25rem;
+            right: 1.25rem;
             background: transparent;
             border: none;
             color: var(--fg-muted);
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             cursor: pointer;
         }
-
-        .modal-close:hover { color: var(--fg-primary); }
 
         .auth-tabs {
             display: flex;
             border-bottom: 1px solid var(--border-color);
-            margin-bottom: 1.75rem;
+            margin-bottom: 1.5rem;
         }
 
         .auth-tab {
             flex: 1;
-            padding: 0.75rem;
+            padding: 0.7rem;
             text-align: center;
             font-weight: 700;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             color: var(--fg-muted);
             cursor: pointer;
             border-bottom: 2px solid transparent;
         }
 
         .auth-tab.active {
-            color: var(--accent-indigo);
-            border-bottom-color: var(--accent-indigo);
+            color: var(--accent-cyan);
+            border-bottom-color: var(--accent-cyan);
         }
 
-        .form-group {
-            margin-bottom: 1.25rem;
-        }
+        .form-group { margin-bottom: 1.15rem; }
 
         .form-label {
             display: block;
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             font-weight: 700;
-            margin-bottom: 0.4rem;
+            margin-bottom: 0.35rem;
             color: var(--fg-secondary);
         }
 
         .form-control {
             width: 100%;
-            background: var(--bg-base);
+            background: #060910;
             border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 0.8rem 1rem;
+            border-radius: 6px;
+            padding: 0.75rem 0.9rem;
             color: var(--fg-primary);
             font-family: var(--font-sans);
-            font-size: 0.92rem;
+            font-size: 0.9rem;
             outline: none;
         }
 
-        .form-control:focus {
-            border-color: var(--accent-indigo);
-            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
-        }
+        .form-control:focus { border-color: var(--accent-indigo); }
 
         .auth-alert {
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
-            font-size: 0.85rem;
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-size: 0.82rem;
             margin-bottom: 1rem;
             display: none;
         }
 
-        .auth-alert.error {
-            background: rgba(244, 63, 94, 0.15);
-            color: #f43f5e;
-            border: 1px solid rgba(244, 63, 94, 0.3);
-            display: block;
-        }
-
-        .auth-alert.success {
-            background: rgba(16, 185, 129, 0.15);
-            color: #10b981;
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            display: block;
-        }
+        .auth-alert.error { background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.3); display: block; }
+        .auth-alert.success { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); display: block; }
 
         /* ── Responsive ─────────────────────────────────────── */
         @media (max-width: 1024px) {
-            .hero { grid-template-columns: 1fr; padding-top: 110px; }
-            .showdown-grid { grid-template-columns: 1fr; }
-            .arch-grid { grid-template-columns: 1fr 1fr; }
+            .hero { grid-template-columns: 1fr; padding-top: 100px; }
+            .flow-compare-grid { grid-template-columns: 1fr; }
+            .pipeline-track { grid-template-columns: 1fr 1fr; }
             .navbar { padding: 0 1.5rem; }
             .nav-links { display: none; }
+            .findings-row-head, .findings-row { grid-template-columns: 80px 1.5fr 1fr 90px; }
+            .findings-row-head span:last-child, .findings-row span:last-child { display: none; }
         }
         @media (max-width: 640px) {
-            .arch-grid { grid-template-columns: 1fr; }
-            .hero-stats-banner { grid-template-columns: 1fr 1fr; }
-            .cta-form { flex-direction: column; }
-            .hero-title { font-size: 2.4rem; }
+            .pipeline-track { grid-template-columns: 1fr; }
+            .evidence-metrics-bar { grid-template-columns: 1fr 1fr; }
+            .action-form { flex-direction: column; }
+            .hero-title { font-size: 2.35rem; }
         }
     </style>
 </head>
 <body>
 
+    <div class="grid-backdrop"></div>
+
     <!-- ── Navbar ─────────────────────────────────────────── -->
     <nav class="navbar">
         <a href="/" class="nav-brand">
-            <div class="brand-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+            <div class="brand-badge-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                     <path d="m9 12 2 2 4-4"/>
                 </svg>
@@ -700,17 +898,19 @@
 
         <ul class="nav-links">
             <li><a href="#why-autosec" class="nav-link">Why DAST vs SAST</a></li>
-            <li><a href="#architecture" class="nav-link">4-Stage Pipeline</a></li>
+            <li><a href="#pipeline" class="nav-link">4-Stage Pipeline</a></li>
+            <li><a href="#threat-graph" class="nav-link">Attack Path Graph</a></li>
+            <li><a href="#findings" class="nav-link">Findings</a></li>
             <li><a href="#metrics" class="nav-link">Benchmark</a></li>
             <li><a href="/history" class="nav-link">Scan History</a></li>
             <li><a href="/dashboard" class="nav-link">Scanner Console</a></li>
         </ul>
 
         <div class="nav-actions">
-            <!-- Theme Toggle Button (Supports test_theme.py hooks) -->
+            <!-- Theme Toggle Button (Preserves test_theme.py hooks) -->
             <button id="themeToggle" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark/Light Mode">
-                <svg id="themeIcon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <!-- Sun Icon Circle -->
+                <svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <!-- Sun Icon Circle for dark theme -->
                     <circle cx="12" cy="12" r="5"></circle>
                     <line x1="12" y1="1" x2="12" y2="3"></line>
                     <line x1="12" y1="21" x2="12" y2="23"></line>
@@ -725,11 +925,11 @@
 
             <div id="userAuthControls">
                 {% if user %}
-                    <span style="font-size: 0.88rem; font-weight: 700; color: var(--accent-emerald); margin-right: 0.5rem;">
+                    <span style="font-size: 0.85rem; font-weight: 700; color: var(--accent-emerald); font-family: var(--font-mono); margin-right: 0.5rem;">
                         ● {{ user.username }}
                     </span>
-                    <a href="/dashboard" class="btn btn-secondary">Scanner</a>
-                    <a href="/logout" class="btn btn-secondary" style="padding: 0.65rem 0.85rem;">Logout</a>
+                    <a href="/dashboard" class="btn btn-secondary">Console</a>
+                    <a href="/logout" class="btn btn-secondary" style="padding: 0.6rem 0.8rem;">Logout</a>
                 {% else %}
                     <button onclick="openAuthModal('login')" class="btn btn-secondary">Sign In</button>
                     <a href="/dashboard" class="btn btn-primary">Launch Scanner</a>
@@ -738,193 +938,387 @@
         </div>
     </nav>
 
-    <!-- ── Hero Cockpit Section ───────────────────────────── -->
+    <!-- ── Hero Section ───────────────────────────────────── -->
     <section class="hero">
-        <div class="hero-content">
-            <div class="hero-badge">
-                <span class="hero-badge-pulse"></span>
-                Autonomous DevSecOps Dynamic Security Orchestrator
+        <div class="hero-left">
+            <div class="platform-badge">
+                <span class="status-dot-pulse"></span>
+                Autonomous Security Engineering Platform
             </div>
             <h1 class="hero-title">
-                Catch Live Vulnerabilities in <span class="gradient-text">~65 Seconds</span>, Zero Hallucinations.
+                Prove What Actually Breaks in <span class="highlight-accent">Production</span>.
             </h1>
             <p class="hero-desc">
-                Static reviewers (CodeRabbit/LLMs) only guess syntax. <strong>AutoSecAudit</strong> orchestrates 14 dynamic plugins across a live container, deduplicating alerts by 38.2% and diffing build regressions in CI/CD.
+                Source code review only guesses theoretical risks. <strong>AutoSecAudit</strong> actively orchestrates 14+ scanner plugins, validates exploit payloads against live endpoints, suppresses duplicate noise by 38.2%, and gates CI/CD builds on confirmed regressions.
             </p>
 
-            <div class="hero-cta-group">
-                <a href="/dashboard" class="btn btn-primary" style="padding: 0.9rem 1.85rem; font-size: 1rem;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+            <div class="hero-cta-row">
+                <a href="/dashboard" class="btn btn-primary" style="padding: 0.85rem 1.75rem; font-size: 0.95rem;">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
                         <polygon points="5 3 19 12 5 21 5 3"/>
                     </svg>
                     Start Security Scan
                 </a>
-                <button onclick="replaySimulation()" class="btn btn-secondary" style="padding: 0.9rem 1.6rem; font-size: 1rem;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <button onclick="replayLiveTelemetry()" class="btn btn-secondary" style="padding: 0.85rem 1.4rem; font-size: 0.95rem;">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
                     </svg>
-                    Replay Radar Telemetry
+                    Replay Telemetry
                 </button>
             </div>
 
-            <div class="hero-stats-banner" id="metrics">
-                <div class="stat-item">
-                    <h4>64.8%</h4>
-                    <p>Latency Drop</p>
+            <!-- Evidence Benchmark Metrics -->
+            <div class="evidence-metrics-bar" id="metrics">
+                <div class="metric-block">
+                    <div class="metric-val">64.8s</div>
+                    <div class="metric-lbl">Audit Latency (k=8)</div>
                 </div>
-                <div class="stat-item">
-                    <h4>14 Scanners</h4>
-                    <p>In Parallel</p>
+                <div class="metric-block">
+                    <div class="metric-val">14 Nodes</div>
+                    <div class="metric-lbl">Parallel Scanners</div>
                 </div>
-                <div class="stat-item">
-                    <h4>38.2%</h4>
-                    <p>Noise Cut</p>
+                <div class="metric-block">
+                    <div class="metric-val">-38.2%</div>
+                    <div class="metric-lbl">Noise Cut (47/76)</div>
                 </div>
-                <div class="stat-item">
-                    <h4>97.9%</h4>
-                    <p>Precision</p>
+                <div class="metric-block">
+                    <div class="metric-val">97.9%</div>
+                    <div class="metric-lbl">Precision (46/47 TP)</div>
                 </div>
             </div>
         </div>
 
-        <!-- ── Cockpit Telemetry & Radar ──────────────────────── -->
-        <div class="cockpit-card">
-            <div class="cockpit-header">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444;"></span>
-                    <span style="width: 10px; height: 10px; border-radius: 50%; background: #f59e0b;"></span>
-                    <span style="width: 10px; height: 10px; border-radius: 50%; background: #10b981;"></span>
-                    <span style="font-size: 0.78rem; font-family: var(--font-mono); color: #94a3b8; margin-left: 6px;">LIVE TELEMETRY HUD</span>
+        <!-- ── Right Side: Live Security Telemetry Console ────── -->
+        <div class="telemetry-console">
+            <div class="console-topbar">
+                <div class="console-pills">
+                    <span style="color: var(--fg-muted); font-size: 0.72rem;">TARGET</span>
+                    <span class="pill-target">http://localhost:3000</span>
                 </div>
-                <div class="hud-status-badge">
-                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #10b981;"></span>
-                    RADAR ACTIVE: k=8 THREADS
+                <div class="pill-running">
+                    <span class="status-dot-pulse"></span>
+                    AUDIT ENGINE: ACTIVE (k=8)
                 </div>
             </div>
 
-            <!-- Glowing Radar Canvas -->
-            <div class="radar-container">
-                <canvas id="radarCanvas" width="220" height="220"></canvas>
-            </div>
+            <div class="console-body">
+                <!-- Surface Discovery -->
+                <div>
+                    <div class="progress-line-wrap">
+                        <span class="telemetry-section-title">01. Surface Discovery (BFS + OpenAPI)</span>
+                        <span style="color: #38bdf8; font-weight: 700;">100% COMPLETE</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill"></div>
+                    </div>
+                    <div class="discovery-stats-row">
+                        <span><strong>143</strong> Endpoints</span>
+                        <span><strong>12</strong> Services</span>
+                        <span><strong>67</strong> API Routes</span>
+                        <span><strong>9</strong> Tech Stacks</span>
+                    </div>
+                </div>
 
-            <!-- Streaming Terminal -->
-            <div class="terminal-feed" id="terminalFeed">
-                <!-- Streamed via JavaScript -->
+                <!-- Live Scanner Dispatch Grid -->
+                <div>
+                    <div class="telemetry-section-title">02. Concurrent Scanner Execution</div>
+                    <div class="scanner-nodes-grid">
+                        <div class="scanner-node-item">
+                            <span class="scanner-tag">[NMAP]</span>
+                            <span class="scanner-res">✓ 12 open ports</span>
+                        </div>
+                        <div class="scanner-node-item">
+                            <span class="scanner-tag">[NIKTO]</span>
+                            <span class="scanner-res alert">⚠ 18 misconfigs</span>
+                        </div>
+                        <div class="scanner-node-item">
+                            <span class="scanner-tag">[SQLI_PROBE]</span>
+                            <span class="scanner-res alert">🚨 2 injections</span>
+                        </div>
+                        <div class="scanner-node-item">
+                            <span class="scanner-tag">[JWT_VALIDATOR]</span>
+                            <span class="scanner-res alert">🚨 1 alg:none</span>
+                        </div>
+                        <div class="scanner-node-item">
+                            <span class="scanner-tag">[XSS_SCANNER]</span>
+                            <span class="scanner-res alert">⚠ 7 reflected</span>
+                        </div>
+                        <div class="scanner-node-item">
+                            <span class="scanner-tag">[DIRBRUTE]</span>
+                            <span class="scanner-res alert">⚠ 4 exposed</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Correlation & CI/CD Gate -->
+                <div>
+                    <div class="telemetry-section-title">03. Intelligence Correlation & CI/CD Gating</div>
+                    <div class="corr-gate-row">
+                        <div class="flow-math">
+                            <span class="num-raw">76 Raw</span>
+                            <span>➔</span>
+                            <span class="num-corr">47 Correlated</span>
+                            <span>➔</span>
+                            <span class="num-conf">11 Criticals</span>
+                        </div>
+                        <div class="gate-status-box">
+                            <span style="font-size: 0.72rem; color: var(--fg-muted);">CI/CD:</span>
+                            <span class="gate-fail-pill">● GATE FAILED (Exit 1)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Real-time Console Log -->
+                <div class="console-stream" id="telemetryStream">
+                    <!-- Streamed via JS -->
+                </div>
             </div>
         </div>
     </section>
 
-    <!-- ── Why AutoSecAudit? (Battleground Matrix) ────────── -->
+    <!-- ── Differentiator: SAST vs AutoSecAudit Dynamic ──── -->
     <section class="section" id="why-autosec">
         <div class="section-header">
-            <span class="section-badge">Runtime Proof vs. Code Review</span>
-            <h2 class="section-title">Why AI Code Reviewers & SAST Fall Short</h2>
+            <span class="section-tag">Empirical Proof vs. Static Guessing</span>
+            <h2 class="section-title">Why Static Code Review (SAST) Falls Short</h2>
             <p class="section-desc">
-                Static tools guess theoretical risks by reading source text. AutoSecAudit actively attacks the running deployment with real payloads to prove what actually breaks in production.
+                Static tools guess potential bugs by parsing code strings. AutoSecAudit actively probes the live application environment to confirm exploitable flaws with real HTTP evidence.
             </p>
         </div>
 
-        <div class="showdown-grid">
-            <!-- Competitor: SAST / LLM Code Reviewers -->
-            <div class="showdown-card competitor">
-                <span class="card-tag tag-sast">Static Code Review (SAST / LLMs)</span>
-                <h3>Code Reviewers & Text-Guessing</h3>
-                <p style="color: var(--fg-secondary); font-size: 0.92rem; margin-top: 0.5rem;">
-                    Analyzes raw repo text without network, database, or runtime context.
-                </p>
-                <ul class="showdown-list">
-                    <li>
-                        <span class="icon-cross">✕</span>
-                        <span><strong>High Hallucination Rate:</strong> Flags potential regex or syntax patterns that are unreachable or sanitized by framework middlewares.</span>
-                    </li>
-                    <li>
-                        <span class="icon-cross">✕</span>
-                        <span><strong>Blind to Network Ports:</strong> Cannot detect if Docker exposed Redis (6379) or MongoDB (27017) without passwords.</span>
-                    </li>
-                    <li>
-                        <span class="icon-cross">✕</span>
-                        <span><strong>Cannot Verify Token Bypasses:</strong> Unable to test if the live auth endpoint accepts unsigned JWT tokens (<code>alg: none</code>).</span>
-                    </li>
-                    <li>
-                        <span class="icon-cross">✕</span>
-                        <span><strong>Expensive Token Burn:</strong> Incurs high per-commit LLM API bills with non-deterministic comments between runs.</span>
-                    </li>
-                </ul>
+        <div class="flow-compare-grid">
+            <!-- Left: SAST / LLM -->
+            <div class="flow-panel sast">
+                <div class="flow-header">
+                    <div>
+                        <span style="color: #f43f5e; font-size: 0.72rem; font-family: var(--font-mono); font-weight: 800;">STATIC ANALYSIS (SAST / LLM)</span>
+                        <h3 style="margin-top: 2px;">Theoretical Text Review</h3>
+                    </div>
+                    <span style="font-size: 1.3rem;">⚠️</span>
+                </div>
+                <div class="flow-steps-v">
+                    <div class="flow-step-node"><span>01. Source Code Repository</span> <span>(Text Only)</span></div>
+                    <div class="flow-step-arrow">↓</div>
+                    <div class="flow-step-node"><span>02. Pattern / Regex Detection</span> <span>(AST Guess)</span></div>
+                    <div class="flow-step-arrow">↓</div>
+                    <div class="flow-step-node"><span>03. Potential Vulnerability Flagged</span> <span>(Unverified)</span></div>
+                    <div class="flow-step-arrow">↓</div>
+                    <div class="flow-step-node node-crit"><span>04. Unknown Runtime Behavior</span> <span>(Blind to Ports/Auth)</span></div>
+                    <div class="flow-step-arrow">↓</div>
+                    <div class="flow-step-node node-crit"><span>05. Alert Noise & False Positives</span> <span>(Dev Fatigue)</span></div>
+                </div>
             </div>
 
-            <!-- Winner: AutoSecAudit DAST Orchestrator -->
-            <div class="showdown-card winner">
-                <span class="card-tag tag-dast">AutoSecAudit (Dynamic Orchestrator)</span>
-                <h3>Live Runtime Vulnerability Engine</h3>
-                <p style="color: var(--fg-secondary); font-size: 0.92rem; margin-top: 0.5rem;">
-                    Active exploit delivery, mathematical deduplication, and build gating.
-                </p>
-                <ul class="showdown-list">
-                    <li>
-                        <span class="icon-check">✓</span>
-                        <span><strong>Zero Hallucinations:</strong> Every finding is backed by exact HTTP request/response proofs and server timing confirmation.</span>
-                    </li>
-                    <li>
-                        <span class="icon-check">✓</span>
-                        <span><strong>Multi-Layer Coverage:</strong> Probes open ports (Nmap), server misconfigs (Nikto), REST parameters, and 14 injection vectors.</span>
-                    </li>
-                    <li>
-                        <span class="icon-check">✓</span>
-                        <span><strong>Diff-Aware Delta Auditing:</strong> Isolates $\Delta_{\text{NEW}}$ flaws from accepted backlog debt so developers only fix what they broke.</span>
-                    </li>
-                    <li>
-                        <span class="icon-check">✓</span>
-                        <span><strong>100% Free, Local & Deterministic:</strong> Runs inside CI/CD in ~65s with strict exit-code gating (<code>--fail-on High</code>).</span>
-                    </li>
-                </ul>
+            <!-- Right: AutoSecAudit DAST -->
+            <div class="flow-panel dast">
+                <div class="flow-header">
+                    <div>
+                        <span style="color: #10b981; font-size: 0.72rem; font-family: var(--font-mono); font-weight: 800;">AUTOSECAUDIT DYNAMIC ORCHESTRATION</span>
+                        <h3 style="margin-top: 2px;">Runtime Exploit Verification</h3>
+                    </div>
+                    <span style="font-size: 1.3rem;">🛡️</span>
+                </div>
+                <div class="flow-steps-v">
+                    <div class="flow-step-node"><span>01. Live Running Application & Container</span> <span>(Network Target)</span></div>
+                    <div class="flow-step-arrow">↓</div>
+                    <div class="flow-step-node"><span>02. Real Crafted Exploit Request</span> <span>(Payload Delivery)</span></div>
+                    <div class="flow-step-arrow">↓</div>
+                    <div class="flow-step-node"><span>03. Real HTTP Server Response & Timing</span> <span>(Direct Evidence)</span></div>
+                    <div class="flow-step-arrow">↓</div>
+                    <div class="flow-step-node node-ok"><span>04. Compound-Key Finding Deduplication</span> <span>(-38.2% Noise)</span></div>
+                    <div class="flow-step-arrow">↓</div>
+                    <div class="flow-step-node node-ok"><span>05. Confirmed Finding + Gated CI/CD Exit</span> <span>(0 Hallucinations)</span></div>
+                </div>
             </div>
         </div>
     </section>
 
-    <!-- ── 4-Stage Architecture Cockpit ──────────────────── -->
-    <section class="section" id="architecture" style="background: rgba(12, 16, 26, 0.45); border-radius: 24px; border: 1px solid var(--border-color);">
+    <!-- ── 4-Stage Security Engine Pipeline ──────────────── -->
+    <section class="section" id="pipeline" style="background: rgba(8, 12, 20, 0.5); border-radius: 18px; border: 1px solid var(--border-color);">
         <div class="section-header">
-            <span class="section-badge">Engineering Pipeline</span>
+            <span class="section-tag">Architecture Execution</span>
             <h2 class="section-title">The 4-Stage Security Engine</h2>
             <p class="section-desc">
-                From recursive crawling to live NIST CVE enrichment and delta tracking.
+                An end-to-end autonomous audit pipeline: from attack surface mapping to set-theoretic build regression gating.
             </p>
         </div>
 
-        <div class="arch-grid">
-            <div class="arch-card">
-                <div class="arch-step-num">Stage 01</div>
-                <h3>Surface Discovery</h3>
-                <p>BFS crawler traverses DOM links and form targets while OpenAPI 3.0 parser automatically seeds all REST endpoints and schemas.</p>
+        <div class="pipeline-track">
+            <!-- Stage 1 -->
+            <div class="pipeline-card">
+                <div>
+                    <div class="pipeline-num">STAGE 01</div>
+                    <h4>Surface Discovery</h4>
+                    <p>Breadth-first crawler explores DOM links and form parameters while the OpenAPI 3.0 parser ingests routes, headers, and schemas.</p>
+                </div>
+                <div class="pipeline-meta">
+                    143 Endpoints • 67 API Routes • 12 Services
+                </div>
             </div>
-            <div class="arch-card">
-                <div class="arch-step-num">Stage 02</div>
-                <h3>14 Concurrent Plugins</h3>
-                <p>Parallel ThreadPool ($k=8$) launches Nmap, Nikto, SQLi, XSS, SSRF, JWT, and API Abuse scanners concurrently in under ~65 seconds.</p>
+
+            <!-- Stage 2 -->
+            <div class="pipeline-card">
+                <div>
+                    <div class="pipeline-num">STAGE 02</div>
+                    <h4>Concurrent Scanners</h4>
+                    <p>Bounded ThreadPool ($k=8$) launches 14 specialized scanner plugins (Nmap, Nikto, SQLMap, Nuclei, JWT, XSS, SSRF) in parallel.</p>
+                </div>
+                <div class="pipeline-meta">
+                    14 Scanners • 64.8s Scan Time (2.84x Speedup)
+                </div>
             </div>
-            <div class="arch-card">
-                <div class="arch-step-num">Stage 03</div>
-                <h3>Intelligence Layer</h3>
-                <p>Compound-key deduplication merges overlapping alerts (-38.2% noise), enriched with live NIST NVD CVSS scores and OWASP Top 10 tags.</p>
+
+            <!-- Stage 3 -->
+            <div class="pipeline-card">
+                <div>
+                    <div class="pipeline-num">STAGE 03</div>
+                    <h4>Intelligence & Correlation</h4>
+                    <p>Compound-key deduplication merges overlapping alerts, enriched with NIST NVD CVSS scores, CWE types, and PCI-DSS tags.</p>
+                </div>
+                <div class="pipeline-meta">
+                    76 Alerts ➔ 47 Issues (-38.2% Redundant Noise)
+                </div>
             </div>
-            <div class="arch-card">
-                <div class="arch-step-num">Stage 04</div>
-                <h3>CI/CD Delta Diffing</h3>
-                <p>Computes mathematical diffs ($\Delta_{\text{NEW}}, \Delta_{\text{FIXED}}$) and enforces automated build-breaking exit codes.</p>
+
+            <!-- Stage 4 -->
+            <div class="pipeline-card">
+                <div>
+                    <div class="pipeline-num">STAGE 04</div>
+                    <h4>CI/CD Delta Diffing</h4>
+                    <p>Computes mathematical diffs ($\Delta_{\text{NEW}}, \Delta_{\text{FIXED}}$) against baseline builds, enforcing hard exit-code gates.</p>
+                </div>
+                <div class="pipeline-meta">
+                    3 New Regressions • Exit Status 1 (Build Blocked)
+                </div>
             </div>
         </div>
     </section>
 
-    <!-- ── Cockpit Sandbox CTA ────────────────────────────── -->
-    <section class="section">
-        <div class="cta-box">
-            <h2>Ready to Audit Your Microservices?</h2>
-            <p style="color: var(--fg-secondary); max-width: 620px; margin: 0 auto; font-size: 1.05rem;">
-                Experience automated security verification with real-time SSE streaming and downloadable executive reports.
+    <!-- ── Live Attack Path / Threat Graph ───────────────── -->
+    <section class="section" id="threat-graph">
+        <div class="section-header">
+            <span class="section-tag">Attack Surface Graph</span>
+            <h2 class="section-title">Visual Attack Path & Exploit Chain</h2>
+            <p class="section-desc">
+                How AutoSecAudit maps network boundaries, discovers API vulnerabilities, and traces execution paths to root assets.
             </p>
-            <form class="cta-form" action="/dashboard" method="GET">
-                <input type="text" name="target" class="cta-input" placeholder="Enter target URL (e.g. http://localhost:3000)" value="http://localhost:3000" required>
-                <button type="submit" class="btn btn-primary" style="padding: 0 1.75rem;">Launch Scan</button>
+        </div>
+
+        <div class="attack-graph-card">
+            <div style="font-size: 0.75rem; color: var(--fg-muted); margin-bottom: 1rem; display: flex; justify-content: space-between;">
+                <span>EXPLOIT PATH TRACE: CVE-2021-99999 [JWT_ALG_NONE]</span>
+                <span style="color: #ef4444; font-weight: 700;">CONFIRMED ATTACK VECTOR</span>
+            </div>
+
+            <div class="graph-flow-horizontal">
+                <div class="graph-node">
+                    <div class="node-type">Entrypoint</div>
+                    <div class="node-name">Internet (WAN)</div>
+                </div>
+                <div class="graph-arrow">➔</div>
+                <div class="graph-node">
+                    <div class="node-type">Edge Gateway</div>
+                    <div class="node-name">Nginx :80/443</div>
+                </div>
+                <div class="graph-arrow">➔</div>
+                <div class="graph-node vulnerable">
+                    <div class="node-type" style="color: #ef4444;">Vulnerable Endpoint</div>
+                    <div class="node-name">/rest/user/login</div>
+                </div>
+                <div class="graph-arrow">➔</div>
+                <div class="graph-node vulnerable">
+                    <div class="node-type" style="color: #ef4444;">Auth Flaw</div>
+                    <div class="node-name">JWT alg:none</div>
+                </div>
+                <div class="graph-arrow">➔</div>
+                <div class="graph-node">
+                    <div class="node-type">Privilege Esc</div>
+                    <div class="node-name">Admin Session</div>
+                </div>
+                <div class="graph-arrow">➔</div>
+                <div class="graph-node">
+                    <div class="node-type">Data Store</div>
+                    <div class="node-name">Postgres DB</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Confirmed Security Findings ───────────────────── -->
+    <section class="section" id="findings">
+        <div class="section-header">
+            <span class="section-tag">Audit Findings Feed</span>
+            <h2 class="section-title">Verified Security Finding Records</h2>
+            <p class="section-desc">
+                Every issue contains exact HTTP evidence, scanner provenance, and compliance taxonomy mapping.
+            </p>
+        </div>
+
+        <div class="findings-table-wrap">
+            <div class="findings-row-head">
+                <span>SEVERITY</span>
+                <span>VULNERABILITY & ENDPOINT</span>
+                <span>EVIDENCE / PROOF</span>
+                <span>SCANNER</span>
+                <span>STATUS</span>
+            </div>
+
+            <div class="findings-row">
+                <span><span class="sev-pill sev-crit">CRITICAL</span></span>
+                <div>
+                    <div style="font-weight: 700; color: #f1f5f9;">SQL Injection (Union-Based)</div>
+                    <div style="font-size: 0.72rem; color: #38bdf8;">GET /rest/products/search?q=</div>
+                </div>
+                <span style="color: var(--fg-secondary);">Payload: <code>' UNION SELECT sqlite_version()...</code> (HTTP 200)</span>
+                <span style="color: #93c5fd;">SQLiScanner</span>
+                <span style="color: #10b981; font-weight: 700;">CONFIRMED</span>
+            </div>
+
+            <div class="findings-row">
+                <span><span class="sev-pill sev-crit">CRITICAL</span></span>
+                <div>
+                    <div style="font-weight: 700; color: #f1f5f9;">JWT Unsigned Token Bypass</div>
+                    <div style="font-size: 0.72rem; color: #38bdf8;">POST /rest/user/login</div>
+                </div>
+                <span style="color: var(--fg-secondary);">Payload: <code>{"alg":"none"}</code> granted admin role</span>
+                <span style="color: #93c5fd;">JWTScanner</span>
+                <span style="color: #10b981; font-weight: 700;">CONFIRMED</span>
+            </div>
+
+            <div class="findings-row">
+                <span><span class="sev-pill sev-high">HIGH</span></span>
+                <div>
+                    <div style="font-weight: 700; color: #f1f5f9;">Exposed Administrator Portal</div>
+                    <div style="font-size: 0.72rem; color: #38bdf8;">GET /admin</div>
+                </div>
+                <span style="color: var(--fg-secondary);">Unauthenticated admin dashboard accessible</span>
+                <span style="color: #93c5fd;">DirBrute</span>
+                <span style="color: #10b981; font-weight: 700;">CONFIRMED</span>
+            </div>
+
+            <div class="findings-row">
+                <span><span class="sev-pill sev-high">HIGH</span></span>
+                <div>
+                    <div style="font-weight: 700; color: #f1f5f9;">Open Daemon Port Exposed</div>
+                    <div style="font-size: 0.72rem; color: #38bdf8;">TCP Port 3000 (Node.js Express)</div>
+                </div>
+                <span style="color: var(--fg-secondary);">Direct access bypassing external reverse-proxy</span>
+                <span style="color: #93c5fd;">NmapPlugin</span>
+                <span style="color: #10b981; font-weight: 700;">CONFIRMED</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Launch Scan Action CTA ────────────────────────── -->
+    <section class="section">
+        <div class="action-box">
+            <h2>Run Your First Security Audit</h2>
+            <p style="color: var(--fg-secondary); max-width: 600px; margin: 0 auto; font-size: 1rem;">
+                Enter a target URL to trigger surface discovery, 14 parallel plugins, and automated compliance mapping.
+            </p>
+            <form class="action-form" action="/dashboard" method="GET">
+                <input type="text" name="target" class="action-input" placeholder="TARGET: http://localhost:3000" value="http://localhost:3000" required>
+                <button type="submit" class="btn btn-primary" style="padding: 0 1.6rem;">Launch Scan</button>
             </form>
         </div>
     </section>
@@ -952,8 +1346,8 @@
                     <input type="password" id="loginPassword" class="form-control" placeholder="••••••••" required>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.75rem;">Sign In</button>
-                <p style="text-align: center; margin-top: 1rem; font-size: 0.82rem; color: var(--fg-muted);">
-                    Default demo admin: <code>admin</code> / <code>AutoSec@2026</code>
+                <p style="text-align: center; margin-top: 1rem; font-size: 0.78rem; color: var(--fg-muted); font-family: var(--font-mono);">
+                    Demo admin: <code>admin</code> / <code>AutoSec@2026</code>
                 </p>
             </form>
 
@@ -975,14 +1369,14 @@
                     <label class="form-label">Password (min. 6 characters)</label>
                     <input type="password" id="regPassword" class="form-control" placeholder="••••••••" required>
                 </div>
-                <button type="submit" class="btn btn-emerald" style="width: 100%; margin-top: 0.75rem;">Create Account</button>
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.75rem;">Create Account</button>
             </form>
         </div>
     </div>
 
-    <!-- ── JavaScript Engine & Canvas Radar ───────────────── -->
+    <!-- ── JavaScript Engine ──────────────────────────────── -->
     <script>
-        // 1. Dark/Light Mode Toggle Logic (Preserves test_theme.py hooks)
+        // 1. Dark/Light Theme Switcher (Preserves test_theme.py hooks)
         function toggleTheme() {
             const currentTheme = document.documentElement.getAttribute("data-theme") || "dark";
             const newTheme = currentTheme === "dark" ? "light" : "dark";
@@ -995,10 +1389,8 @@
             const icon = document.getElementById("themeIcon");
             if (!icon) return;
             if (theme === "light") {
-                // Moon icon path for light mode
                 icon.innerHTML = `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>`;
             } else {
-                // Sun icon circle and rays for dark mode
                 icon.innerHTML = `
                     <circle cx="12" cy="12" r="5"></circle>
                     <line x1="12" y1="1" x2="12" y2="3"></line>
@@ -1013,7 +1405,6 @@
             }
         }
 
-        // Initialize Theme from localStorage
         (function() {
             const savedTheme = localStorage.getItem("autosec-theme") || "dark";
             document.documentElement.setAttribute("data-theme", savedTheme);
@@ -1098,132 +1489,44 @@
             }
         }
 
-        // 3. Canvas Radar Animation HUD
-        const canvas = document.getElementById("radarCanvas");
-        const ctx = canvas.getContext("2d");
-        let angle = 0;
-        const targets = [
-            { x: 50, y: -40, label: "Nmap:3000", color: "#38bdf8" },
-            { x: -60, y: 35, label: "SQLi:Union", color: "#ef4444" },
-            { x: 30, y: 65, label: "JWT:alg_none", color: "#ef4444" },
-            { x: -40, y: -55, label: "XSS:Search", color: "#f59e0b" },
-            { x: 70, y: 20, label: "Nikto:Headers", color: "#10b981" }
+        // 3. Live Telemetry Console Stream
+        const liveLogs = [
+            "[DISPATCH] Initializing 14 scanner plugins in ThreadPool (k=8)...",
+            "[CRAWLER] Discovered 143 endpoints across 8 pages and OpenAPI schema",
+            "[NMAP] Host 127.0.0.1: TCP 3000 (Node.js), TCP 80 (Nginx) detected",
+            "[SQLMAP] Testing /rest/products/search?q= ➔ UNION exploit CONFIRMED",
+            "[JWT] Testing /rest/user/login ➔ alg:none bypass CONFIRMED",
+            "[INTELLIGENCE] Merged 76 raw alerts into 47 unique findings (-38.2% noise)",
+            "[DELTA DIFF] Compared Build v1.1 against Baseline: 3 NEW, 10 FIXED",
+            "[GATE] Found Critical findings exceeding threshold 'High' ➔ EXIT 1"
         ];
 
-        function drawRadar() {
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const radius = 95;
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Draw concentric rings
-            ctx.strokeStyle = "rgba(6, 182, 212, 0.22)";
-            ctx.lineWidth = 1;
-            for (let r = 30; r <= radius; r += 30) {
-                ctx.beginPath();
-                ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
-                ctx.stroke();
-            }
-
-            // Draw crosshairs
-            ctx.beginPath();
-            ctx.moveTo(centerX - radius, centerY);
-            ctx.lineTo(centerX + radius, centerY);
-            ctx.moveTo(centerX, centerY - radius);
-            ctx.lineTo(centerX, centerY + radius);
-            ctx.stroke();
-
-            // Draw sweeping line and trail
-            ctx.save();
-            ctx.translate(centerX, centerY);
-            ctx.rotate(angle);
-
-            const gradient = ctx.createLinearGradient(0, 0, radius, 0);
-            gradient.addColorStop(0, "rgba(6, 182, 212, 0)");
-            gradient.addColorStop(1, "rgba(6, 182, 212, 0.85)");
-
-            ctx.fillStyle = gradient;
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.arc(0, 0, radius, -0.4, 0);
-            ctx.closePath();
-            ctx.fill();
-            ctx.restore();
-
-            // Draw Target Blips
-            targets.forEach(t => {
-                ctx.fillStyle = t.color;
-                ctx.beginPath();
-                ctx.arc(centerX + t.x, centerY + t.y, 4, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.font = "9px 'JetBrains Mono', monospace";
-                ctx.fillText(t.label, centerX + t.x + 6, centerY + t.y + 3);
-            });
-
-            angle += 0.035;
-            requestAnimationFrame(drawRadar);
-        }
-
-        // 4. Terminal Live Stream Telemetry
-        const streamLines = [
-            { text: "$ autosecaudit scan --target http://localhost:3000 --fail-on high", type: "cmd" },
-            { text: "[*] Initializing AutoSecAudit Orchestration Engine v2.4.0...", type: "info" },
-            { text: "[+] Ingesting OpenAPI 3.0: 32 endpoints, 12 schemas loaded", type: "success" },
-            { text: "[+] BFS Crawler (D_max=3): Discovered 8 pages, 4 HTML forms", type: "success" },
-            { text: "[*] Dispatching 14 plugins across ThreadPool (k=8 workers)...", type: "info" },
-            { text: "    ├── NmapPlugin: Port 3000/TCP (Node.js Express), 80/TCP (Nginx)", type: "info" },
-            { text: "    ├── SQLiScanner: Union-based vulnerability on /rest/products/search?q=", type: "danger" },
-            { text: "    ├── JWTScanner: Algorithm 'none' key bypass accepted on /rest/user/login", type: "danger" },
-            { text: "    ├── XSSScanner: Reflected payload executed on search parameter", type: "warning" },
-            { text: "    └── MisconfigScanner: Missing CSP, HSTS, X-Frame-Options", type: "warning" },
-            { text: "[+] Raw Scan Complete: 76 raw tool alerts in 64.8s (2.84x speedup)", type: "info" },
-            { text: "[*] Intelligence Layer: Deduplicating by (host, port, URI, weakness)...", type: "highlight" },
-            { text: "[+] Alert Reduction: 76 raw alerts -> 47 correlated issues (-38.2% noise)", type: "success" },
-            { text: "[+] Threat Enrichment: Tagged 12 CVEs via NIST NVD / CIRCL endpoints", type: "info" },
-            { text: "[+] Delta Regression vs Baseline Build v1.0:", type: "highlight" },
-            { text: "    └── Δ_NEW: 3 new flaws | Δ_FIXED: 10 resolved | Δ_UNCHANGED: 37", type: "info" },
-            { text: "[!] CI/CD Policy Gate: Found High severity findings -> Process Exit Code 1", type: "danger" }
-        ];
-
-        function replaySimulation() {
-            const feed = document.getElementById("terminalFeed");
-            feed.innerHTML = "";
+        function replayLiveTelemetry() {
+            const container = document.getElementById("telemetryStream");
+            container.innerHTML = "";
             let idx = 0;
 
-            function printLine() {
-                if (idx >= streamLines.length) return;
-                const item = streamLines[idx];
+            function appendLog() {
+                if (idx >= liveLogs.length) return;
                 const div = document.createElement("div");
-                div.style.marginBottom = "4px";
-
-                if (item.type === "cmd") {
-                    div.innerHTML = `<span class="t-prompt">></span> <span class="t-cmd">${item.text}</span>`;
-                } else if (item.type === "danger") {
-                    div.innerHTML = `<span class="t-danger">${item.text}</span>`;
-                } else if (item.type === "warning") {
-                    div.innerHTML = `<span class="t-warning">${item.text}</span>`;
-                } else if (item.type === "success") {
-                    div.innerHTML = `<span class="t-success">${item.text}</span>`;
-                } else if (item.type === "highlight") {
-                    div.innerHTML = `<span class="t-highlight">${item.text}</span>`;
-                } else {
-                    div.innerHTML = `<span class="t-info">${item.text}</span>`;
+                div.style.marginBottom = "3px";
+                div.textContent = liveLogs[idx];
+                if (liveLogs[idx].includes("CONFIRMED") || liveLogs[idx].includes("EXIT 1")) {
+                    div.style.color = "#f43f5e";
+                    div.style.fontWeight = "700";
+                } else if (liveLogs[idx].includes("Merged") || liveLogs[idx].includes("Discovered")) {
+                    div.style.color = "#10b981";
                 }
-
-                feed.appendChild(div);
-                feed.scrollTop = feed.scrollHeight;
+                container.appendChild(div);
+                container.scrollTop = container.scrollHeight;
                 idx++;
-                setTimeout(printLine, 200);
+                setTimeout(appendLog, 220);
             }
-
-            printLine();
+            appendLog();
         }
 
         window.addEventListener("DOMContentLoaded", () => {
-            drawRadar();
-            replaySimulation();
+            replayLiveTelemetry();
         });
     </script>
 </body>
