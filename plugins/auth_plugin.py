@@ -29,7 +29,7 @@ class AuthScanner(BaseScanner):
         "Content-Type": "application/json",
     }
 
-    TIMEOUT = 10
+    REQUEST_TIMEOUT = (3.0, 8.0)
 
     LOGIN_PATHS = ["/login", "/admin", "/api/auth", "/rest/user/login"]
 
@@ -87,7 +87,7 @@ class AuthScanner(BaseScanner):
                         url,
                         json=creds,
                         headers=self.HEADERS,
-                        timeout=self.TIMEOUT,
+                        timeout=self.REQUEST_TIMEOUT,
                         allow_redirects=False,
                         verify=False,
                     )
@@ -138,7 +138,7 @@ class AuthScanner(BaseScanner):
                 resp = requests.get(
                     url,
                     headers=self.HEADERS,
-                    timeout=self.TIMEOUT,
+                    timeout=self.REQUEST_TIMEOUT,
                     verify=False,
                 )
 
@@ -201,7 +201,7 @@ class AuthScanner(BaseScanner):
                     register_url,
                     json=payload,
                     headers=self.HEADERS,
-                    timeout=self.TIMEOUT,
+                    timeout=self.REQUEST_TIMEOUT,
                     verify=False,
                 )
 
@@ -236,7 +236,7 @@ class AuthScanner(BaseScanner):
                 resp = requests.get(
                     url,
                     headers=self.HEADERS,
-                    timeout=self.TIMEOUT,
+                    timeout=self.REQUEST_TIMEOUT,
                     verify=False,
                 )
 
@@ -286,7 +286,7 @@ class AuthScanner(BaseScanner):
                     reset_url,
                     json={"email": email},
                     headers=self.HEADERS,
-                    timeout=self.TIMEOUT,
+                    timeout=self.REQUEST_TIMEOUT,
                     verify=False,
                 )
                 responses[email] = resp
@@ -343,7 +343,7 @@ class AuthScanner(BaseScanner):
                     login_url,
                     json=payload,
                     headers=self.HEADERS,
-                    timeout=self.TIMEOUT,
+                    timeout=self.REQUEST_TIMEOUT,
                     verify=False,
                 )
                 # If the server keeps responding (not 429), it lacks limiting

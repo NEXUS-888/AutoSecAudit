@@ -33,6 +33,19 @@ app.secret_key = config.SECRET_KEY
 # ---------------------------------------------------------------------------
 scan_jobs = {}  # {scan_id: {"status", "target", "progress_queue", "report_name", "error"}}
 
+SCAN_JOB_TTL_SECONDS = 3600  # 1 hour
+
+def _cleanup_stale_jobs():
+    """Remove scan jobs older than TTL to prevent memory leaks."""
+    now = time.time()
+    stale = [sid for sid, job in scan_jobs.items()
+             if job.get("created_at", 0) < now - SCAN_JOB_TTL_SECONDS
+             and job.get("status") in ("done", "error")]
+    for sid in stale:
+        del scan_jobs[sid]
+    if stale:
+        logger.info(f"Cleaned up {len(stale)} stale scan job(s)")
+
 
 # ---------------------------------------------------------------------------
 # Security: Validate report IDs to prevent path traversal
@@ -1349,7 +1362,7 @@ def history():
 # ---------------------------------------------------------------------------
 # SSE: Async scan with real-time progress streaming
 # ---------------------------------------------------------------------------
-def _run_scan_background(scan_id: str, target: str, previous_path: str = None):
+def _run_scan_background(scan_id: str, target: str, previous_path: str = None, openapi_path: str = None):
     """Run a scan in a background thread, pushing progress events to the queue."""
     job = scan_jobs[scan_id]
     q = job["progress_queue"]
@@ -1368,6 +1381,14 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None):
         if not engine.set_target(target):
             raise ValueError("Invalid target URL")
         emit("init", f"Target: {target} — {len(engine.plugins)} plugins loaded", 10)
+
+        if openapi_path:
+            from core.openapi import OpenAPIImporter
+            importer = OpenAPIImporter(openapi_path)
+            if importer.load_spec():
+                imported_eps = importer.get_endpoints()
+                engine.crawler_data["injectable_endpoints"] = imported_eps
+                emit("init", f"Imported {len(imported_eps)} endpoints from OpenAPI spec", 13)
 
         if previous_path:
             engine.set_previous_report(previous_path)
@@ -1401,7 +1422,9 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None):
             previous_data = load_json(previous_path)
             if previous_data:
                 from core.models import Finding
-                prev_findings = [Finding(**f) for f in previous_data.get("all_findings", [])]
+                import dataclasses
+                _valid_fields = {fld.name for fld in dataclasses.fields(Finding)}
+                prev_findings = [Finding(**{k: v for k, v in f.items() if k in _valid_fields}) for f in previous_data.get("all_findings", [])]
                 prev_report = Report(
                     target=previous_data.get("target", ""),
                     timestamp=previous_data.get("timestamp", ""),
@@ -1448,16 +1471,18 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None):
         job["error"] = str(e)
         emit("error", f"Scan failed: {str(e)}", 0)
     finally:
-        if previous_path and os.path.exists(previous_path):
-            try:
-                os.remove(previous_path)
-            except OSError:
-                pass
+        for tmp_path in [previous_path, openapi_path]:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
 
 
 @app.route("/scan/async", methods=["POST"])
 def scan_async():
     """Start a scan in the background, return a scan_id for SSE streaming."""
+    _cleanup_stale_jobs()
     target = request.form.get("target", "").strip()
     if not target:
         return jsonify({"error": "Target is required"}), 400
@@ -1469,9 +1494,20 @@ def scan_async():
     previous_file = request.files.get("previous_report")
     previous_path = None
     if previous_file and previous_file.filename:
+        import tempfile
         filename = secure_filename(previous_file.filename)
-        previous_path = f"{config.DATA_DIR}/temp_{filename}"
-        previous_file.save(previous_path)
+        with tempfile.NamedTemporaryFile(delete=False, dir=config.DATA_DIR, prefix=f"temp_prev_{filename}_", suffix=".json") as tmp:
+            previous_file.save(tmp.name)
+            previous_path = tmp.name
+
+    openapi_file = request.files.get("openapi_spec")
+    openapi_path = None
+    if openapi_file and openapi_file.filename:
+        import tempfile
+        filename = secure_filename(openapi_file.filename)
+        with tempfile.NamedTemporaryFile(delete=False, dir=config.DATA_DIR, prefix=f"temp_openapi_{filename}_", suffix=".json") as tmp:
+            openapi_file.save(tmp.name)
+            openapi_path = tmp.name
 
     scan_id = str(uuid.uuid4())[:8]
     scan_jobs[scan_id] = {
@@ -1480,11 +1516,12 @@ def scan_async():
         "progress_queue": queue.Queue(),
         "report_name": None,
         "error": None,
+        "created_at": time.time(),
     }
 
     thread = threading.Thread(
         target=_run_scan_background,
-        args=(scan_id, target, previous_path),
+        args=(scan_id, target, previous_path, openapi_path),
         daemon=True,
     )
     thread.start()
@@ -1591,7 +1628,9 @@ def scan():
             previous_data = load_json(previous_path)
             if previous_data:
                 from core.models import Finding
-                prev_findings = [Finding(**f) for f in previous_data.get("all_findings", [])]
+                import dataclasses
+                _valid_fields = {fld.name for fld in dataclasses.fields(Finding)}
+                prev_findings = [Finding(**{k: v for k, v in f.items() if k in _valid_fields}) for f in previous_data.get("all_findings", [])]
                 prev_report = Report(
                     target=previous_data.get("target", ""),
                     timestamp=previous_data.get("timestamp", ""),

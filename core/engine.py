@@ -24,6 +24,7 @@ class Engine:
         self.target: str = ""
         self.previous_report: Optional[Dict[str, Any]] = None
         self.crawl_result = None  # populated by run_plugins
+        self.crawler_data: Dict[str, Any] = {}  # populated by OpenAPI importer
 
     def load_plugins(self, plugins_dir: Optional[str] = None) -> int:
         """Dynamically load all plugins from the plugins directory."""

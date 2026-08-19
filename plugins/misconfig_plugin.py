@@ -28,7 +28,7 @@ class MisconfigScanner(BaseScanner):
         "Accept": "text/html, application/json, */*",
     }
 
-    TIMEOUT = 10
+    REQUEST_TIMEOUT = (3.0, 8.0)
 
     SECURITY_HEADERS: Dict[str, Dict[str, Any]] = {
         "Strict-Transport-Security": {
@@ -138,7 +138,7 @@ class MisconfigScanner(BaseScanner):
             resp = requests.get(
                 base_url,
                 headers=self.HEADERS,
-                timeout=self.TIMEOUT,
+                timeout=self.REQUEST_TIMEOUT,
                 verify=False,
             )
         except requests.RequestException as exc:
@@ -175,7 +175,7 @@ class MisconfigScanner(BaseScanner):
             resp = requests.get(
                 base_url,
                 headers=cors_headers,
-                timeout=self.TIMEOUT,
+                timeout=self.REQUEST_TIMEOUT,
                 verify=False,
             )
         except requests.RequestException as exc:
@@ -231,7 +231,7 @@ class MisconfigScanner(BaseScanner):
                 resp = requests.get(
                     url,
                     headers=self.HEADERS,
-                    timeout=self.TIMEOUT,
+                    timeout=self.REQUEST_TIMEOUT,
                     verify=False,
                 )
 
@@ -282,7 +282,7 @@ class MisconfigScanner(BaseScanner):
                 resp = requests.get(
                     url,
                     headers=self.HEADERS,
-                    timeout=self.TIMEOUT,
+                    timeout=self.REQUEST_TIMEOUT,
                     verify=False,
                 )
 
@@ -318,7 +318,7 @@ class MisconfigScanner(BaseScanner):
             resp = requests.get(
                 url,
                 headers=self.HEADERS,
-                timeout=self.TIMEOUT,
+                timeout=self.REQUEST_TIMEOUT,
                 verify=False,
             )
         except requests.RequestException as exc:
@@ -359,7 +359,7 @@ class MisconfigScanner(BaseScanner):
             resp = requests.options(
                 base_url,
                 headers=self.HEADERS,
-                timeout=self.TIMEOUT,
+                timeout=self.REQUEST_TIMEOUT,
                 verify=False,
             )
         except requests.RequestException as exc:
@@ -404,7 +404,7 @@ class MisconfigScanner(BaseScanner):
             resp = requests.get(
                 base_url,
                 headers=self.HEADERS,
-                timeout=self.TIMEOUT,
+                timeout=self.REQUEST_TIMEOUT,
                 verify=False,
             )
         except requests.RequestException as exc:

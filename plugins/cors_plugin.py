@@ -22,7 +22,7 @@ from plugins.base_plugin import BaseScanner
 logger = logging.getLogger(__name__)
 
 HEADERS = {"User-Agent": "AutoSecAudit/2.0 CORS-Scanner"}
-REQUEST_TIMEOUT = 8
+REQUEST_TIMEOUT = (3.0, 8.0)
 
 # Test origins to probe with
 EVIL_ORIGINS = [

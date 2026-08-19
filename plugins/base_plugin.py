@@ -3,6 +3,8 @@ from typing import Dict, Any, Optional, Tuple
 import logging
 import shutil
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import config
 
 logger = logging.getLogger(__name__)
@@ -16,10 +18,23 @@ class BaseScanner(ABC):
         self.mock_mode = mock_mode if mock_mode is not None else config.MOCK_MODE
         self._tool_available: Optional[bool] = None
         self.discovered_endpoints: list = []  # populated by engine from crawler
+        self._baseline_cache: Dict[str, Any] = {}
 
     def set_discovered_endpoints(self, endpoints: list) -> None:
         """Set discovered endpoints from the web crawler."""
         self.discovered_endpoints = endpoints
+
+    @staticmethod
+    def _parse_target(target: str):
+        """Return (base_url, host, port) from a target string."""
+        import urllib.parse
+        if not target.startswith(("http://", "https://")):
+            target = f"http://{target}"
+        parsed = urllib.parse.urlparse(target)
+        host = parsed.hostname or parsed.netloc
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        return base_url, host, port
 
     @abstractmethod
     def configure(self, target: str) -> None:
@@ -76,7 +91,6 @@ class BaseScanner(ABC):
     # ------------------------------------------------------------------
     # Baseline verification helpers
     # ------------------------------------------------------------------
-    _baseline_cache: Dict[str, Any] = {}
 
     def _get_baseline(self, url: str, param: str, method: str = "GET",
                       headers: Optional[Dict] = None, timeout: int = 10) -> Optional[Dict[str, Any]]:

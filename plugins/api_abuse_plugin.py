@@ -78,7 +78,7 @@ DEFAULT_HEADERS: Dict[str, str] = {
     "Accept": "application/json",
 }
 
-TIMEOUT = 10  # seconds
+REQUEST_TIMEOUT = (3.0, 8.0)  # seconds
 
 
 class APIAbuseScanner(BaseScanner):
@@ -243,7 +243,7 @@ class APIAbuseScanner(BaseScanner):
         """GET with blanket exception handling."""
         try:
             return requests.get(
-                url, headers=DEFAULT_HEADERS, timeout=TIMEOUT, **kwargs
+                url, headers=DEFAULT_HEADERS, timeout=REQUEST_TIMEOUT, **kwargs
             )
         except requests.RequestException as exc:
             logger.debug(f"GET {url} failed: {exc}")
@@ -257,7 +257,7 @@ class APIAbuseScanner(BaseScanner):
             return requests.post(
                 url,
                 headers=DEFAULT_HEADERS,
-                timeout=TIMEOUT,
+                timeout=REQUEST_TIMEOUT,
                 data=data,
                 json=json_body,
                 **kwargs,
@@ -274,7 +274,7 @@ class APIAbuseScanner(BaseScanner):
             return requests.put(
                 url,
                 headers=DEFAULT_HEADERS,
-                timeout=TIMEOUT,
+                timeout=REQUEST_TIMEOUT,
                 json=json_body,
                 **kwargs,
             )

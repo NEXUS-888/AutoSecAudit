@@ -70,7 +70,7 @@ SECURITY_HEADERS = {
 }
 
 HEADERS = {"User-Agent": "AutoSecAudit/2.0"}
-REQUEST_TIMEOUT = 10
+REQUEST_TIMEOUT = (3.0, 8.0)
 
 
 class XSSScanner(BaseScanner):

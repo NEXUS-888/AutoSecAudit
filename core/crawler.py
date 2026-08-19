@@ -118,7 +118,7 @@ class _LinkFormParser(HTMLParser):
         elif tag == "input" and self._current_form is not None:
             name = attr_dict.get("name", "")
             input_type = attr_dict.get("type", "text").lower()
-            if name and input_type not in ("submit", "button", "hidden", "image"):
+            if name and input_type not in ("submit", "button", "image"):
                 self._current_form["inputs"].append(name)
 
         elif tag == "textarea" and self._current_form is not None:
@@ -235,6 +235,7 @@ class WebCrawler:
             f"[Crawler] Finished — visited {result.pages_visited} pages, "
             f"found {len(result.endpoints)} endpoints, {len(result.forms)} forms"
         )
+        self._session.close()
         return result
 
     def _crawl_page(self, url: str, result: CrawlResult, depth: int) -> None:
@@ -273,8 +274,8 @@ class WebCrawler:
         parser = _LinkFormParser()
         try:
             parser.feed(resp.text)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[Crawler] HTML parse error on {url}: {e}")
 
         current_path = _extract_path(url)
 

@@ -88,7 +88,7 @@ DIRECTORY_WORDLIST: List[Dict[str, Any]] = [
 ]
 
 HEADERS = {"User-Agent": "AutoSecAudit/2.0 DirBuster"}
-REQUEST_TIMEOUT = 5
+REQUEST_TIMEOUT = (3.0, 8.0)
 
 # Status codes that indicate "found"
 FOUND_CODES = {200, 201, 204, 301, 302, 307, 308, 401, 403}

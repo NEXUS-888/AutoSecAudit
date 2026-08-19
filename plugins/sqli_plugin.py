@@ -88,7 +88,7 @@ ENDPOINT_TEMPLATES: List[Dict[str, Any]] = [
 LOGIN_ENDPOINTS = ["/login", "/api/login", "/rest/user/login", "/auth/login"]
 
 HEADERS = {"User-Agent": "AutoSecAudit/2.0"}
-REQUEST_TIMEOUT = 10
+REQUEST_TIMEOUT = (3.0, 8.0)
 
 
 class SQLiScanner(BaseScanner):
