@@ -176,6 +176,7 @@
             font-size: 0.84rem;
             font-weight: 600;
             letter-spacing: -0.01em;
+            cursor: pointer;
         }
 
         .nav-link:hover { color: var(--accent-cyan); }
@@ -273,7 +274,6 @@
             letter-spacing: 0.04em;
             text-transform: uppercase;
             margin-bottom: 1.25rem;
-            animation: fadeInDown 0.6s ease-out;
         }
 
         .status-dot-pulse {
@@ -296,7 +296,6 @@
             line-height: 1.12;
             letter-spacing: -0.035em;
             margin-bottom: 1.25rem;
-            animation: fadeInUp 0.7s ease-out 0.1s both;
         }
 
         .hero-title .highlight-accent {
@@ -310,7 +309,6 @@
             margin-bottom: 2.25rem;
             max-width: 620px;
             line-height: 1.65;
-            animation: fadeInUp 0.7s ease-out 0.2s both;
         }
 
         .hero-cta-row {
@@ -319,7 +317,6 @@
             gap: 1.1rem;
             flex-wrap: wrap;
             margin-bottom: 2.5rem;
-            animation: fadeInUp 0.7s ease-out 0.3s both;
         }
 
         .evidence-metrics-bar {
@@ -328,7 +325,6 @@
             gap: 1rem;
             padding-top: 1.75rem;
             border-top: 1px solid var(--border-color);
-            animation: fadeInUp 0.7s ease-out 0.4s both;
         }
 
         .metric-block .metric-val {
@@ -385,7 +381,6 @@
             overflow: hidden;
             font-family: var(--font-mono);
             font-size: 0.78rem;
-            animation: fadeInScale 0.8s ease-out 0.25s both;
         }
 
         .console-topbar {
@@ -455,9 +450,8 @@
         }
         .progress-bar-fill {
             height: 100%;
-            width: 0%;
+            width: 100%;
             background: linear-gradient(90deg, #6366f1, #06b6d4);
-            transition: width 1.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .discovery-stats-row {
             display: grid;
@@ -487,11 +481,6 @@
             transition: border-color 0.25s ease, background 0.25s ease;
         }
 
-        .scanner-node-item.active-scan {
-            border-color: rgba(6, 182, 212, 0.45);
-            background: #111a2c;
-        }
-
         .scanner-tag {
             font-weight: 700;
             color: #93c5fd;
@@ -502,12 +491,6 @@
             font-weight: 600;
         }
         .scanner-res.alert { color: #f43f5e; font-weight: 700; }
-        .scanner-res.running { color: #f59e0b; font-weight: 700; animation: blink-run 1s infinite; }
-
-        @keyframes blink-run {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
 
         /* Correlation & Diff Pipeline */
         .corr-gate-row {
@@ -545,7 +528,6 @@
             border: 1px solid rgba(244, 63, 94, 0.4);
             padding: 3px 8px;
             border-radius: 4px;
-            transition: all 0.3s ease;
         }
 
         /* Live Terminal Log */
@@ -667,15 +649,8 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            opacity: 0.5;
-            transform: translateX(-5px);
+            opacity: 0.85;
             transition: opacity 0.4s ease, transform 0.4s ease, border-color 0.4s ease;
-        }
-
-        .flow-step-node.active-step {
-            opacity: 1;
-            transform: translateX(0);
-            border-color: rgba(99, 102, 241, 0.4);
         }
 
         .flow-step-arrow {
@@ -711,11 +686,6 @@
         .pipeline-card:hover {
             border-color: var(--border-active);
             transform: translateY(-4px);
-        }
-
-        .pipeline-card.executing {
-            border-color: var(--accent-cyan);
-            box-shadow: 0 0 20px rgba(6, 182, 212, 0.2);
         }
 
         .pipeline-num {
@@ -846,14 +816,7 @@
             grid-template-columns: 100px 1.8fr 1.2fr 120px 100px;
             align-items: center;
             border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-            opacity: 0;
-            transform: translateY(10px);
-            transition: opacity 0.4s ease, transform 0.4s ease, background-color 0.18s ease;
-        }
-
-        .findings-row.is-scanned {
-            opacity: 1;
-            transform: translateY(0);
+            transition: background-color 0.18s ease;
         }
 
         .findings-row:hover {
@@ -1008,20 +971,7 @@
 
         .auth-alert.error { background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.3); display: block; }
         .auth-alert.success { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); display: block; }
-
-        /* Keyframes */
-        @keyframes fadeInDown {
-            from { opacity: 0; transform: translateY(-15px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(18px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes fadeInScale {
-            from { opacity: 0; transform: scale(0.95) translateY(15px); }
-            to { opacity: 1; transform: scale(1) translateY(0); }
-        }
+        .auth-alert.info { background: rgba(6, 182, 212, 0.15); color: #38bdf8; border: 1px solid rgba(6, 182, 212, 0.3); display: block; }
 
         /* ── Reduced Motion Accessibility ──────────────────── */
         @media (prefers-reduced-motion: reduce) {
@@ -1086,7 +1036,13 @@
             <li><a href="#findings" class="nav-link">Findings</a></li>
             <li><a href="#metrics" class="nav-link">Benchmark</a></li>
             <li><a href="/history" class="nav-link">Scan History</a></li>
-            <li><a href="/dashboard" class="nav-link">Scanner Console</a></li>
+            <li>
+                {% if user %}
+                    <a href="/dashboard" class="nav-link">Scanner Console</a>
+                {% else %}
+                    <a href="javascript:void(0)" onclick="requireAuthPrompt('Please sign in to access the security scanner console.')" class="nav-link">Scanner Console</a>
+                {% endif %}
+            </li>
         </ul>
 
         <div class="nav-actions">
@@ -1115,7 +1071,7 @@
                     <a href="/logout" class="btn btn-secondary" style="padding: 0.6rem 0.8rem;">Logout</a>
                 {% else %}
                     <button onclick="openAuthModal('login')" class="btn btn-secondary">Sign In</button>
-                    <a href="/dashboard" class="btn btn-primary">Launch Scanner</a>
+                    <button onclick="requireAuthPrompt('Please sign in or create an account to start scanning.')" class="btn btn-primary">Launch Scanner</button>
                 {% endif %}
             </div>
         </div>
@@ -1136,12 +1092,22 @@
             </p>
 
             <div class="hero-cta-row">
-                <a href="/dashboard" class="btn btn-primary" style="padding: 0.85rem 1.75rem; font-size: 0.95rem;">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
-                        <polygon points="5 3 19 12 5 21 5 3"/>
-                    </svg>
-                    Start Security Scan
-                </a>
+                {% if user %}
+                    <a href="/dashboard" class="btn btn-primary" style="padding: 0.85rem 1.75rem; font-size: 0.95rem;">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                        Start Security Scan
+                    </a>
+                {% else %}
+                    <button onclick="requireAuthPrompt('Create an account or sign in to start your automated security audit.')" class="btn btn-primary" style="padding: 0.85rem 1.75rem; font-size: 0.95rem;">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                        Start Security Scan
+                    </button>
+                {% endif %}
+                
                 <button onclick="replayLiveTelemetry()" class="btn btn-secondary" style="padding: 0.85rem 1.4rem; font-size: 0.95rem;">
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
@@ -1150,7 +1116,7 @@
                 </button>
             </div>
 
-            <!-- Evidence Benchmark Metrics (Count-up enabled) -->
+            <!-- Evidence Benchmark Metrics -->
             <div class="evidence-metrics-bar" id="metrics">
                 <div class="metric-block">
                     <div class="metric-val" id="metric-latency">64.8s</div>
@@ -1453,7 +1419,7 @@
                 <span>STATUS</span>
             </div>
 
-            <div class="findings-row is-scanned">
+            <div class="findings-row">
                 <span><span class="sev-pill sev-crit">CRITICAL</span></span>
                 <div>
                     <div style="font-weight: 700; color: #f1f5f9;">SQL Injection (Union-Based)</div>
@@ -1464,7 +1430,7 @@
                 <span style="color: #10b981; font-weight: 700;">CONFIRMED</span>
             </div>
 
-            <div class="findings-row is-scanned">
+            <div class="findings-row">
                 <span><span class="sev-pill sev-crit">CRITICAL</span></span>
                 <div>
                     <div style="font-weight: 700; color: #f1f5f9;">JWT Unsigned Token Bypass</div>
@@ -1475,7 +1441,7 @@
                 <span style="color: #10b981; font-weight: 700;">CONFIRMED</span>
             </div>
 
-            <div class="findings-row is-scanned">
+            <div class="findings-row">
                 <span><span class="sev-pill sev-high">HIGH</span></span>
                 <div>
                     <div style="font-weight: 700; color: #f1f5f9;">Exposed Administrator Portal</div>
@@ -1486,7 +1452,7 @@
                 <span style="color: #10b981; font-weight: 700;">CONFIRMED</span>
             </div>
 
-            <div class="findings-row is-scanned">
+            <div class="findings-row">
                 <span><span class="sev-pill sev-high">HIGH</span></span>
                 <div>
                     <div style="font-weight: 700; color: #f1f5f9;">Open Daemon Port Exposed</div>
@@ -1506,8 +1472,8 @@
             <p style="color: var(--fg-secondary); max-width: 600px; margin: 0 auto; font-size: 1rem;">
                 Enter a target URL to trigger surface discovery, 14 parallel plugins, and automated compliance mapping.
             </p>
-            <form class="action-form" action="/dashboard" method="GET">
-                <input type="text" name="target" class="action-input" placeholder="TARGET: http://localhost:3000" value="http://localhost:3000" required>
+            <form class="action-form" id="quickScanForm" onsubmit="handleQuickScan(event)">
+                <input type="text" id="quickScanInput" name="target" class="action-input" placeholder="TARGET: http://localhost:3000" value="http://localhost:3000" required>
                 <button type="submit" class="btn btn-primary" style="padding: 0 1.6rem;">Launch Scan</button>
             </form>
         </div>
@@ -1566,6 +1532,9 @@
 
     <!-- ── JavaScript Engine, 3D Parallax & Motion Systems ── -->
     <script>
+        // Check if user is logged in
+        const IS_LOGGED_IN = {% if user %}true{% else %}false{% endif %};
+
         // 1. Dark/Light Theme Switcher (Preserves test_theme.py hooks)
         function toggleTheme() {
             const currentTheme = document.documentElement.getAttribute("data-theme") || "dark";
@@ -1690,10 +1659,33 @@
 
         sections.forEach(s => observer.observe(s));
 
-        // 5. Auth Modal Controls
-        function openAuthModal(tab) {
+        // 5. Auth Modal & Guard Controls
+        function requireAuthPrompt(msg) {
+            openAuthModal('login', msg);
+        }
+
+        function handleQuickScan(e) {
+            e.preventDefault();
+            const targetVal = document.getElementById("quickScanInput").value.trim();
+            if (!targetVal) return;
+
+            if (IS_LOGGED_IN) {
+                window.location.href = `/dashboard?target=${encodeURIComponent(targetVal)}`;
+            } else {
+                sessionStorage.setItem("pending_scan_target", targetVal);
+                openAuthModal('login', `Please sign in or create an account to start scanning ${targetVal}.`);
+            }
+        }
+
+        function openAuthModal(tab, customMessage) {
             document.getElementById("authModal").classList.add("active");
             switchAuthTab(tab);
+            const alertBox = document.getElementById("authAlert");
+            if (customMessage) {
+                alertBox.className = "auth-alert info";
+                alertBox.textContent = customMessage;
+                alertBox.style.display = "block";
+            }
         }
 
         function closeAuthModal() {
@@ -1707,7 +1699,6 @@
             const tabLoginBtn = document.getElementById("tabLoginBtn");
             const tabRegisterBtn = document.getElementById("tabRegisterBtn");
             const alertBox = document.getElementById("authAlert");
-            alertBox.className = "auth-alert";
 
             if (tab === "login") {
                 loginForm.style.display = "block";
@@ -1744,6 +1735,11 @@
                 };
             }
 
+            const pendingTarget = sessionStorage.getItem("pending_scan_target");
+            if (pendingTarget) {
+                payload.next = `/dashboard?target=${encodeURIComponent(pendingTarget)}`;
+            }
+
             try {
                 const res = await fetch(endpoint, {
                     method: "POST",
@@ -1756,8 +1752,10 @@
                     alertBox.className = "auth-alert success";
                     alertBox.textContent = data.message || "Success! Redirecting...";
                     setTimeout(() => {
-                        window.location.href = "/dashboard";
-                    }, 800);
+                        const redirectUrl = data.redirect || (pendingTarget ? `/dashboard?target=${encodeURIComponent(pendingTarget)}` : "/dashboard");
+                        sessionStorage.removeItem("pending_scan_target");
+                        window.location.href = redirectUrl;
+                    }, 600);
                 } else {
                     alertBox.className = "auth-alert error";
                     alertBox.textContent = data.message || "Authentication error occurred.";
@@ -1782,14 +1780,8 @@
 
         function replayLiveTelemetry() {
             const container = document.getElementById("telemetryStream");
-            const discoveryFill = document.getElementById("discoveryFill");
             container.innerHTML = "";
             let idx = 0;
-
-            if (discoveryFill) {
-                discoveryFill.style.width = "0%";
-                setTimeout(() => { discoveryFill.style.width = "100%"; }, 100);
-            }
 
             function appendLog() {
                 if (idx >= liveLogs.length) return;

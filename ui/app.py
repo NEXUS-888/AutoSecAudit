@@ -1456,6 +1456,12 @@ def index():
 @app.route("/scanner")
 def dashboard():
     """Active security scanning console and target configuration."""
+    current_user = get_current_user()
+    if not current_user:
+        next_target = request.args.get("target")
+        next_url = f"/dashboard?target={next_target}" if next_target else "/dashboard"
+        return redirect(url_for("login", next=next_url))
+
     reports_dir = Path(config.REPORTS_DIR)
     if reports_dir.exists():
         reports = [f.stem.replace("scan_", "") for f in reports_dir.glob("scan_*.json")]
@@ -1463,18 +1469,19 @@ def dashboard():
         reports = reports[:5]
     else:
         reports = []
-    current_user = get_current_user()
     return render_template_string(HTML_FORM, recent_reports=reports, user=current_user)
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     """User login endpoint supporting HTML form and AJAX JSON requests."""
+    next_url = request.args.get("next") or request.form.get("next") or url_for("dashboard")
     if request.method == "POST":
         if request.is_json:
             data = request.get_json() or {}
             identifier = data.get("identifier", "")
             password = data.get("password", "")
+            next_url = data.get("next") or next_url
         else:
             identifier = request.form.get("identifier", "")
             password = request.form.get("password", "")
@@ -1484,22 +1491,23 @@ def login():
             session["user_id"] = user["id"]
             session["username"] = user["username"]
             if request.is_json:
-                return jsonify({"success": True, "message": "Login successful", "user": user})
-            return redirect(url_for("dashboard"))
+                return jsonify({"success": True, "message": "Login successful", "user": user, "redirect": next_url})
+            return redirect(next_url)
         else:
             if request.is_json:
                 return jsonify({"success": False, "message": msg}), 401
-            return render_template("auth.html", mode="login", error=msg, form_data={"identifier": identifier})
+            return render_template("auth.html", mode="login", error=msg, form_data={"identifier": identifier}, next=next_url)
 
     # GET request
     if get_current_user():
-        return redirect(url_for("dashboard"))
-    return render_template("auth.html", mode="login")
+        return redirect(next_url)
+    return render_template("auth.html", mode="login", next=next_url)
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
     """User registration endpoint supporting HTML form and AJAX JSON requests."""
+    next_url = request.args.get("next") or request.form.get("next") or url_for("dashboard")
     if request.method == "POST":
         if request.is_json:
             data = request.get_json() or {}
@@ -1507,6 +1515,7 @@ def register():
             email = data.get("email", "")
             password = data.get("password", "")
             full_name = data.get("full_name", "")
+            next_url = data.get("next") or next_url
         else:
             username = request.form.get("username", "")
             email = request.form.get("email", "")
@@ -1518,17 +1527,17 @@ def register():
             session["user_id"] = user["id"]
             session["username"] = user["username"]
             if request.is_json:
-                return jsonify({"success": True, "message": "Account created successfully", "user": user})
-            return redirect(url_for("dashboard"))
+                return jsonify({"success": True, "message": "Account created successfully", "user": user, "redirect": next_url})
+            return redirect(next_url)
         else:
             if request.is_json:
                 return jsonify({"success": False, "message": msg}), 400
-            return render_template("auth.html", mode="register", error=msg, form_data={"username": username, "email": email, "full_name": full_name})
+            return render_template("auth.html", mode="register", error=msg, form_data={"username": username, "email": email, "full_name": full_name}, next=next_url)
 
     # GET request
     if get_current_user():
-        return redirect(url_for("dashboard"))
-    return render_template("auth.html", mode="register")
+        return redirect(next_url)
+    return render_template("auth.html", mode="register", next=next_url)
 
 
 @app.route("/logout")
