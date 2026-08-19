@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication — AutoSecAudit</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #030712;
+            --bg-surface: #0f172a;
+            --border-color: rgba(148, 163, 184, 0.15);
+            --fg-primary: #f8fafc;
+            --fg-secondary: #94a3b8;
+            --fg-muted: #64748b;
+            --accent-indigo: #6366f1;
+            --accent-emerald: #10b981;
+            --accent-rose: #f43f5e;
+            --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        [data-theme="light"] {
+            --bg-base: #f8fafc;
+            --bg-surface: #ffffff;
+            --border-color: rgba(148, 163, 184, 0.25);
+            --fg-primary: #0f172a;
+            --fg-secondary: #475569;
+            --fg-muted: #64748b;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-base);
+            color: var(--fg-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            background-image: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.12) 0%, transparent 60%);
+        }
+
+        .auth-container {
+            width: 100%;
+            max-width: 440px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 2.5rem;
+            box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.6);
+        }
+
+        .brand-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+            text-decoration: none;
+            color: var(--fg-primary);
+            font-weight: 800;
+            font-size: 1.35rem;
+        }
+
+        .brand-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--accent-indigo), #06b6d4);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        .auth-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+
+        .auth-subtitle {
+            font-size: 0.88rem;
+            color: var(--fg-secondary);
+            text-align: center;
+            margin-bottom: 1.75rem;
+        }
+
+        .form-group { margin-bottom: 1.25rem; }
+
+        .form-label {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+            color: var(--fg-secondary);
+        }
+
+        .form-control {
+            width: 100%;
+            background: var(--bg-base);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: var(--fg-primary);
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        .form-control:focus {
+            border-color: var(--accent-indigo);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 0.8rem;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            background: linear-gradient(135deg, var(--accent-indigo), #4f46e5);
+            color: white;
+            transition: all 0.2s ease;
+            margin-top: 0.5rem;
+        }
+
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4); }
+
+        .auth-footer {
+            margin-top: 1.75rem;
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--fg-secondary);
+        }
+
+        .auth-footer a {
+            color: var(--accent-indigo);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .auth-footer a:hover { text-decoration: underline; }
+
+        .alert {
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 1.25rem;
+        }
+        .alert-error { background: rgba(244, 63, 94, 0.15); color: var(--accent-rose); border: 1px solid rgba(244, 63, 94, 0.3); }
+        .alert-success { background: rgba(16, 185, 129, 0.15); color: var(--accent-emerald); border: 1px solid rgba(16, 185, 129, 0.3); }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <a href="/" class="brand-header">
+            <div class="brand-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path d="m9 12 2 2 4-4"/>
+                </svg>
+            </div>
+            AutoSecAudit
+        </a>
+
+        {% if mode == 'register' %}
+            <h1 class="auth-title">Create Account</h1>
+            <p class="auth-subtitle">Join the autonomous security orchestration platform</p>
+        {% else %}
+            <h1 class="auth-title">Welcome Back</h1>
+            <p class="auth-subtitle">Sign in to access your security scan console</p>
+        {% endif %}
+
+        {% if error %}
+            <div class="alert alert-error">{{ error }}</div>
+        {% endif %}
+        {% if message %}
+            <div class="alert alert-success">{{ message }}</div>
+        {% endif %}
+
+        <form method="POST" action="{{ '/register' if mode == 'register' else '/login' }}">
+            {% if mode == 'register' %}
+                <div class="form-group">
+                    <label class="form-label">Full Name</label>
+                    <input type="text" name="full_name" class="form-control" placeholder="Alex Developer" value="{{ form_data.get('full_name', '') if form_data else '' }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Username</label>
+                    <input type="text" name="username" class="form-control" placeholder="alex_sec" required value="{{ form_data.get('username', '') if form_data else '' }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email Address</label>
+                    <input type="email" name="email" class="form-control" placeholder="alex@company.com" required value="{{ form_data.get('email', '') if form_data else '' }}">
+                </div>
+            {% else %}
+                <div class="form-group">
+                    <label class="form-label">Username or Email</label>
+                    <input type="text" name="identifier" class="form-control" placeholder="admin or developer@example.com" required value="{{ form_data.get('identifier', '') if form_data else '' }}">
+                </div>
+            {% endif %}
+
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+            </div>
+
+            <button type="submit" class="btn">
+                {{ 'Create Developer Account' if mode == 'register' else 'Sign In to Console' }}
+            </button>
+        </form>
+
+        <div class="auth-footer">
+            {% if mode == 'register' %}
+                Already have an account? <a href="/login">Sign in</a>
+            {% else %}
+                Need an account? <a href="/register">Sign up</a>
+                <p style="margin-top: 0.75rem; font-size: 0.78rem; color: var(--fg-muted);">
+                    Demo admin: <code>admin</code> / <code>AutoSec@2026</code>
+                </p>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem("autosec-theme") || "dark";
+            document.documentElement.setAttribute("data-theme", savedTheme);
+        })();
+    </script>
+</body>
+</html>

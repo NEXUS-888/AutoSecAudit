@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoSecAudit — Autonomous DevSecOps Dynamic Security Orchestrator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #030712;
+            --bg-surface: #0f172a;
+            --bg-card: rgba(15, 23, 42, 0.75);
+            --bg-elevated: rgba(30, 41, 59, 0.7);
+            --border-color: rgba(148, 163, 184, 0.15);
+            --border-glow: rgba(99, 102, 241, 0.35);
+            --fg-primary: #f8fafc;
+            --fg-secondary: #94a3b8;
+            --fg-muted: #64748b;
+            --accent-indigo: #6366f1;
+            --accent-emerald: #10b981;
+            --accent-cyan: #06b6d4;
+            --accent-rose: #f43f5e;
+            --accent-amber: #f59e0b;
+            --glass-bg: rgba(15, 23, 42, 0.82);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --shadow-glow: 0 0 35px -5px rgba(99, 102, 241, 0.25);
+            --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        [data-theme="light"] {
+            --bg-base: #f8fafc;
+            --bg-surface: #ffffff;
+            --bg-card: rgba(255, 255, 255, 0.88);
+            --bg-elevated: #f1f5f9;
+            --border-color: rgba(148, 163, 184, 0.25);
+            --border-glow: rgba(99, 102, 241, 0.25);
+            --fg-primary: #0f172a;
+            --fg-secondary: #475569;
+            --fg-muted: #64748b;
+            --glass-bg: rgba(255, 255, 255, 0.92);
+            --glass-border: rgba(15, 23, 42, 0.08);
+            --shadow-glow: 0 10px 30px -5px rgba(99, 102, 241, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-base);
+            color: var(--fg-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
+                radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.10) 0%, transparent 40%),
+                radial-gradient(circle at 50% 85%, rgba(6, 182, 212, 0.08) 0%, transparent 50%);
+            background-attachment: fixed;
+        }
+
+        /* ── Navbar ─────────────────────────────────────────── */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 72px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 2.5rem;
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            text-decoration: none;
+            color: var(--fg-primary);
+            font-weight: 800;
+            font-size: 1.25rem;
+            letter-spacing: -0.02em;
+        }
+
+        .brand-icon {
+            width: 38px;
+            height: 38px;
+            background: linear-gradient(135deg, var(--accent-indigo), var(--accent-cyan));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav-link {
+            text-decoration: none;
+            color: var(--fg-secondary);
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+
+        .nav-link:hover {
+            color: var(--accent-indigo);
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        /* ── Buttons ─────────────────────────────────────────── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.6rem 1.25rem;
+            border-radius: 10px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-indigo), #4f46e5);
+            color: white;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--fg-primary);
+            border-color: var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-elevated);
+            border-color: var(--accent-indigo);
+            transform: translateY(-1px);
+        }
+
+        .btn-emerald {
+            background: linear-gradient(135deg, #059669, #10b981);
+            color: white;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-emerald:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
+        }
+
+        .theme-toggle-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--fg-primary);
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .theme-toggle-btn:hover {
+            border-color: var(--accent-indigo);
+        }
+
+        /* ── Hero Section ───────────────────────────────────── */
+        .hero {
+            padding: 140px 2rem 80px;
+            max-width: 1280px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 3.5rem;
+            align-items: center;
+            min-height: calc(100vh - 72px);
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 1rem;
+            border-radius: 999px;
+            background: rgba(99, 102, 241, 0.12);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: var(--accent-indigo);
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            margin-bottom: 1.5rem;
+        }
+
+        .hero-badge-pulse {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-emerald);
+            box-shadow: 0 0 10px var(--accent-emerald);
+            animation: pulse-glow 2s infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.4); opacity: 0.6; }
+        }
+
+        .hero-title {
+            font-size: 3.25rem;
+            font-weight: 800;
+            line-height: 1.15;
+            letter-spacing: -0.03em;
+            margin-bottom: 1.25rem;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #6366f1 0%, #38bdf8 50%, #10b981 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-desc {
+            font-size: 1.125rem;
+            color: var(--fg-secondary);
+            margin-bottom: 2.25rem;
+            max-width: 600px;
+            line-height: 1.7;
+        }
+
+        .hero-cta-group {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            flex-wrap: wrap;
+            margin-bottom: 2.5rem;
+        }
+
+        .hero-stats-banner {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .stat-item h4 {
+            font-size: 1.65rem;
+            font-weight: 800;
+            color: var(--fg-primary);
+            letter-spacing: -0.02em;
+        }
+
+        .stat-item p {
+            font-size: 0.8rem;
+            color: var(--fg-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        /* ── Live Interactive Terminal Simulation ────────────── */
+        .terminal-window {
+            background: #090d16;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.6), 0 0 25px rgba(99, 102, 241, 0.2);
+            overflow: hidden;
+            font-family: var(--font-mono);
+            display: flex;
+            flex-direction: column;
+            height: 480px;
+        }
+
+        .terminal-header {
+            background: #0f172a;
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .terminal-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .terminal-dot {
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+        }
+
+        .dot-red { background: #ef4444; }
+        .dot-yellow { background: #f59e0b; }
+        .dot-green { background: #10b981; }
+
+        .terminal-title {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
+        .terminal-body {
+            padding: 1.25rem;
+            color: #cbd5e1;
+            font-size: 0.8rem;
+            line-height: 1.6;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .t-prompt { color: #38bdf8; font-weight: bold; }
+        .t-cmd { color: #f8fafc; font-weight: 600; }
+        .t-info { color: #94a3b8; }
+        .t-success { color: #10b981; font-weight: bold; }
+        .t-warning { color: #f59e0b; font-weight: bold; }
+        .t-danger { color: #f43f5e; font-weight: bold; }
+        .t-highlight { color: #a855f7; font-weight: bold; }
+
+        /* ── DAST vs SAST Showdown Section ───────────────────── */
+        .section {
+            padding: 90px 2rem;
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+
+        .section-header {
+            text-align: center;
+            max-width: 720px;
+            margin: 0 auto 4rem;
+        }
+
+        .section-badge {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--accent-indigo);
+            margin-bottom: 0.75rem;
+            display: inline-block;
+        }
+
+        .section-title {
+            font-size: 2.35rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 1rem;
+        }
+
+        .section-desc {
+            font-size: 1.05rem;
+            color: var(--fg-secondary);
+        }
+
+        .showdown-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        .showdown-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            padding: 2.25rem;
+            position: relative;
+            overflow: hidden;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .showdown-card.competitor {
+            border-color: rgba(244, 63, 94, 0.25);
+        }
+
+        .showdown-card.winner {
+            border-color: rgba(16, 185, 129, 0.4);
+            background: linear-gradient(180deg, var(--bg-card) 0%, rgba(16, 185, 129, 0.05) 100%);
+        }
+
+        .card-tag {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            margin-bottom: 1.25rem;
+        }
+
+        .tag-sast { background: rgba(244, 63, 94, 0.15); color: #f43f5e; }
+        .tag-dast { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+
+        .showdown-list {
+            list-style: none;
+            margin-top: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .showdown-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            font-size: 0.92rem;
+            color: var(--fg-secondary);
+        }
+
+        .icon-check { color: #10b981; font-weight: bold; flex-shrink: 0; font-size: 1.1rem; }
+        .icon-cross { color: #f43f5e; font-weight: bold; flex-shrink: 0; font-size: 1.1rem; }
+
+        /* ── 4-Stage Architecture Grid ──────────────────────── */
+        .arch-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+        }
+
+        .arch-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 1.75rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .arch-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--accent-indigo);
+            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.25);
+        }
+
+        .arch-step-num {
+            font-size: 0.75rem;
+            font-weight: 800;
+            color: var(--accent-indigo);
+            text-transform: uppercase;
+            margin-bottom: 0.75rem;
+        }
+
+        .arch-card h3 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+        }
+
+        .arch-card p {
+            font-size: 0.85rem;
+            color: var(--fg-secondary);
+            line-height: 1.5;
+        }
+
+        /* ── Quick Sandbox CTA ──────────────────────────────── */
+        .cta-box {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(16, 185, 129, 0.12));
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 20px;
+            padding: 3.5rem 2rem;
+            text-align: center;
+            margin: 40px auto 80px;
+            max-width: 1080px;
+        }
+
+        .cta-box h2 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+        }
+
+        .cta-form {
+            display: flex;
+            max-width: 580px;
+            margin: 2rem auto 0;
+            gap: 0.75rem;
+        }
+
+        .cta-input {
+            flex: 1;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0.85rem 1.25rem;
+            color: var(--fg-primary);
+            font-family: var(--font-sans);
+            font-size: 0.95rem;
+            outline: none;
+        }
+
+        .cta-input:focus {
+            border-color: var(--accent-indigo);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+        }
+
+        /* ── Glassmorphism Auth Modal ───────────────────────── */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(3, 7, 18, 0.8);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 1.5rem;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .auth-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            width: 100%;
+            max-width: 440px;
+            padding: 2.25rem;
+            box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7);
+            position: relative;
+            animation: modalSlide 0.25s ease-out;
+        }
+
+        @keyframes modalSlide {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 1.25rem;
+            right: 1.25rem;
+            background: transparent;
+            border: none;
+            color: var(--fg-muted);
+            font-size: 1.35rem;
+            cursor: pointer;
+        }
+
+        .modal-close:hover { color: var(--fg-primary); }
+
+        .auth-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 1.75rem;
+        }
+
+        .auth-tab {
+            flex: 1;
+            padding: 0.75rem;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--fg-muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+
+        .auth-tab.active {
+            color: var(--accent-indigo);
+            border-bottom-color: var(--accent-indigo);
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+            color: var(--fg-secondary);
+        }
+
+        .form-control {
+            width: 100%;
+            background: var(--bg-base);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: var(--fg-primary);
+            font-family: var(--font-sans);
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        .form-control:focus {
+            border-color: var(--accent-indigo);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
+
+        .auth-alert {
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .auth-alert.error {
+            background: rgba(244, 63, 94, 0.15);
+            color: #f43f5e;
+            border: 1px solid rgba(244, 63, 94, 0.3);
+            display: block;
+        }
+
+        .auth-alert.success {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            display: block;
+        }
+
+        /* ── Responsive ─────────────────────────────────────── */
+        @media (max-width: 980px) {
+            .hero { grid-template-columns: 1fr; padding-top: 110px; }
+            .showdown-grid { grid-template-columns: 1fr; }
+            .arch-grid { grid-template-columns: 1fr 1fr; }
+            .navbar { padding: 0 1.25rem; }
+            .nav-links { display: none; }
+        }
+        @media (max-width: 600px) {
+            .arch-grid { grid-template-columns: 1fr; }
+            .cta-form { flex-direction: column; }
+            .hero-title { font-size: 2.35rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ── Navbar ─────────────────────────────────────────── -->
+    <nav class="navbar">
+        <a href="/" class="nav-brand">
+            <div class="brand-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path d="m9 12 2 2 4-4"/>
+                </svg>
+            </div>
+            AutoSecAudit
+        </a>
+
+        <ul class="nav-links">
+            <li><a href="#why-autosec" class="nav-link">Why AutoSecAudit</a></li>
+            <li><a href="#architecture" class="nav-link">Architecture</a></li>
+            <li><a href="#metrics" class="nav-link">Benchmark</a></li>
+            <li><a href="/history" class="nav-link">Scan History</a></li>
+            <li><a href="/dashboard" class="nav-link">Scanner Console</a></li>
+        </ul>
+
+        <div class="nav-actions">
+            <!-- Theme Toggle Button (Supports test_theme.py hooks) -->
+            <button id="themeToggle" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark/Light Mode">
+                <svg id="themeIcon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <!-- Sun Icon Circle -->
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+            </button>
+
+            <div id="userAuthControls">
+                {% if user %}
+                    <span style="font-size: 0.88rem; font-weight: 600; color: var(--accent-emerald); margin-right: 0.5rem;">
+                        ● {{ user.username }}
+                    </span>
+                    <a href="/dashboard" class="btn btn-secondary">Scanner</a>
+                    <a href="/logout" class="btn btn-secondary" style="padding: 0.6rem 0.8rem;">Logout</a>
+                {% else %}
+                    <button onclick="openAuthModal('login')" class="btn btn-secondary">Sign In</button>
+                    <a href="/dashboard" class="btn btn-primary">Launch Scanner</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <!-- ── Hero Section ───────────────────────────────────── -->
+    <section class="hero">
+        <div class="hero-content">
+            <div class="hero-badge">
+                <span class="hero-badge-pulse"></span>
+                DevSecOps Dynamic Security Orchestration
+            </div>
+            <h1 class="hero-title">
+                Catch Live Vulnerabilities in <span class="gradient-text">~65 Seconds</span>, Zero Hallucinations.
+            </h1>
+            <p class="hero-desc">
+                Static code reviewers only read text and guess bugs. <strong>AutoSecAudit</strong> actively attacks running containers with 14 specialized plugins, suppressing 38.2% of duplicate noise and halting breaking build regressions in CI/CD.
+            </p>
+
+            <div class="hero-cta-group">
+                <a href="/dashboard" class="btn btn-primary" style="padding: 0.85rem 1.75rem; font-size: 1rem;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    Start Security Scan
+                </a>
+                <button onclick="simulateScan()" class="btn btn-secondary" style="padding: 0.85rem 1.5rem; font-size: 1rem;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="4 17 10 11 4 5"/>
+                        <line x1="12" y1="19" x2="20" y2="19"/>
+                    </svg>
+                    Replay Terminal Demo
+                </button>
+            </div>
+
+            <div class="hero-stats-banner">
+                <div class="stat-item">
+                    <h4>64.8%</h4>
+                    <p>Faster Scan Latency</p>
+                </div>
+                <div class="stat-item">
+                    <h4>38.2%</h4>
+                    <p>Alert Noise Cut</p>
+                </div>
+                <div class="stat-item">
+                    <h4>97.9%</h4>
+                    <p>Verified Precision</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Live Animated Terminal ────────────────────────── -->
+        <div class="terminal-window">
+            <div class="terminal-header">
+                <div class="terminal-dots">
+                    <span class="terminal-dot dot-red"></span>
+                    <span class="terminal-dot dot-yellow"></span>
+                    <span class="terminal-dot dot-green"></span>
+                </div>
+                <span class="terminal-title">autosecaudit-engine --target http://localhost:3000 --fail-on high</span>
+                <span style="font-size: 0.7rem; color: #64748b;">v2.4.0</span>
+            </div>
+            <div class="terminal-body" id="terminalBody">
+                <!-- Streamed via JavaScript -->
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Why AutoSecAudit? (DAST vs SAST Showdown) ──────── -->
+    <section class="section" id="why-autosec">
+        <div class="section-header">
+            <span class="section-badge">Runtime Reality vs. Text Review</span>
+            <h2 class="section-title">Why AI Code Reviewers & SAST Aren't Enough</h2>
+            <p class="section-desc">
+                Tools like CodeRabbit read your code strings before compiling. AutoSecAudit spins up the deployment and actively attacks the live server to prove what actually breaks.
+            </p>
+        </div>
+
+        <div class="showdown-grid">
+            <!-- Competitor: SAST / LLM Code Reviewers -->
+            <div class="showdown-card competitor">
+                <span class="card-tag tag-sast">Static Code Review (SAST / LLMs)</span>
+                <h3>Code Reviewers & Text-Guessing</h3>
+                <p style="color: var(--fg-secondary); font-size: 0.9rem; margin-top: 0.5rem;">
+                    Reads raw repository text without network or runtime context.
+                </p>
+                <ul class="showdown-list">
+                    <li>
+                        <span class="icon-cross">✕</span>
+                        <span><strong>High Hallucination Rate:</strong> Flags potential syntax patterns that are unreachable or sanitized in runtime frameworks.</span>
+                    </li>
+                    <li>
+                        <span class="icon-cross">✕</span>
+                        <span><strong>Blind to Network Ports:</strong> Cannot discover if Docker exposed Redis (6379) or MongoDB (27017) without auth.</span>
+                    </li>
+                    <li>
+                        <span class="icon-cross">✕</span>
+                        <span><strong>Cannot Verify Token Bypasses:</strong> Unable to test if the live auth endpoint accepts unsigned JWT tokens (<code>alg: none</code>).</span>
+                    </li>
+                    <li>
+                        <span class="icon-cross">✕</span>
+                        <span><strong>Expensive & Non-Deterministic:</strong> Heavy LLM API token costs per commit with shifting feedback between runs.</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Winner: AutoSecAudit DAST Orchestrator -->
+            <div class="showdown-card winner">
+                <span class="card-tag tag-dast">AutoSecAudit (Dynamic Orchestration)</span>
+                <h3>Live Runtime Vulnerability Engine</h3>
+                <p style="color: var(--fg-secondary); font-size: 0.9rem; margin-top: 0.5rem;">
+                    Active exploit execution, mathematical deduplication, and build gating.
+                </p>
+                <ul class="showdown-list">
+                    <li>
+                        <span class="icon-check">✓</span>
+                        <span><strong>Zero Hallucinations:</strong> Every finding includes exact HTTP request/response proofs and server timing confirmation.</span>
+                    </li>
+                    <li>
+                        <span class="icon-check">✓</span>
+                        <span><strong>Multi-Layer Coverage:</strong> Probes open ports (Nmap), server misconfigs (Nikto), REST parameters, and 14 injection vectors.</span>
+                    </li>
+                    <li>
+                        <span class="icon-check">✓</span>
+                        <span><strong>Diff-Aware Delta Auditing:</strong> Isolates $\Delta_{\text{NEW}}$ flaws from accepted backlog debt so developers only fix what they broke.</span>
+                    </li>
+                    <li>
+                        <span class="icon-check">✓</span>
+                        <span><strong>100% Free, Local & Deterministic:</strong> Runs inside CI/CD in ~65s with strict exit-code gating (<code>--fail-on High</code>).</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── 4-Stage Architecture ──────────────────────────── -->
+    <section class="section" id="architecture" style="background: rgba(15, 23, 42, 0.3); border-radius: 24px;">
+        <div class="section-header">
+            <span class="section-badge">How It Works</span>
+            <h2 class="section-title">The 4-Stage Security Pipeline</h2>
+            <p class="section-desc">
+                From recursive crawling to live NIST CVE enrichment and delta tracking.
+            </p>
+        </div>
+
+        <div class="arch-grid">
+            <div class="arch-card">
+                <div class="arch-step-num">Stage 01</div>
+                <h3>Surface Discovery</h3>
+                <p>BFS crawler traverses DOM links and form targets while OpenAPI 3.0 parser automatically seeds all REST endpoints and schemas.</p>
+            </div>
+            <div class="arch-card">
+                <div class="arch-step-num">Stage 02</div>
+                <h3>14 Concurrent Plugins</h3>
+                <p>Parallel ThreadPool ($k=8$) launches Nmap, Nikto, SQLi, XSS, SSRF, JWT, and API Abuse scanners concurrently in under ~65 seconds.</p>
+            </div>
+            <div class="arch-card">
+                <div class="arch-step-num">Stage 03</div>
+                <h3>Intelligence Layer</h3>
+                <p>Compound-key deduplication merges overlapping alerts (-38.2% noise), enriched with live NIST NVD CVSS scores and OWASP Top 10 tags.</p>
+            </div>
+            <div class="arch-card">
+                <div class="arch-step-num">Stage 04</div>
+                <h3>CI/CD Delta Diffing</h3>
+                <p>Computes mathematical diffs ($\Delta_{\text{NEW}}, \Delta_{\text{FIXED}}$) and enforces automated build-breaking exit codes.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Quick Scan Sandbox CTA ────────────────────────── -->
+    <section class="section">
+        <div class="cta-box">
+            <h2>Ready to Audit Your Web Services?</h2>
+            <p style="color: var(--fg-secondary); max-width: 600px; margin: 0 auto;">
+                Experience automated security verification with real-time SSE streaming and downloadable executive reports.
+            </p>
+            <form class="cta-form" action="/dashboard" method="GET">
+                <input type="text" name="target" class="cta-input" placeholder="Enter target URL (e.g. http://localhost:3000)" value="http://localhost:3000" required>
+                <button type="submit" class="btn btn-primary" style="padding: 0 1.5rem;">Launch Scan</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- ── Glassmorphism Auth Modal ───────────────────────── -->
+    <div class="modal-overlay" id="authModal">
+        <div class="auth-card">
+            <button class="modal-close" onclick="closeAuthModal()">&times;</button>
+            
+            <div class="auth-tabs">
+                <div class="auth-tab active" id="tabLoginBtn" onclick="switchAuthTab('login')">Sign In</div>
+                <div class="auth-tab" id="tabRegisterBtn" onclick="switchAuthTab('register')">Create Account</div>
+            </div>
+
+            <div id="authAlert" class="auth-alert"></div>
+
+            <!-- Login Form -->
+            <form id="loginForm" onsubmit="handleAuthSubmit(event, 'login')">
+                <div class="form-group">
+                    <label class="form-label">Username or Email</label>
+                    <input type="text" id="loginIdentifier" class="form-control" placeholder="admin or dev@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" id="loginPassword" class="form-control" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.75rem;">Sign In</button>
+                <p style="text-align: center; margin-top: 1rem; font-size: 0.82rem; color: var(--fg-muted);">
+                    Default demo admin: <code>admin</code> / <code>AutoSec@2026</code>
+                </p>
+            </form>
+
+            <!-- Register Form -->
+            <form id="registerForm" style="display: none;" onsubmit="handleAuthSubmit(event, 'register')">
+                <div class="form-group">
+                    <label class="form-label">Full Name</label>
+                    <input type="text" id="regFullName" class="form-control" placeholder="Alex Developer">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Username</label>
+                    <input type="text" id="regUsername" class="form-control" placeholder="alex_sec" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Work Email</label>
+                    <input type="email" id="regEmail" class="form-control" placeholder="alex@company.com" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password (min. 6 characters)</label>
+                    <input type="password" id="regPassword" class="form-control" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn btn-emerald" style="width: 100%; margin-top: 0.75rem;">Create Account</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── JavaScript Engine ──────────────────────────────── -->
+    <script>
+        // 1. Dark/Light Mode Toggle Logic (Preserves test_theme.py hooks)
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute("data-theme") || "dark";
+            const newTheme = currentTheme === "dark" ? "light" : "dark";
+            document.documentElement.setAttribute("data-theme", newTheme);
+            localStorage.setItem("autosec-theme", newTheme);
+            updateThemeIcon(newTheme);
+        }
+
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById("themeIcon");
+            if (!icon) return;
+            if (theme === "light") {
+                // Moon icon path for light mode
+                icon.innerHTML = `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>`;
+            } else {
+                // Sun icon circle and rays for dark mode
+                icon.innerHTML = `
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                `;
+            }
+        }
+
+        // Initialize Theme from localStorage
+        (function() {
+            const savedTheme = localStorage.getItem("autosec-theme") || "dark";
+            document.documentElement.setAttribute("data-theme", savedTheme);
+            updateThemeIcon(savedTheme);
+        })();
+
+        // 2. Auth Modal Controls
+        function openAuthModal(tab) {
+            document.getElementById("authModal").classList.add("active");
+            switchAuthTab(tab);
+        }
+
+        function closeAuthModal() {
+            document.getElementById("authModal").classList.remove("active");
+            document.getElementById("authAlert").className = "auth-alert";
+        }
+
+        function switchAuthTab(tab) {
+            const loginForm = document.getElementById("loginForm");
+            const registerForm = document.getElementById("registerForm");
+            const tabLoginBtn = document.getElementById("tabLoginBtn");
+            const tabRegisterBtn = document.getElementById("tabRegisterBtn");
+            const alertBox = document.getElementById("authAlert");
+            alertBox.className = "auth-alert";
+
+            if (tab === "login") {
+                loginForm.style.display = "block";
+                registerForm.style.display = "none";
+                tabLoginBtn.classList.add("active");
+                tabRegisterBtn.classList.remove("active");
+            } else {
+                loginForm.style.display = "none";
+                registerForm.style.display = "block";
+                tabLoginBtn.classList.remove("active");
+                tabRegisterBtn.classList.add("active");
+            }
+        }
+
+        async function handleAuthSubmit(e, action) {
+            e.preventDefault();
+            const alertBox = document.getElementById("authAlert");
+            alertBox.className = "auth-alert";
+
+            let payload = {};
+            let endpoint = action === "login" ? "/login" : "/register";
+
+            if (action === "login") {
+                payload = {
+                    identifier: document.getElementById("loginIdentifier").value,
+                    password: document.getElementById("loginPassword").value
+                };
+            } else {
+                payload = {
+                    full_name: document.getElementById("regFullName").value,
+                    username: document.getElementById("regUsername").value,
+                    email: document.getElementById("regEmail").value,
+                    password: document.getElementById("regPassword").value
+                };
+            }
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if (res.ok && data.success) {
+                    alertBox.className = "auth-alert success";
+                    alertBox.textContent = data.message || "Success! Redirecting...";
+                    setTimeout(() => {
+                        window.location.href = "/dashboard";
+                    }, 800);
+                } else {
+                    alertBox.className = "auth-alert error";
+                    alertBox.textContent = data.message || "Authentication error occurred.";
+                }
+            } catch (err) {
+                alertBox.className = "auth-alert error";
+                alertBox.textContent = "Network error. Please try again.";
+            }
+        }
+
+        // 3. Terminal Live Simulation Script
+        const terminalLines = [
+            { text: "$ autosecaudit scan --target http://localhost:3000 --fail-on high", type: "cmd", delay: 300 },
+            { text: "[*] Initializing AutoSecAudit Orchestration Engine v2.4.0...", type: "info", delay: 600 },
+            { text: "[+] Ingesting OpenAPI 3.0 schema: 32 endpoints, 12 parameter schemas loaded", type: "success", delay: 900 },
+            { text: "[+] BFS Crawler (D_max=3): Discovered 8 dynamic pages, 4 HTML forms", type: "success", delay: 1200 },
+            { text: "[*] Dispatching 14 plugins across ThreadPool (k=8 workers)...", type: "info", delay: 1500 },
+            { text: "    ├── NmapPlugin: Port 3000/TCP (Node.js Express), 80/TCP (Nginx)", type: "info", delay: 1800 },
+            { text: "    ├── SQLiScanner: Union-based vulnerability on /rest/products/search?q=", type: "danger", delay: 2100 },
+            { text: "    ├── JWTScanner: Algorithm 'none' key bypass accepted on /rest/user/login", type: "danger", delay: 2400 },
+            { text: "    ├── XSSScanner: Reflected payload executed on search parameter", type: "warning", delay: 2700 },
+            { text: "    └── MisconfigScanner: Missing CSP, HSTS, X-Frame-Options", type: "warning", delay: 3000 },
+            { text: "[+] Raw Scan Complete: 76 raw tool alerts generated in 64.8s (2.84x speedup)", type: "info", delay: 3300 },
+            { text: "[*] Running Intelligence Layer: Deduplicating by (host, port, URI, weakness)...", type: "highlight", delay: 3600 },
+            { text: "[+] Alert Reduction: 76 raw alerts -> 47 correlated issues (-38.2% noise)", type: "success", delay: 3900 },
+            { text: "[+] Threat Enrichment: Tagged 12 CVEs via NIST NVD / CIRCL endpoints", type: "info", delay: 4200 },
+            { text: "[+] Delta Regression vs Baseline Build v1.0:", type: "highlight", delay: 4500 },
+            { text: "    └── Δ_NEW: 3 new flaws | Δ_FIXED: 10 resolved | Δ_UNCHANGED: 37", type: "info", delay: 4800 },
+            { text: "[!] CI/CD Policy Gate: Found High severity findings -> Process Exit Code 1", type: "danger", delay: 5100 }
+        ];
+
+        function simulateScan() {
+            const body = document.getElementById("terminalBody");
+            body.innerHTML = "";
+            let currentLine = 0;
+
+            function printNext() {
+                if (currentLine >= terminalLines.length) return;
+                const line = terminalLines[currentLine];
+                const div = document.createElement("div");
+                div.style.marginBottom = "4px";
+
+                if (line.type === "cmd") {
+                    div.innerHTML = `<span class="t-prompt">></span> <span class="t-cmd">${line.text}</span>`;
+                } else if (line.type === "danger") {
+                    div.innerHTML = `<span class="t-danger">${line.text}</span>`;
+                } else if (line.type === "warning") {
+                    div.innerHTML = `<span class="t-warning">${line.text}</span>`;
+                } else if (line.type === "success") {
+                    div.innerHTML = `<span class="t-success">${line.text}</span>`;
+                } else if (line.type === "highlight") {
+                    div.innerHTML = `<span class="t-highlight">${line.text}</span>`;
+                } else {
+                    div.innerHTML = `<span class="t-info">${line.text}</span>`;
+                }
+
+                body.appendChild(div);
+                body.scrollTop = body.scrollHeight;
+                currentLine++;
+                setTimeout(printNext, 220);
+            }
+
+            printNext();
+        }
+
+        // Auto-run simulation on page load
+        window.addEventListener("DOMContentLoaded", () => {
+            simulateScan();
+        });
+    </script>
+</body>
+</html>

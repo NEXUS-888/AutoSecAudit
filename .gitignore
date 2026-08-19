@@ -27,6 +27,7 @@ data/
 *.html
 !config.json.example
 !reports/templates/report.html
+!ui/templates/*.html
 
 # OS
 .DS_Store
