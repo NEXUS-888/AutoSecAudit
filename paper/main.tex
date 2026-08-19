@@ -305,7 +305,7 @@ We evaluated audit latency across concurrency levels from 1 to 16 threads. As sh
 \subsection{Detection Accuracy and Noise Reduction (RQ2)}
 To evaluate detection quality, we audited the benchmark target and verified findings against ground-truth challenge definitions~\cite{bau2010state}. Table~\ref{tab:evaluation} lists the results across all 14 scanner plugins grouped into major vulnerability classifications.
 
-\begin{table}[!t]
+\begin{table}[t]
 \caption{Vulnerability Detection and Correlation Metrics across 14 Plugins}
 \label{tab:evaluation}
 \centering
@@ -328,13 +328,6 @@ API \& Tokens (\texttt{APIAbuse}, \texttt{JWT}, \texttt{CORS}) & 5 & 0 & 8 & 5 \
 
 Across 76 raw tool alerts, the correlation module consolidated findings into 46 actionable issues, achieving a 39.5\% reduction in alert volume (Fig.~\ref{fig:noise_reduction}). Manual validation confirmed 46 true positives and 1 false positive, resulting in a 97.8\% detection precision ($46 / 47$).
 
-\begin{figure}[!b]
-\centering
-\includegraphics[width=\columnwidth]{figures/fig4_delta_diff.pdf}
-\caption{Vulnerability lifecycle tracking across sequential software builds via set-theoretic delta diffing.}
-\label{fig:delta_diff}
-\end{figure}
-
 \subsection{Delta Tracking Fidelity (RQ3)}
 We validated regression tracking across a three-phase synthetic release sequence (Fig.~\ref{fig:delta_diff}):
 \begin{itemize}
@@ -342,6 +335,14 @@ We validated regression tracking across a three-phase synthetic release sequence
     \item \textbf{Build v1.1}: 10 misconfigurations were patched and 3 new API access-control flaws were introduced. The delta engine correctly classified 3 $\Delta_{\text{NEW}}$, 10 $\Delta_{\text{FIXED}}$, and 36 $\Delta_{\text{UNCHANGED}}$ issues.
     \item \textbf{Build v1.2}: 14 remaining injection flaws were remediated. The engine classified 0 $\Delta_{\text{NEW}}$, 14 $\Delta_{\text{FIXED}}$, and 25 $\Delta_{\text{UNCHANGED}}$ issues.
 \end{itemize}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig4_delta_diff.pdf}
+\caption{Vulnerability lifecycle tracking across sequential software builds via set-theoretic delta diffing.}
+\label{fig:delta_diff}
+\end{figure}
+
 Across all transitions, the delta engine achieved 100\% classification accuracy without manual state reconciliation.
 
 \section{Discussion and Limitations}
