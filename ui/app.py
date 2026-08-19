@@ -5,12 +5,13 @@ import threading
 import uuid
 import queue
 import time
-from flask import Flask, render_template_string, request, redirect, url_for, send_file, abort, Response, jsonify
+from flask import Flask, render_template_string, render_template, request, redirect, url_for, send_file, abort, Response, jsonify, session
 from pathlib import Path
 from werkzeug.utils import secure_filename
 import json
 
 import config
+import core.auth as auth
 from core.engine import Engine
 from core.models import Report
 from core.utils import load_json, is_target_allowed
@@ -1432,11 +1433,29 @@ HTML_BLOCKED = """
 
 
 # ---------------------------------------------------------------------------
-# Flask Routes
+# Authentication Helper & Flask Routes
 # ---------------------------------------------------------------------------
 
+def get_current_user():
+    """Retrieve logged-in user from session, if any."""
+    user_id = session.get("user_id")
+    if user_id:
+        return auth.get_user_by_id(user_id)
+    return None
+
+
 @app.route("/")
+@app.route("/landing")
 def index():
+    """Creative animated landing page explaining AutoSecAudit's orchestration and value proposition."""
+    current_user = get_current_user()
+    return render_template("landing.html", user=current_user)
+
+
+@app.route("/dashboard")
+@app.route("/scanner")
+def dashboard():
+    """Active security scanning console and target configuration."""
     reports_dir = Path(config.REPORTS_DIR)
     if reports_dir.exists():
         reports = [f.stem.replace("scan_", "") for f in reports_dir.glob("scan_*.json")]
@@ -1444,7 +1463,88 @@ def index():
         reports = reports[:5]
     else:
         reports = []
-    return render_template_string(HTML_FORM, recent_reports=reports)
+    current_user = get_current_user()
+    return render_template_string(HTML_FORM, recent_reports=reports, user=current_user)
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """User login endpoint supporting HTML form and AJAX JSON requests."""
+    if request.method == "POST":
+        if request.is_json:
+            data = request.get_json() or {}
+            identifier = data.get("identifier", "")
+            password = data.get("password", "")
+        else:
+            identifier = request.form.get("identifier", "")
+            password = request.form.get("password", "")
+
+        ok, msg, user = auth.verify_user(identifier, password)
+        if ok and user:
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
+            if request.is_json:
+                return jsonify({"success": True, "message": "Login successful", "user": user})
+            return redirect(url_for("dashboard"))
+        else:
+            if request.is_json:
+                return jsonify({"success": False, "message": msg}), 401
+            return render_template("auth.html", mode="login", error=msg, form_data={"identifier": identifier})
+
+    # GET request
+    if get_current_user():
+        return redirect(url_for("dashboard"))
+    return render_template("auth.html", mode="login")
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    """User registration endpoint supporting HTML form and AJAX JSON requests."""
+    if request.method == "POST":
+        if request.is_json:
+            data = request.get_json() or {}
+            username = data.get("username", "")
+            email = data.get("email", "")
+            password = data.get("password", "")
+            full_name = data.get("full_name", "")
+        else:
+            username = request.form.get("username", "")
+            email = request.form.get("email", "")
+            password = request.form.get("password", "")
+            full_name = request.form.get("full_name", "")
+
+        ok, msg, user = auth.create_user(username, email, password, full_name=full_name)
+        if ok and user:
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
+            if request.is_json:
+                return jsonify({"success": True, "message": "Account created successfully", "user": user})
+            return redirect(url_for("dashboard"))
+        else:
+            if request.is_json:
+                return jsonify({"success": False, "message": msg}), 400
+            return render_template("auth.html", mode="register", error=msg, form_data={"username": username, "email": email, "full_name": full_name})
+
+    # GET request
+    if get_current_user():
+        return redirect(url_for("dashboard"))
+    return render_template("auth.html", mode="register")
+
+
+@app.route("/logout")
+def logout():
+    """Log out user and clear session."""
+    session.clear()
+    return redirect(url_for("index"))
+
+
+@app.route("/api/auth/status")
+def auth_status():
+    """Return JSON authentication status of current session."""
+    user = get_current_user()
+    if user:
+        return jsonify({"authenticated": True, "user": user})
+    return jsonify({"authenticated": False, "user": None})
 
 
 @app.route("/history")
