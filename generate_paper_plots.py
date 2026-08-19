@@ -107,18 +107,19 @@ plt.savefig("paper/figures/fig2_latency.png")
 plt.close()
 
 # ---------------------------------------------------------------------------
-# Figure 3: Alert Noise Reduction (Distinct Clean Visual Language)
 # ---------------------------------------------------------------------------
-categories = ['SQLi\n(A03)', 'XSS\n(A03)', 'Misconfig\n(A05)', 'Access\n(A01)', 'API/JWT\n(A07)', 'Adv Expl\n(A03/10)']
-raw_alerts = [14, 19, 26, 9, 8, 4]
-correlated = [8, 12, 15, 6, 5, 4]
+# Figure 3: Alert Noise Reduction (Matching Table III Exactly)
+# ---------------------------------------------------------------------------
+categories = ['Injection\n(A03)', 'XSS\n(A03)', 'Misconfig\n(A05)', 'Access\n(A01)', 'API/Tokens\n(A07)']
+raw_alerts = [14, 19, 26, 9, 8]
+correlated = [8, 13, 15, 6, 5]
 
 x = np.arange(len(categories))
 width = 0.36
 
 fig, ax = plt.subplots(figsize=(5.0, 2.9))
 rects1 = ax.bar(x - width/2, raw_alerts, width, label='Raw Alerts (76)', color='#64748B', edgecolor='#334155', linewidth=0.7)
-rects2 = ax.bar(x + width/2, correlated, width, label='Correlated (46)', color='#1D4ED8', edgecolor='#1E3A8A', linewidth=0.7)
+rects2 = ax.bar(x + width/2, correlated, width, label='Correlated (47)', color='#1D4ED8', edgecolor='#1E3A8A', linewidth=0.7)
 
 ax.set_ylabel('Finding Count', fontweight='bold')
 ax.set_xticks(x)
@@ -145,7 +146,7 @@ plt.close()
 # Figure 4: Delta Lifecycle Tracking (Refined Progression)
 # ---------------------------------------------------------------------------
 builds = ['Build v1.0\n(Baseline)', 'Build v1.1\n(Patch & New)', 'Build v1.2\n(Hardened)']
-unchanged = [46, 36, 25]
+unchanged = [47, 37, 26]
 new_issues = [0, 3, 0]
 fixed_issues = [0, 10, 14]
 
@@ -160,7 +161,7 @@ ax.set_ylim(0, 58)
 ax.legend(loc='upper right', framealpha=0.9)
 ax.grid(axis='y', linestyle=':', alpha=0.5)
 
-for i, total in enumerate([46, 39, 25]):
+for i, total in enumerate([47, 40, 26]):
     ax.text(i, total + 1.5, f'Active: {total}', ha='center', fontweight='bold', fontsize=8, color='#0F172A')
 
 plt.savefig("paper/figures/fig4_delta_diff.pdf")

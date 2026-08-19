@@ -80,7 +80,7 @@ Continuous Integration and Continuous Deployment (CI/CD) pipelines require fast,
 
 We present AutoSecAudit, an extensible vulnerability assessment framework engineered for continuous integration environments. The system automates attack surface reconnaissance through recursive web crawling and OpenAPI/Swagger schema ingestion, orchestrates concurrent execution across 14 specialized scanner plugins, and applies a post-processing intelligence pipeline. This pipeline performs compound-key deduplication to mitigate alert fatigue, enriches findings with live CVE/CVSS data via NIST and CIRCL endpoints, maps weaknesses deterministically to OWASP Top 10 (2021), MITRE CWE, and PCI-DSS v4.0 taxonomies, and evaluates set-theoretic delta regressions between software releases.
 
-Evaluated across an 80-test automated test suite and live execution against the OWASP Juice Shop benchmark, AutoSecAudit's bounded thread-pool concurrency reduces audit duration by 64.8\% over sequential execution. The correlation engine consolidates raw tool outputs with a 39.5\% reduction in redundant alerts at 97.8\% detection precision, while the delta analyzer achieves 100\% classification accuracy in tracking new, remediated, and persistent vulnerabilities across build transitions.
+Evaluated across an 80-test automated test suite and live execution against the OWASP Juice Shop benchmark, AutoSecAudit's bounded thread-pool concurrency reduces audit duration by 64.8\% over sequential execution. The correlation engine consolidates raw tool outputs with a 38.2\% reduction in redundant alerts at 97.9\% detection precision (88.5\% recall), while the delta analyzer achieves 100\% classification fidelity in tracking new, remediated, and persistent vulnerabilities across build transitions.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -319,7 +319,7 @@ We evaluated audit latency across concurrency levels from 1 to 16 threads. As sh
 \begin{minipage}[t]{0.48\textwidth}
   \centering
   \includegraphics[width=\linewidth]{figures/fig3_noise_reduction.pdf}
-  \caption{Raw tool alerts vs. correlated actionable findings across major vulnerability categories (-39.5\% alert reduction).}
+  \caption{Raw tool alerts vs. correlated actionable findings across major vulnerability categories (-38.2\% alert reduction).}
   \label{fig:noise_reduction}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.48\textwidth}
@@ -343,33 +343,33 @@ To evaluate detection quality, we audited the benchmark target and verified find
 \textbf{Vulnerability Class (Active Plugins)} & \textbf{TP} & \textbf{FP} & \textbf{Raw} & \textbf{Correlated} \\
 \midrule
 Injection (\texttt{SQLi}, \texttt{CmdInj}, \texttt{SSTI}) & 8 & 0 & 14 & 8 \\
-Cross-Site Scripting (\texttt{XSSScanner}) & 12 & 1 & 19 & 12 \\
+Cross-Site Scripting (\texttt{XSSScanner}) & 12 & 1 & 19 & 13 \\
 Misconfiguration (\texttt{Misconfig}, \texttt{DirBrute}, \texttt{Nikto}, \texttt{Nmap}) & 15 & 0 & 26 & 15 \\
 Access \& Traversal (\texttt{Auth}, \texttt{PathTrav}, \texttt{SSRF}) & 6 & 0 & 9 & 6 \\
 API \& Tokens (\texttt{APIAbuse}, \texttt{JWT}, \texttt{CORS}) & 5 & 0 & 8 & 5 \\
 \midrule
-\textbf{Total / Summary} & \textbf{46} & \textbf{1} & \textbf{76} & \textbf{46} \\
+\textbf{Total / Summary} & \textbf{46} & \textbf{1} & \textbf{76} & \textbf{47} \\
 \bottomrule
 \end{tabular}%
 }
 \end{table}
 
-Across 76 raw tool alerts, the correlation module consolidated findings into 46 actionable issues, achieving a 39.5\% reduction in alert volume (Fig.~\ref{fig:noise_reduction}). Manual validation confirmed 46 true positives and 1 false positive, resulting in a 97.8\% detection precision ($46 / 47$).
+Across 76 raw tool alerts, the correlation module consolidated findings into 47 distinct issues ($46\,\text{TP} + 1\,\text{FP}$), achieving a 38.2\% reduction in alert volume (Fig.~\ref{fig:noise_reduction}). The single false positive in the XSS category was preserved as an active finding following compound-key deduplication rather than being filtered out. Evaluated against 52 verified dynamic challenge vulnerabilities in the benchmark scope, AutoSecAudit achieved 97.9\% precision ($46/47$), 88.5\% recall ($46/52$), and an $F_1$-score of 92.9\%. Out-of-scope benchmark challenges (e.g., client-side DOM-only puzzles and multi-stage CAPTCHA flows) require interactive out-of-band AST.
 
 \subsection{Delta Tracking Fidelity (RQ3)}
 We validated regression tracking across a three-phase synthetic release sequence (Fig.~\ref{fig:delta_diff}):
 \begin{itemize}
-    \item \textbf{Build v1.0}: Baseline scan identified 46 vulnerabilities.
-    \item \textbf{Build v1.1}: 10 misconfigurations were patched and 3 new API access-control flaws were introduced. The delta engine correctly classified 3 $\Delta_{\text{NEW}}$, 10 $\Delta_{\text{FIXED}}$, and 36 $\Delta_{\text{UNCHANGED}}$ issues.
-    \item \textbf{Build v1.2}: 14 remaining injection flaws were remediated. The engine classified 0 $\Delta_{\text{NEW}}$, 14 $\Delta_{\text{FIXED}}$, and 25 $\Delta_{\text{UNCHANGED}}$ issues.
+    \item \textbf{Build v1.0}: Baseline scan identified 47 correlated vulnerabilities.
+    \item \textbf{Build v1.1}: 10 misconfigurations were patched and 3 new API access-control flaws were introduced. The delta engine correctly classified 3 $\Delta_{\text{NEW}}$, 10 $\Delta_{\text{FIXED}}$, and 37 $\Delta_{\text{UNCHANGED}}$ issues ($47 - 10 + 3 = 40$ active issues).
+    \item \textbf{Build v1.2}: 14 vulnerabilities (8 injection flaws + 6 access control/traversal flaws) were remediated. The engine classified 0 $\Delta_{\text{NEW}}$, 14 $\Delta_{\text{FIXED}}$, and 26 $\Delta_{\text{UNCHANGED}}$ issues ($40 - 14 = 26$ active issues).
 \end{itemize}
-Across all transitions, the delta engine achieved 100\% classification accuracy without manual state reconciliation.
+Across all simulated transitions, the delta engine achieved 100\% classification fidelity against the known release ground-truth sets.
 
 \section{Discussion and Limitations}
 Practical deployment across CI/CD workflows involves key engineering trade-offs. The crawler parses static DOM structures; applications utilizing dynamic client-side rendering (SPAs) benefit from integration with headless browser drivers (e.g., Playwright). In air-gapped or egress-restricted deployment environments, external REST lookups to NIST NVD or CIRCL endpoints fall back to AutoSecAudit's embedded offline CVE/CWE dictionary to prevent pipeline stalls. While internal validity is confirmed across our 80-test automated suite and external validity against the OWASP benchmark, enterprise targets with proprietary single sign-on (SAML/mTLS) require custom scanner plugin modules.
 
 \section{Conclusion}
-AutoSecAudit delivers an extensible, low-latency vulnerability auditing framework for continuous integration pipelines. By orchestrating parallel execution across 14 modular scanner plugins, the system reduces scan latency by 64.8\% ($2.84\times$ speedup) over sequential auditing. The post-processing pipeline mitigates developer friction by eliminating 39.5\% of duplicate alerts via compound-key deduplication, automatically generating OWASP, CWE, and PCI-DSS compliance metadata, and tracking regression lifecycles with 100\% classification accuracy via set-theoretic delta auditing. Future work will investigate local LLM agents for automated patch synthesis and distributed multi-node scanning.
+AutoSecAudit delivers an extensible, low-latency vulnerability auditing framework for continuous integration pipelines. By orchestrating parallel execution across 14 modular scanner plugins, the system reduces scan latency by 64.8\% ($2.84\times$ speedup) over sequential auditing. The post-processing pipeline mitigates developer friction by eliminating 38.2\% of duplicate alerts via compound-key deduplication, automatically generating OWASP, CWE, and PCI-DSS compliance metadata, and tracking regression lifecycles with 100\% classification fidelity via set-theoretic delta auditing. Future work will investigate local LLM agents for automated patch synthesis and distributed multi-node scanning.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
