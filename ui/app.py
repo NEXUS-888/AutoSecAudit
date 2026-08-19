@@ -108,25 +108,96 @@ HTML_FORM = """
 
         /* ── Light Theme ──────────────────────────────────────────── */
         [data-theme="light"] {
-            --bg-deep:          #f5f5f7;
-            --bg-base:          #eeeef0;
+            --bg-deep:          #f8fafc;
+            --bg-base:          #f1f5f9;
             --bg-elevated:      #ffffff;
             --surface:          rgba(0,0,0,0.04);
             --surface-hover:    rgba(0,0,0,0.07);
-            --fg:               #1a1a2e;
-            --fg-muted:         #6b7280;
+            --fg:               #0f172a;
+            --fg-muted:         #475569;
             --accent:           #4f46e5;
             --accent-bright:    #6366f1;
             --accent-glow:      rgba(79,70,229,0.20);
-            --border:           rgba(0,0,0,0.08);
-            --border-hover:     rgba(0,0,0,0.15);
+            --border:           #e2e8f0;
+            --border-hover:     #cbd5e1;
         }
-        [data-theme="light"] .bg-system { background: radial-gradient(ellipse 120% 80% at 50% 0%, #e8e8f0 0%, #f0f0f4 45%, #f5f5f7 100%); }
-        [data-theme="light"] .blob--primary { background: radial-gradient(circle, rgba(79,70,229,0.15) 0%, transparent 70%); }
-        [data-theme="light"] .blob--secondary { background: radial-gradient(circle, rgba(139,92,246,0.10) 0%, transparent 70%); }
-        [data-theme="light"] .blob--tertiary { background: radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%); }
-        [data-theme="light"] .bg-grid { background-image: linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px); }
+        [data-theme="light"] body { background: #f8fafc; color: #0f172a; }
+        [data-theme="light"] .bg-system { background: radial-gradient(ellipse 120% 80% at 50% 0%, #e2e8f0 0%, #f1f5f9 45%, #f8fafc 100%); }
+        [data-theme="light"] .blob--primary { background: radial-gradient(circle, rgba(79,70,229,0.12) 0%, transparent 70%); }
+        [data-theme="light"] .blob--secondary { background: radial-gradient(circle, rgba(139,92,246,0.08) 0%, transparent 70%); }
+        [data-theme="light"] .blob--tertiary { background: radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 70%); }
+        [data-theme="light"] .bg-grid { background-image: linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px); }
         [data-theme="light"] .bg-noise { opacity: 0.02; }
+        [data-theme="light"] .hero-title {
+            background: linear-gradient(180deg, #0f172a 0%, #334155 100%) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .hero-sub { color: #64748b; }
+        [data-theme="light"] .hero-icon {
+            background: linear-gradient(135deg, rgba(79,70,229,0.12) 0%, rgba(79,70,229,0.04) 100%);
+            box-shadow: 0 0 0 1px rgba(79,70,229,0.18), 0 8px 24px rgba(79,70,229,0.10);
+        }
+        [data-theme="light"] .card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 10px 30px -5px rgba(0,0,0,0.06), 0 4px 6px -2px rgba(0,0,0,0.03);
+        }
+        [data-theme="light"] .card::before {
+            background: linear-gradient(90deg, transparent 0%, rgba(79,70,229,0.40) 50%, transparent 100%);
+        }
+        [data-theme="light"] .form-label { color: #334155; }
+        [data-theme="light"] .form-input {
+            background: #ffffff !important;
+            color: #0f172a !important;
+            border: 1px solid #cbd5e1 !important;
+        }
+        [data-theme="light"] .form-input::placeholder { color: #94a3b8; }
+        [data-theme="light"] .form-input:focus {
+            border-color: #6366f1 !important;
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.18) !important;
+        }
+        [data-theme="light"] .form-input[type="file"]::file-selector-button {
+            background: #f1f5f9;
+            color: #1e293b;
+            border: 1px solid #cbd5e1;
+        }
+        [data-theme="light"] .form-input[type="file"]::file-selector-button:hover {
+            background: #e2e8f0;
+        }
+        [data-theme="light"] .info-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-left: 3px solid var(--accent);
+        }
+        [data-theme="light"] .info-box-title { color: #1e293b; }
+        [data-theme="light"] .target-list li { color: #475569; }
+        [data-theme="light"] .info-warning {
+            color: #b45309;
+            background: #fffbeb;
+            border: 1px solid #fef3c7;
+            border-radius: 6px;
+            padding: 8px 12px;
+        }
+        [data-theme="light"] .report-item {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            color: #1e293b;
+        }
+        [data-theme="light"] .report-item:hover {
+            background: #f8fafc;
+            border-color: var(--accent);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        }
+        [data-theme="light"] .report-item-id { color: #0f172a; }
+        [data-theme="light"] .section-title { color: #64748b; }
+        [data-theme="light"] .section-line { background: #e2e8f0; }
+        [data-theme="light"] .scan-status-title { color: #0f172a; }
+        [data-theme="light"] .scan-status-target { color: #4f46e5; }
+        [data-theme="light"] .scan-progress-bar { background: #e2e8f0; border-color: #cbd5e1; }
+        [data-theme="light"] .scan-console { background: #f1f5f9; border: 1px solid #e2e8f0; color: #1e293b; }
+        [data-theme="light"] .scan-console-text { color: #334155; }
 
         /* ── Reset ─────────────────────────────────────────────────── */
         *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -1725,14 +1796,129 @@ def scan():
 
 
 
+HTML_REPORT_NOT_FOUND = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Not Found — AutoSecAudit</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        :root {
+            --bg: #050506;
+            --card-bg: #0a0a0c;
+            --fg: #ededef;
+            --fg-muted: #8a8f98;
+            --accent: #5e6ad2;
+            --border: rgba(255,255,255,0.08);
+        }
+        [data-theme="light"] {
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --fg: #0f172a;
+            --fg-muted: #64748b;
+            --accent: #4f46e5;
+            --border: #e2e8f0;
+        }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--fg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 24px;
+        }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px 32px;
+            max-width: 480px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h2 { font-size: 22px; margin: 16px 0 8px; font-weight: 700; color: var(--fg); }
+        p { color: var(--fg-muted); font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
+        code { background: rgba(94,106,210,0.15); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+        .btn-group { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+        .btn {
+            background: var(--accent);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn:hover { filter: brightness(1.1); }
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--fg);
+        }
+        .btn-secondary:hover { background: rgba(255,255,255,0.05); }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div style="font-size: 44px;">🔍</div>
+        <h2>Report Not Found</h2>
+        <p>Could not locate scan report <code>{{ report_id }}</code>. The audit may still be generating or the report file was removed.</p>
+        <div class="btn-group">
+            <a href="/" class="btn">← Return to Home</a>
+            <a href="/history" class="btn btn-secondary">View Scan History</a>
+        </div>
+    </div>
+    <script>
+        (function() {
+            var theme = localStorage.getItem('autosec-theme');
+            if (theme) document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+</body>
+</html>
+"""
+
+
 @app.route("/report/<report_id>")
 def view_report(report_id):
+    if not report_id or report_id in ("undefined", "null"):
+        return render_template_string(HTML_REPORT_NOT_FOUND, report_id="Unknown"), 404
+        
     _validate_report_id(report_id)
-    json_path = f"{config.REPORTS_DIR}/scan_{report_id}.json"
-    report_data = load_json(json_path)
+    clean_id = report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "")
+    
+    candidate_paths = [
+        f"{config.REPORTS_DIR}/scan_{clean_id}.json",
+        f"{config.REPORTS_DIR}/{report_id}.json",
+        f"{config.REPORTS_DIR}/report_{clean_id}.json",
+        f"{config.REPORTS_DIR}/{clean_id}.json",
+    ]
+    
+    report_data = None
+    for cp in candidate_paths:
+        if os.path.exists(cp):
+            report_data = load_json(cp)
+            if report_data:
+                break
     
     if not report_data:
-        return "Report not found", 404
+        # Check if pre-rendered HTML file exists
+        html_candidates = [
+            f"{config.REPORTS_DIR}/report_{clean_id}.html",
+            f"{config.REPORTS_DIR}/{report_id}.html",
+            f"{config.REPORTS_DIR}/{clean_id}.html",
+        ]
+        for hp in html_candidates:
+            if os.path.exists(hp):
+                with open(hp, "r", encoding="utf-8") as f:
+                    return f.read()
+        return render_template_string(HTML_REPORT_NOT_FOUND, report_id=report_id), 404
     
     template_path = Path(__file__).parent.parent / "reports" / "templates" / "report.html"
     with open(template_path, "r", encoding="utf-8") as f:
@@ -1748,25 +1934,35 @@ def view_report(report_id):
 
 @app.route("/download/<report_id>")
 def download_report(report_id):
+    if not report_id or report_id in ("undefined", "null"):
+        abort(404, description="Invalid report ID.")
     _validate_report_id(report_id)
-    json_path = f"{config.REPORTS_DIR}/scan_{report_id}.json"
+    clean_id = report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "")
+    json_path = f"{config.REPORTS_DIR}/scan_{clean_id}.json"
+    if not os.path.exists(json_path):
+        json_path = f"{config.REPORTS_DIR}/{report_id}.json"
     if not os.path.exists(json_path):
         abort(404, description="Report not found.")
-    return send_file(json_path, as_attachment=True, download_name=f"report_{report_id}.json")
+    return send_file(json_path, as_attachment=True, download_name=f"report_{clean_id}.json")
 
 
 @app.route("/download_pdf/<report_id>")
 def download_pdf_report(report_id):
+    if not report_id or report_id in ("undefined", "null"):
+        abort(404, description="Invalid report ID.")
     _validate_report_id(report_id)
-    json_path = f"{config.REPORTS_DIR}/scan_{report_id}.json"
+    clean_id = report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "")
+    json_path = f"{config.REPORTS_DIR}/scan_{clean_id}.json"
+    if not os.path.exists(json_path):
+        json_path = f"{config.REPORTS_DIR}/{report_id}.json"
     report_data = load_json(json_path)
     if not report_data:
         abort(404, description="Report not found.")
     
-    pdf_path = f"{config.REPORTS_DIR}/report_{report_id}.pdf"
+    pdf_path = f"{config.REPORTS_DIR}/report_{clean_id}.pdf"
     generator = ReportGenerator()
     generator.generate_pdf(report_data, pdf_path)
-    return send_file(pdf_path, as_attachment=True, download_name=f"report_{report_id}.pdf")
+    return send_file(pdf_path, as_attachment=True, download_name=f"report_{clean_id}.pdf")
 
 
 if __name__ == "__main__":

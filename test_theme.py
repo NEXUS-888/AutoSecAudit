@@ -19,8 +19,8 @@ with app.test_client() as client:
 
 # Test 2: Light theme CSS variables exist
     assert 'data-theme="light"' in html, "Should have [data-theme=light] CSS"
-    assert "#f5f5f7" in html, "Light theme should have light background"
-    assert "#1a1a2e" in html, "Light theme should have dark text color"
+    assert ("#f8fafc" in html or "#f5f5f7" in html), "Light theme should have light background"
+    assert ("#0f172a" in html or "#1a1a2e" in html), "Light theme should have dark text color"
     print("[PASS] Light theme CSS variables defined")
 
 # Test 3: Theme persists via localStorage

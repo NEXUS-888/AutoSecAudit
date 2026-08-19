@@ -87,6 +87,70 @@
             --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
         }
 
+        /* ── Light Theme Tokens & Styles ──────────────────────────── */
+        [data-theme="light"] {
+            --bg-deep: #f8fafc;
+            --bg-base: #f1f5f9;
+            --bg-elevated: #ffffff;
+            --surface: #ffffff;
+            --surface-hover: #f8fafc;
+            --surface-active: #f1f5f9;
+            --fg: #0f172a;
+            --fg-muted: #475569;
+            --fg-faint: #94a3b8;
+            --accent: #4f46e5;
+            --accent-bright: #6366f1;
+            --accent-glow: rgba(79, 70, 229, 0.20);
+            --accent-subtle: rgba(79, 70, 229, 0.08);
+            --border: #e2e8f0;
+            --border-hover: #cbd5e1;
+            --border-strong: #94a3b8;
+            --shadow-card: 0 1px 3px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.03), 0 0 0 1px #e2e8f0;
+            --shadow-card-hover: 0 4px 6px rgba(0,0,0,0.05), 0 10px 24px rgba(0,0,0,0.06), 0 0 0 1px #cbd5e1;
+        }
+        [data-theme="light"] body { background: #f8fafc; color: #0f172a; }
+        [data-theme="light"] .bg-grid { background-image: linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px); }
+        [data-theme="light"] .nav { background: rgba(255, 255, 255, 0.85); border-bottom: 1px solid #e2e8f0; }
+        [data-theme="light"] .nav-brand { color: #0f172a; }
+        [data-theme="light"] .nav-back { background: #f1f5f9; color: #1e293b; border-color: #cbd5e1; }
+        [data-theme="light"] .btn-download { background: #f1f5f9; color: #1e293b; border-color: #cbd5e1; }
+        [data-theme="light"] .glass-card { background: #ffffff; border-color: #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+        [data-theme="light"] .hero-title {
+            background: linear-gradient(180deg, #0f172a 0%, #334155 100%) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .hero-target { color: #4f46e5; }
+        [data-theme="light"] .stat-card, [data-theme="light"] .finding-card, [data-theme="light"] .delta-summary-card {
+            background: #ffffff;
+            border-color: #e2e8f0;
+        }
+        [data-theme="light"] .finding-card:hover { border-color: #6366f1; box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+        [data-theme="light"] .finding-title, [data-theme="light"] .finding-card-title { color: #0f172a; }
+        [data-theme="light"] .finding-desc, [data-theme="light"] .finding-card-desc { color: #475569; }
+        [data-theme="light"] .filter-bar-sticky, [data-theme="light"] .filter-bar {
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid #e2e8f0;
+        }
+        [data-theme="light"] .search-input, [data-theme="light"] #findingSearch {
+            background: #ffffff;
+            color: #0f172a;
+            border-color: #cbd5e1;
+        }
+        [data-theme="light"] .modal-content, [data-theme="light"] .modal-card, [data-theme="light"] .finding-modal-content {
+            background: #ffffff;
+            border-color: #e2e8f0;
+            color: #0f172a;
+        }
+        [data-theme="light"] .modal-header { border-bottom-color: #e2e8f0; }
+        [data-theme="light"] .modal-footer { border-top-color: #e2e8f0; }
+        [data-theme="light"] .code-block, [data-theme="light"] .evidence-box, [data-theme="light"] .remediation-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            color: #0f172a;
+        }
+
         /* ================================================================
            RESET & BASE
            ================================================================ */
@@ -1300,7 +1364,12 @@
                 </a>
                 <span class="nav-brand">AutoSecAudit <span>2.0</span></span>
             </div>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button id="themeToggle" onclick="toggleTheme()" class="btn-download" style="padding: 6px 10px; cursor: pointer; display: flex; align-items: center; justify-content: center;" title="Toggle Light/Dark Mode">
+                    <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                </button>
                 <a href="/download/{{ report.timestamp | replace(' ', '_') | replace(':', '') | replace('-', '') }}" class="btn-download" id="downloadBtn">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -1973,6 +2042,32 @@
             if (countEl) countEl.textContent = shown + '/' + cards.length + ' shown';
         }
         filterFindings();
+
+        /* ── Theme Toggle ──────────────────────────── */
+        function toggleTheme() {
+            var html = document.documentElement;
+            var current = html.getAttribute('data-theme');
+            var next = current === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', next);
+            localStorage.setItem('autosec-theme', next);
+            updateThemeIcon(next);
+        }
+        function updateThemeIcon(theme) {
+            var icon = document.getElementById('themeIcon');
+            if (!icon) return;
+            if (theme === 'light') {
+                icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+            } else {
+                icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+            }
+        }
+        (function() {
+            var saved = localStorage.getItem('autosec-theme');
+            if (saved) {
+                document.documentElement.setAttribute('data-theme', saved);
+                updateThemeIcon(saved);
+            }
+        })();
     </script>
     <style>
         .filter-btn {
