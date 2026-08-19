@@ -6,15 +6,15 @@
     <title>AutoSecAudit — Autonomous DevSecOps Dynamic Security Orchestrator</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-base: #030712;
-            --bg-surface: #0f172a;
-            --bg-card: rgba(15, 23, 42, 0.75);
-            --bg-elevated: rgba(30, 41, 59, 0.7);
-            --border-color: rgba(148, 163, 184, 0.15);
-            --border-glow: rgba(99, 102, 241, 0.35);
+            --bg-base: #06080e;
+            --bg-surface: #0c101a;
+            --bg-card: rgba(14, 19, 32, 0.82);
+            --bg-elevated: rgba(22, 30, 50, 0.75);
+            --border-color: rgba(148, 163, 184, 0.12);
+            --border-glow: rgba(99, 102, 241, 0.4);
             --fg-primary: #f8fafc;
             --fg-secondary: #94a3b8;
             --fg-muted: #64748b;
@@ -23,8 +23,9 @@
             --accent-cyan: #06b6d4;
             --accent-rose: #f43f5e;
             --accent-amber: #f59e0b;
-            --glass-bg: rgba(15, 23, 42, 0.82);
-            --glass-border: rgba(255, 255, 255, 0.1);
+            --accent-purple: #a855f7;
+            --glass-bg: rgba(10, 14, 24, 0.88);
+            --glass-border: rgba(255, 255, 255, 0.08);
             --shadow-glow: 0 0 35px -5px rgba(99, 102, 241, 0.25);
             --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
             --font-mono: 'JetBrains Mono', monospace;
@@ -33,23 +34,23 @@
         [data-theme="light"] {
             --bg-base: #f8fafc;
             --bg-surface: #ffffff;
-            --bg-card: rgba(255, 255, 255, 0.88);
+            --bg-card: rgba(255, 255, 255, 0.92);
             --bg-elevated: #f1f5f9;
-            --border-color: rgba(148, 163, 184, 0.25);
+            --border-color: rgba(148, 163, 184, 0.22);
             --border-glow: rgba(99, 102, 241, 0.25);
             --fg-primary: #0f172a;
             --fg-secondary: #475569;
             --fg-muted: #64748b;
-            --glass-bg: rgba(255, 255, 255, 0.92);
+            --glass-bg: rgba(255, 255, 255, 0.94);
             --glass-border: rgba(15, 23, 42, 0.08);
-            --shadow-glow: 0 10px 30px -5px rgba(99, 102, 241, 0.15);
+            --shadow-glow: 0 10px 30px -5px rgba(99, 102, 241, 0.12);
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
         }
 
         body {
@@ -59,9 +60,9 @@
             line-height: 1.6;
             overflow-x: hidden;
             background-image: 
-                radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
-                radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.10) 0%, transparent 40%),
-                radial-gradient(circle at 50% 85%, rgba(6, 182, 212, 0.08) 0%, transparent 50%);
+                radial-gradient(circle at 10% 15%, rgba(99, 102, 241, 0.15) 0%, transparent 45%),
+                radial-gradient(circle at 90% 25%, rgba(16, 185, 129, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 50% 85%, rgba(6, 182, 212, 0.10) 0%, transparent 50%);
             background-attachment: fixed;
         }
 
@@ -73,8 +74,8 @@
             right: 0;
             height: 72px;
             background: var(--glass-bg);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border-bottom: 1px solid var(--border-color);
             z-index: 1000;
             display: flex;
@@ -89,35 +90,35 @@
             gap: 0.75rem;
             text-decoration: none;
             color: var(--fg-primary);
-            font-weight: 800;
-            font-size: 1.25rem;
-            letter-spacing: -0.02em;
+            font-weight: 900;
+            font-size: 1.3rem;
+            letter-spacing: -0.03em;
         }
 
         .brand-icon {
-            width: 38px;
-            height: 38px;
+            width: 40px;
+            height: 40px;
             background: linear-gradient(135deg, var(--accent-indigo), var(--accent-cyan));
-            border-radius: 10px;
+            border-radius: 11px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.45);
         }
 
         .nav-links {
             display: flex;
             align-items: center;
-            gap: 2rem;
+            gap: 1.75rem;
             list-style: none;
         }
 
         .nav-link {
             text-decoration: none;
             color: var(--fg-secondary);
-            font-size: 0.9rem;
-            font-weight: 500;
+            font-size: 0.88rem;
+            font-weight: 600;
             transition: color 0.2s ease;
         }
 
@@ -131,31 +132,32 @@
             gap: 1rem;
         }
 
-        /* ── Buttons ─────────────────────────────────────────── */
+        /* ── Buttons & Controls ─────────────────────────────── */
         .btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 0.5rem;
-            padding: 0.6rem 1.25rem;
+            padding: 0.65rem 1.35rem;
             border-radius: 10px;
-            font-size: 0.875rem;
-            font-weight: 600;
+            font-size: 0.88rem;
+            font-weight: 700;
             text-decoration: none;
             cursor: pointer;
             border: 1px solid transparent;
+            font-family: var(--font-sans);
             transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .btn-primary {
             background: linear-gradient(135deg, var(--accent-indigo), #4f46e5);
             color: white;
-            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+            box-shadow: 0 4px 18px rgba(99, 102, 241, 0.4);
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+            box-shadow: 0 6px 24px rgba(99, 102, 241, 0.6);
             color: white;
         }
 
@@ -174,12 +176,12 @@
         .btn-emerald {
             background: linear-gradient(135deg, #059669, #10b981);
             color: white;
-            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);
         }
 
         .btn-emerald:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
+            box-shadow: 0 6px 22px rgba(16, 185, 129, 0.5);
         }
 
         .theme-toggle-btn {
@@ -199,13 +201,13 @@
             border-color: var(--accent-indigo);
         }
 
-        /* ── Hero Section ───────────────────────────────────── */
+        /* ── Hero Cockpit ───────────────────────────────────── */
         .hero {
-            padding: 140px 2rem 80px;
-            max-width: 1280px;
+            padding: 130px 2rem 70px;
+            max-width: 1340px;
             margin: 0 auto;
             display: grid;
-            grid-template-columns: 1.15fr 0.85fr;
+            grid-template-columns: 1.1fr 0.9fr;
             gap: 3.5rem;
             align-items: center;
             min-height: calc(100vh - 72px);
@@ -214,15 +216,15 @@
         .hero-badge {
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.4rem 1rem;
+            gap: 0.6rem;
+            padding: 0.45rem 1.15rem;
             border-radius: 999px;
-            background: rgba(99, 102, 241, 0.12);
-            border: 1px solid rgba(99, 102, 241, 0.3);
+            background: rgba(99, 102, 241, 0.14);
+            border: 1px solid rgba(99, 102, 241, 0.35);
             color: var(--accent-indigo);
             font-size: 0.8rem;
-            font-weight: 700;
-            letter-spacing: 0.04em;
+            font-weight: 800;
+            letter-spacing: 0.05em;
             text-transform: uppercase;
             margin-bottom: 1.5rem;
         }
@@ -242,24 +244,24 @@
         }
 
         .hero-title {
-            font-size: 3.25rem;
-            font-weight: 800;
-            line-height: 1.15;
-            letter-spacing: -0.03em;
-            margin-bottom: 1.25rem;
+            font-size: 3.4rem;
+            font-weight: 900;
+            line-height: 1.12;
+            letter-spacing: -0.035em;
+            margin-bottom: 1.35rem;
         }
 
         .gradient-text {
-            background: linear-gradient(135deg, #6366f1 0%, #38bdf8 50%, #10b981 100%);
+            background: linear-gradient(135deg, #6366f1 0%, #38bdf8 45%, #10b981 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
         .hero-desc {
-            font-size: 1.125rem;
+            font-size: 1.15rem;
             color: var(--fg-secondary);
             margin-bottom: 2.25rem;
-            max-width: 600px;
+            max-width: 620px;
             line-height: 1.7;
         }
 
@@ -268,81 +270,92 @@
             align-items: center;
             gap: 1.25rem;
             flex-wrap: wrap;
-            margin-bottom: 2.5rem;
+            margin-bottom: 2.75rem;
         }
 
         .hero-stats-banner {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.25rem;
             padding-top: 2rem;
             border-top: 1px solid var(--border-color);
         }
 
         .stat-item h4 {
-            font-size: 1.65rem;
-            font-weight: 800;
+            font-size: 1.7rem;
+            font-weight: 900;
             color: var(--fg-primary);
-            letter-spacing: -0.02em;
+            letter-spacing: -0.03em;
+            font-family: var(--font-mono);
         }
 
         .stat-item p {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: var(--fg-muted);
-            font-weight: 600;
+            font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
-        /* ── Live Interactive Terminal Simulation ────────────── */
-        .terminal-window {
+        /* ── Cockpit HUD & Radar Display ────────────────────── */
+        .cockpit-card {
             background: #090d16;
-            border-radius: 14px;
+            border-radius: 18px;
             border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.6), 0 0 25px rgba(99, 102, 241, 0.2);
+            box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 30px rgba(99, 102, 241, 0.25);
             overflow: hidden;
-            font-family: var(--font-mono);
             display: flex;
             flex-direction: column;
-            height: 480px;
         }
 
-        .terminal-header {
-            background: #0f172a;
-            padding: 0.75rem 1rem;
+        .cockpit-header {
+            background: #0f1626;
+            padding: 0.85rem 1.25rem;
             display: flex;
             align-items: center;
             justify-content: space-between;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        .terminal-dots {
-            display: flex;
+        .hud-status-badge {
+            display: inline-flex;
+            align-items: center;
             gap: 6px;
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #10b981;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 0.72rem;
+            font-family: var(--font-mono);
+            font-weight: 700;
         }
 
-        .terminal-dot {
-            width: 11px;
-            height: 11px;
+        .radar-container {
+            position: relative;
+            background: #060911;
+            padding: 1rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        #radarCanvas {
             border-radius: 50%;
+            background: radial-gradient(circle, #0c1424 0%, #060911 75%);
+            box-shadow: inset 0 0 20px rgba(6, 182, 212, 0.2);
         }
 
-        .dot-red { background: #ef4444; }
-        .dot-yellow { background: #f59e0b; }
-        .dot-green { background: #10b981; }
-
-        .terminal-title {
-            font-size: 0.75rem;
-            color: #94a3b8;
-            font-weight: 500;
-        }
-
-        .terminal-body {
-            padding: 1.25rem;
+        .terminal-feed {
+            padding: 1.15rem;
             color: #cbd5e1;
-            font-size: 0.8rem;
-            line-height: 1.6;
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            line-height: 1.55;
+            height: 220px;
             overflow-y: auto;
-            flex: 1;
+            background: #090d16;
         }
 
         .t-prompt { color: #38bdf8; font-weight: bold; }
@@ -353,22 +366,22 @@
         .t-danger { color: #f43f5e; font-weight: bold; }
         .t-highlight { color: #a855f7; font-weight: bold; }
 
-        /* ── DAST vs SAST Showdown Section ───────────────────── */
+        /* ── DAST vs SAST Battleground ──────────────────────── */
         .section {
             padding: 90px 2rem;
-            max-width: 1280px;
+            max-width: 1340px;
             margin: 0 auto;
         }
 
         .section-header {
             text-align: center;
-            max-width: 720px;
+            max-width: 760px;
             margin: 0 auto 4rem;
         }
 
         .section-badge {
             font-size: 0.8rem;
-            font-weight: 700;
+            font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.06em;
             color: var(--accent-indigo);
@@ -377,14 +390,14 @@
         }
 
         .section-title {
-            font-size: 2.35rem;
-            font-weight: 800;
-            letter-spacing: -0.02em;
+            font-size: 2.5rem;
+            font-weight: 900;
+            letter-spacing: -0.03em;
             margin-bottom: 1rem;
         }
 
         .section-desc {
-            font-size: 1.05rem;
+            font-size: 1.08rem;
             color: var(--fg-secondary);
         }
 
@@ -397,10 +410,9 @@
         .showdown-card {
             background: var(--bg-card);
             border: 1px solid var(--border-color);
-            border-radius: 18px;
-            padding: 2.25rem;
+            border-radius: 20px;
+            padding: 2.5rem;
             position: relative;
-            overflow: hidden;
             box-shadow: var(--shadow-glow);
         }
 
@@ -409,42 +421,45 @@
         }
 
         .showdown-card.winner {
-            border-color: rgba(16, 185, 129, 0.4);
-            background: linear-gradient(180deg, var(--bg-card) 0%, rgba(16, 185, 129, 0.05) 100%);
+            border-color: rgba(16, 185, 129, 0.45);
+            background: linear-gradient(180deg, var(--bg-card) 0%, rgba(16, 185, 129, 0.06) 100%);
+            box-shadow: 0 0 40px rgba(16, 185, 129, 0.15);
         }
 
         .card-tag {
             display: inline-block;
-            padding: 0.25rem 0.75rem;
+            padding: 0.3rem 0.85rem;
             border-radius: 6px;
             font-size: 0.75rem;
-            font-weight: 700;
+            font-weight: 800;
             margin-bottom: 1.25rem;
+            font-family: var(--font-mono);
+            letter-spacing: 0.04em;
         }
 
         .tag-sast { background: rgba(244, 63, 94, 0.15); color: #f43f5e; }
-        .tag-dast { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+        .tag-dast { background: rgba(16, 185, 129, 0.18); color: #10b981; }
 
         .showdown-list {
             list-style: none;
-            margin-top: 1.5rem;
+            margin-top: 1.75rem;
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            gap: 1.15rem;
         }
 
         .showdown-list li {
             display: flex;
             align-items: flex-start;
-            gap: 0.75rem;
-            font-size: 0.92rem;
+            gap: 0.85rem;
+            font-size: 0.94rem;
             color: var(--fg-secondary);
         }
 
-        .icon-check { color: #10b981; font-weight: bold; flex-shrink: 0; font-size: 1.1rem; }
-        .icon-cross { color: #f43f5e; font-weight: bold; flex-shrink: 0; font-size: 1.1rem; }
+        .icon-check { color: #10b981; font-weight: bold; font-size: 1.2rem; flex-shrink: 0; }
+        .icon-cross { color: #f43f5e; font-weight: bold; font-size: 1.2rem; flex-shrink: 0; }
 
-        /* ── 4-Stage Architecture Grid ──────────────────────── */
+        /* ── 4-Stage Architecture ──────────────────────────── */
         .arch-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -454,16 +469,16 @@
         .arch-card {
             background: var(--bg-card);
             border: 1px solid var(--border-color);
-            border-radius: 14px;
-            padding: 1.75rem;
+            border-radius: 16px;
+            padding: 2rem 1.75rem;
             transition: all 0.3s ease;
             position: relative;
         }
 
         .arch-card:hover {
-            transform: translateY(-4px);
+            transform: translateY(-5px);
             border-color: var(--accent-indigo);
-            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.25);
+            box-shadow: 0 12px 30px -5px rgba(99, 102, 241, 0.3);
         }
 
         .arch-step-num {
@@ -471,54 +486,57 @@
             font-weight: 800;
             color: var(--accent-indigo);
             text-transform: uppercase;
-            margin-bottom: 0.75rem;
+            font-family: var(--font-mono);
+            margin-bottom: 0.85rem;
         }
 
         .arch-card h3 {
-            font-size: 1.15rem;
-            font-weight: 700;
-            margin-bottom: 0.75rem;
+            font-size: 1.2rem;
+            font-weight: 800;
+            margin-bottom: 0.85rem;
         }
 
         .arch-card p {
-            font-size: 0.85rem;
+            font-size: 0.88rem;
             color: var(--fg-secondary);
-            line-height: 1.5;
+            line-height: 1.6;
         }
 
-        /* ── Quick Sandbox CTA ──────────────────────────────── */
+        /* ── Cockpit Sandbox CTA ────────────────────────────── */
         .cta-box {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(16, 185, 129, 0.12));
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            border-radius: 20px;
-            padding: 3.5rem 2rem;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(16, 185, 129, 0.12));
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            border-radius: 24px;
+            padding: 4rem 2.5rem;
             text-align: center;
             margin: 40px auto 80px;
-            max-width: 1080px;
+            max-width: 1120px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
         }
 
         .cta-box h2 {
-            font-size: 2.2rem;
-            font-weight: 800;
+            font-size: 2.4rem;
+            font-weight: 900;
+            letter-spacing: -0.02em;
             margin-bottom: 1rem;
         }
 
         .cta-form {
             display: flex;
-            max-width: 580px;
-            margin: 2rem auto 0;
-            gap: 0.75rem;
+            max-width: 620px;
+            margin: 2.25rem auto 0;
+            gap: 0.85rem;
         }
 
         .cta-input {
             flex: 1;
             background: var(--bg-surface);
             border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 0.85rem 1.25rem;
+            border-radius: 12px;
+            padding: 0.95rem 1.4rem;
             color: var(--fg-primary);
             font-family: var(--font-sans);
-            font-size: 0.95rem;
+            font-size: 1rem;
             outline: none;
         }
 
@@ -534,8 +552,8 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(3, 7, 18, 0.8);
-            backdrop-filter: blur(8px);
+            background: rgba(3, 7, 18, 0.85);
+            backdrop-filter: blur(10px);
             display: none;
             align-items: center;
             justify-content: center;
@@ -550,28 +568,28 @@
         .auth-card {
             background: var(--bg-surface);
             border: 1px solid var(--border-color);
-            border-radius: 18px;
+            border-radius: 20px;
             width: 100%;
-            max-width: 440px;
-            padding: 2.25rem;
-            box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7);
+            max-width: 450px;
+            padding: 2.5rem;
+            box-shadow: 0 30px 70px -15px rgba(0, 0, 0, 0.8);
             position: relative;
             animation: modalSlide 0.25s ease-out;
         }
 
         @keyframes modalSlide {
-            from { opacity: 0; transform: translateY(15px); }
+            from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
         .modal-close {
             position: absolute;
-            top: 1.25rem;
-            right: 1.25rem;
+            top: 1.35rem;
+            right: 1.35rem;
             background: transparent;
             border: none;
             color: var(--fg-muted);
-            font-size: 1.35rem;
+            font-size: 1.5rem;
             cursor: pointer;
         }
 
@@ -587,7 +605,7 @@
             flex: 1;
             padding: 0.75rem;
             text-align: center;
-            font-weight: 600;
+            font-weight: 700;
             font-size: 0.95rem;
             color: var(--fg-muted);
             cursor: pointer;
@@ -606,7 +624,7 @@
         .form-label {
             display: block;
             font-size: 0.82rem;
-            font-weight: 600;
+            font-weight: 700;
             margin-bottom: 0.4rem;
             color: var(--fg-secondary);
         }
@@ -616,20 +634,20 @@
             background: var(--bg-base);
             border: 1px solid var(--border-color);
             border-radius: 8px;
-            padding: 0.75rem 1rem;
+            padding: 0.8rem 1rem;
             color: var(--fg-primary);
             font-family: var(--font-sans);
-            font-size: 0.9rem;
+            font-size: 0.92rem;
             outline: none;
         }
 
         .form-control:focus {
             border-color: var(--accent-indigo);
-            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
         }
 
         .auth-alert {
-            padding: 0.75rem;
+            padding: 0.75rem 1rem;
             border-radius: 8px;
             font-size: 0.85rem;
             margin-bottom: 1rem;
@@ -651,17 +669,18 @@
         }
 
         /* ── Responsive ─────────────────────────────────────── */
-        @media (max-width: 980px) {
+        @media (max-width: 1024px) {
             .hero { grid-template-columns: 1fr; padding-top: 110px; }
             .showdown-grid { grid-template-columns: 1fr; }
             .arch-grid { grid-template-columns: 1fr 1fr; }
-            .navbar { padding: 0 1.25rem; }
+            .navbar { padding: 0 1.5rem; }
             .nav-links { display: none; }
         }
-        @media (max-width: 600px) {
+        @media (max-width: 640px) {
             .arch-grid { grid-template-columns: 1fr; }
+            .hero-stats-banner { grid-template-columns: 1fr 1fr; }
             .cta-form { flex-direction: column; }
-            .hero-title { font-size: 2.35rem; }
+            .hero-title { font-size: 2.4rem; }
         }
     </style>
 </head>
@@ -671,7 +690,7 @@
     <nav class="navbar">
         <a href="/" class="nav-brand">
             <div class="brand-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                     <path d="m9 12 2 2 4-4"/>
                 </svg>
@@ -680,8 +699,8 @@
         </a>
 
         <ul class="nav-links">
-            <li><a href="#why-autosec" class="nav-link">Why AutoSecAudit</a></li>
-            <li><a href="#architecture" class="nav-link">Architecture</a></li>
+            <li><a href="#why-autosec" class="nav-link">Why DAST vs SAST</a></li>
+            <li><a href="#architecture" class="nav-link">4-Stage Pipeline</a></li>
             <li><a href="#metrics" class="nav-link">Benchmark</a></li>
             <li><a href="/history" class="nav-link">Scan History</a></li>
             <li><a href="/dashboard" class="nav-link">Scanner Console</a></li>
@@ -706,11 +725,11 @@
 
             <div id="userAuthControls">
                 {% if user %}
-                    <span style="font-size: 0.88rem; font-weight: 600; color: var(--accent-emerald); margin-right: 0.5rem;">
+                    <span style="font-size: 0.88rem; font-weight: 700; color: var(--accent-emerald); margin-right: 0.5rem;">
                         ● {{ user.username }}
                     </span>
                     <a href="/dashboard" class="btn btn-secondary">Scanner</a>
-                    <a href="/logout" class="btn btn-secondary" style="padding: 0.6rem 0.8rem;">Logout</a>
+                    <a href="/logout" class="btn btn-secondary" style="padding: 0.65rem 0.85rem;">Logout</a>
                 {% else %}
                     <button onclick="openAuthModal('login')" class="btn btn-secondary">Sign In</button>
                     <a href="/dashboard" class="btn btn-primary">Launch Scanner</a>
@@ -719,76 +738,89 @@
         </div>
     </nav>
 
-    <!-- ── Hero Section ───────────────────────────────────── -->
+    <!-- ── Hero Cockpit Section ───────────────────────────── -->
     <section class="hero">
         <div class="hero-content">
             <div class="hero-badge">
                 <span class="hero-badge-pulse"></span>
-                DevSecOps Dynamic Security Orchestration
+                Autonomous DevSecOps Dynamic Security Orchestrator
             </div>
             <h1 class="hero-title">
                 Catch Live Vulnerabilities in <span class="gradient-text">~65 Seconds</span>, Zero Hallucinations.
             </h1>
             <p class="hero-desc">
-                Static code reviewers only read text and guess bugs. <strong>AutoSecAudit</strong> actively attacks running containers with 14 specialized plugins, suppressing 38.2% of duplicate noise and halting breaking build regressions in CI/CD.
+                Static reviewers (CodeRabbit/LLMs) only guess syntax. <strong>AutoSecAudit</strong> orchestrates 14 dynamic plugins across a live container, deduplicating alerts by 38.2% and diffing build regressions in CI/CD.
             </p>
 
             <div class="hero-cta-group">
-                <a href="/dashboard" class="btn btn-primary" style="padding: 0.85rem 1.75rem; font-size: 1rem;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <a href="/dashboard" class="btn btn-primary" style="padding: 0.9rem 1.85rem; font-size: 1rem;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
                         <polygon points="5 3 19 12 5 21 5 3"/>
                     </svg>
                     Start Security Scan
                 </a>
-                <button onclick="simulateScan()" class="btn btn-secondary" style="padding: 0.85rem 1.5rem; font-size: 1rem;">
+                <button onclick="replaySimulation()" class="btn btn-secondary" style="padding: 0.9rem 1.6rem; font-size: 1rem;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="4 17 10 11 4 5"/>
-                        <line x1="12" y1="19" x2="20" y2="19"/>
+                        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
                     </svg>
-                    Replay Terminal Demo
+                    Replay Radar Telemetry
                 </button>
             </div>
 
-            <div class="hero-stats-banner">
+            <div class="hero-stats-banner" id="metrics">
                 <div class="stat-item">
                     <h4>64.8%</h4>
-                    <p>Faster Scan Latency</p>
+                    <p>Latency Drop</p>
+                </div>
+                <div class="stat-item">
+                    <h4>14 Scanners</h4>
+                    <p>In Parallel</p>
                 </div>
                 <div class="stat-item">
                     <h4>38.2%</h4>
-                    <p>Alert Noise Cut</p>
+                    <p>Noise Cut</p>
                 </div>
                 <div class="stat-item">
                     <h4>97.9%</h4>
-                    <p>Verified Precision</p>
+                    <p>Precision</p>
                 </div>
             </div>
         </div>
 
-        <!-- ── Live Animated Terminal ────────────────────────── -->
-        <div class="terminal-window">
-            <div class="terminal-header">
-                <div class="terminal-dots">
-                    <span class="terminal-dot dot-red"></span>
-                    <span class="terminal-dot dot-yellow"></span>
-                    <span class="terminal-dot dot-green"></span>
+        <!-- ── Cockpit Telemetry & Radar ──────────────────────── -->
+        <div class="cockpit-card">
+            <div class="cockpit-header">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444;"></span>
+                    <span style="width: 10px; height: 10px; border-radius: 50%; background: #f59e0b;"></span>
+                    <span style="width: 10px; height: 10px; border-radius: 50%; background: #10b981;"></span>
+                    <span style="font-size: 0.78rem; font-family: var(--font-mono); color: #94a3b8; margin-left: 6px;">LIVE TELEMETRY HUD</span>
                 </div>
-                <span class="terminal-title">autosecaudit-engine --target http://localhost:3000 --fail-on high</span>
-                <span style="font-size: 0.7rem; color: #64748b;">v2.4.0</span>
+                <div class="hud-status-badge">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #10b981;"></span>
+                    RADAR ACTIVE: k=8 THREADS
+                </div>
             </div>
-            <div class="terminal-body" id="terminalBody">
+
+            <!-- Glowing Radar Canvas -->
+            <div class="radar-container">
+                <canvas id="radarCanvas" width="220" height="220"></canvas>
+            </div>
+
+            <!-- Streaming Terminal -->
+            <div class="terminal-feed" id="terminalFeed">
                 <!-- Streamed via JavaScript -->
             </div>
         </div>
     </section>
 
-    <!-- ── Why AutoSecAudit? (DAST vs SAST Showdown) ──────── -->
+    <!-- ── Why AutoSecAudit? (Battleground Matrix) ────────── -->
     <section class="section" id="why-autosec">
         <div class="section-header">
-            <span class="section-badge">Runtime Reality vs. Text Review</span>
-            <h2 class="section-title">Why AI Code Reviewers & SAST Aren't Enough</h2>
+            <span class="section-badge">Runtime Proof vs. Code Review</span>
+            <h2 class="section-title">Why AI Code Reviewers & SAST Fall Short</h2>
             <p class="section-desc">
-                Tools like CodeRabbit read your code strings before compiling. AutoSecAudit spins up the deployment and actively attacks the live server to prove what actually breaks.
+                Static tools guess theoretical risks by reading source text. AutoSecAudit actively attacks the running deployment with real payloads to prove what actually breaks in production.
             </p>
         </div>
 
@@ -797,17 +829,17 @@
             <div class="showdown-card competitor">
                 <span class="card-tag tag-sast">Static Code Review (SAST / LLMs)</span>
                 <h3>Code Reviewers & Text-Guessing</h3>
-                <p style="color: var(--fg-secondary); font-size: 0.9rem; margin-top: 0.5rem;">
-                    Reads raw repository text without network or runtime context.
+                <p style="color: var(--fg-secondary); font-size: 0.92rem; margin-top: 0.5rem;">
+                    Analyzes raw repo text without network, database, or runtime context.
                 </p>
                 <ul class="showdown-list">
                     <li>
                         <span class="icon-cross">✕</span>
-                        <span><strong>High Hallucination Rate:</strong> Flags potential syntax patterns that are unreachable or sanitized in runtime frameworks.</span>
+                        <span><strong>High Hallucination Rate:</strong> Flags potential regex or syntax patterns that are unreachable or sanitized by framework middlewares.</span>
                     </li>
                     <li>
                         <span class="icon-cross">✕</span>
-                        <span><strong>Blind to Network Ports:</strong> Cannot discover if Docker exposed Redis (6379) or MongoDB (27017) without auth.</span>
+                        <span><strong>Blind to Network Ports:</strong> Cannot detect if Docker exposed Redis (6379) or MongoDB (27017) without passwords.</span>
                     </li>
                     <li>
                         <span class="icon-cross">✕</span>
@@ -815,22 +847,22 @@
                     </li>
                     <li>
                         <span class="icon-cross">✕</span>
-                        <span><strong>Expensive & Non-Deterministic:</strong> Heavy LLM API token costs per commit with shifting feedback between runs.</span>
+                        <span><strong>Expensive Token Burn:</strong> Incurs high per-commit LLM API bills with non-deterministic comments between runs.</span>
                     </li>
                 </ul>
             </div>
 
             <!-- Winner: AutoSecAudit DAST Orchestrator -->
             <div class="showdown-card winner">
-                <span class="card-tag tag-dast">AutoSecAudit (Dynamic Orchestration)</span>
+                <span class="card-tag tag-dast">AutoSecAudit (Dynamic Orchestrator)</span>
                 <h3>Live Runtime Vulnerability Engine</h3>
-                <p style="color: var(--fg-secondary); font-size: 0.9rem; margin-top: 0.5rem;">
-                    Active exploit execution, mathematical deduplication, and build gating.
+                <p style="color: var(--fg-secondary); font-size: 0.92rem; margin-top: 0.5rem;">
+                    Active exploit delivery, mathematical deduplication, and build gating.
                 </p>
                 <ul class="showdown-list">
                     <li>
                         <span class="icon-check">✓</span>
-                        <span><strong>Zero Hallucinations:</strong> Every finding includes exact HTTP request/response proofs and server timing confirmation.</span>
+                        <span><strong>Zero Hallucinations:</strong> Every finding is backed by exact HTTP request/response proofs and server timing confirmation.</span>
                     </li>
                     <li>
                         <span class="icon-check">✓</span>
@@ -849,11 +881,11 @@
         </div>
     </section>
 
-    <!-- ── 4-Stage Architecture ──────────────────────────── -->
-    <section class="section" id="architecture" style="background: rgba(15, 23, 42, 0.3); border-radius: 24px;">
+    <!-- ── 4-Stage Architecture Cockpit ──────────────────── -->
+    <section class="section" id="architecture" style="background: rgba(12, 16, 26, 0.45); border-radius: 24px; border: 1px solid var(--border-color);">
         <div class="section-header">
-            <span class="section-badge">How It Works</span>
-            <h2 class="section-title">The 4-Stage Security Pipeline</h2>
+            <span class="section-badge">Engineering Pipeline</span>
+            <h2 class="section-title">The 4-Stage Security Engine</h2>
             <p class="section-desc">
                 From recursive crawling to live NIST CVE enrichment and delta tracking.
             </p>
@@ -883,16 +915,16 @@
         </div>
     </section>
 
-    <!-- ── Quick Scan Sandbox CTA ────────────────────────── -->
+    <!-- ── Cockpit Sandbox CTA ────────────────────────────── -->
     <section class="section">
         <div class="cta-box">
-            <h2>Ready to Audit Your Web Services?</h2>
-            <p style="color: var(--fg-secondary); max-width: 600px; margin: 0 auto;">
+            <h2>Ready to Audit Your Microservices?</h2>
+            <p style="color: var(--fg-secondary); max-width: 620px; margin: 0 auto; font-size: 1.05rem;">
                 Experience automated security verification with real-time SSE streaming and downloadable executive reports.
             </p>
             <form class="cta-form" action="/dashboard" method="GET">
                 <input type="text" name="target" class="cta-input" placeholder="Enter target URL (e.g. http://localhost:3000)" value="http://localhost:3000" required>
-                <button type="submit" class="btn btn-primary" style="padding: 0 1.5rem;">Launch Scan</button>
+                <button type="submit" class="btn btn-primary" style="padding: 0 1.75rem;">Launch Scan</button>
             </form>
         </div>
     </section>
@@ -948,7 +980,7 @@
         </div>
     </div>
 
-    <!-- ── JavaScript Engine ──────────────────────────────── -->
+    <!-- ── JavaScript Engine & Canvas Radar ───────────────── -->
     <script>
         // 1. Dark/Light Mode Toggle Logic (Preserves test_theme.py hooks)
         function toggleTheme() {
@@ -1066,64 +1098,132 @@
             }
         }
 
-        // 3. Terminal Live Simulation Script
-        const terminalLines = [
-            { text: "$ autosecaudit scan --target http://localhost:3000 --fail-on high", type: "cmd", delay: 300 },
-            { text: "[*] Initializing AutoSecAudit Orchestration Engine v2.4.0...", type: "info", delay: 600 },
-            { text: "[+] Ingesting OpenAPI 3.0 schema: 32 endpoints, 12 parameter schemas loaded", type: "success", delay: 900 },
-            { text: "[+] BFS Crawler (D_max=3): Discovered 8 dynamic pages, 4 HTML forms", type: "success", delay: 1200 },
-            { text: "[*] Dispatching 14 plugins across ThreadPool (k=8 workers)...", type: "info", delay: 1500 },
-            { text: "    ├── NmapPlugin: Port 3000/TCP (Node.js Express), 80/TCP (Nginx)", type: "info", delay: 1800 },
-            { text: "    ├── SQLiScanner: Union-based vulnerability on /rest/products/search?q=", type: "danger", delay: 2100 },
-            { text: "    ├── JWTScanner: Algorithm 'none' key bypass accepted on /rest/user/login", type: "danger", delay: 2400 },
-            { text: "    ├── XSSScanner: Reflected payload executed on search parameter", type: "warning", delay: 2700 },
-            { text: "    └── MisconfigScanner: Missing CSP, HSTS, X-Frame-Options", type: "warning", delay: 3000 },
-            { text: "[+] Raw Scan Complete: 76 raw tool alerts generated in 64.8s (2.84x speedup)", type: "info", delay: 3300 },
-            { text: "[*] Running Intelligence Layer: Deduplicating by (host, port, URI, weakness)...", type: "highlight", delay: 3600 },
-            { text: "[+] Alert Reduction: 76 raw alerts -> 47 correlated issues (-38.2% noise)", type: "success", delay: 3900 },
-            { text: "[+] Threat Enrichment: Tagged 12 CVEs via NIST NVD / CIRCL endpoints", type: "info", delay: 4200 },
-            { text: "[+] Delta Regression vs Baseline Build v1.0:", type: "highlight", delay: 4500 },
-            { text: "    └── Δ_NEW: 3 new flaws | Δ_FIXED: 10 resolved | Δ_UNCHANGED: 37", type: "info", delay: 4800 },
-            { text: "[!] CI/CD Policy Gate: Found High severity findings -> Process Exit Code 1", type: "danger", delay: 5100 }
+        // 3. Canvas Radar Animation HUD
+        const canvas = document.getElementById("radarCanvas");
+        const ctx = canvas.getContext("2d");
+        let angle = 0;
+        const targets = [
+            { x: 50, y: -40, label: "Nmap:3000", color: "#38bdf8" },
+            { x: -60, y: 35, label: "SQLi:Union", color: "#ef4444" },
+            { x: 30, y: 65, label: "JWT:alg_none", color: "#ef4444" },
+            { x: -40, y: -55, label: "XSS:Search", color: "#f59e0b" },
+            { x: 70, y: 20, label: "Nikto:Headers", color: "#10b981" }
         ];
 
-        function simulateScan() {
-            const body = document.getElementById("terminalBody");
-            body.innerHTML = "";
-            let currentLine = 0;
+        function drawRadar() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 95;
 
-            function printNext() {
-                if (currentLine >= terminalLines.length) return;
-                const line = terminalLines[currentLine];
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw concentric rings
+            ctx.strokeStyle = "rgba(6, 182, 212, 0.22)";
+            ctx.lineWidth = 1;
+            for (let r = 30; r <= radius; r += 30) {
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Draw crosshairs
+            ctx.beginPath();
+            ctx.moveTo(centerX - radius, centerY);
+            ctx.lineTo(centerX + radius, centerY);
+            ctx.moveTo(centerX, centerY - radius);
+            ctx.lineTo(centerX, centerY + radius);
+            ctx.stroke();
+
+            // Draw sweeping line and trail
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(angle);
+
+            const gradient = ctx.createLinearGradient(0, 0, radius, 0);
+            gradient.addColorStop(0, "rgba(6, 182, 212, 0)");
+            gradient.addColorStop(1, "rgba(6, 182, 212, 0.85)");
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.arc(0, 0, radius, -0.4, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            // Draw Target Blips
+            targets.forEach(t => {
+                ctx.fillStyle = t.color;
+                ctx.beginPath();
+                ctx.arc(centerX + t.x, centerY + t.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.font = "9px 'JetBrains Mono', monospace";
+                ctx.fillText(t.label, centerX + t.x + 6, centerY + t.y + 3);
+            });
+
+            angle += 0.035;
+            requestAnimationFrame(drawRadar);
+        }
+
+        // 4. Terminal Live Stream Telemetry
+        const streamLines = [
+            { text: "$ autosecaudit scan --target http://localhost:3000 --fail-on high", type: "cmd" },
+            { text: "[*] Initializing AutoSecAudit Orchestration Engine v2.4.0...", type: "info" },
+            { text: "[+] Ingesting OpenAPI 3.0: 32 endpoints, 12 schemas loaded", type: "success" },
+            { text: "[+] BFS Crawler (D_max=3): Discovered 8 pages, 4 HTML forms", type: "success" },
+            { text: "[*] Dispatching 14 plugins across ThreadPool (k=8 workers)...", type: "info" },
+            { text: "    ├── NmapPlugin: Port 3000/TCP (Node.js Express), 80/TCP (Nginx)", type: "info" },
+            { text: "    ├── SQLiScanner: Union-based vulnerability on /rest/products/search?q=", type: "danger" },
+            { text: "    ├── JWTScanner: Algorithm 'none' key bypass accepted on /rest/user/login", type: "danger" },
+            { text: "    ├── XSSScanner: Reflected payload executed on search parameter", type: "warning" },
+            { text: "    └── MisconfigScanner: Missing CSP, HSTS, X-Frame-Options", type: "warning" },
+            { text: "[+] Raw Scan Complete: 76 raw tool alerts in 64.8s (2.84x speedup)", type: "info" },
+            { text: "[*] Intelligence Layer: Deduplicating by (host, port, URI, weakness)...", type: "highlight" },
+            { text: "[+] Alert Reduction: 76 raw alerts -> 47 correlated issues (-38.2% noise)", type: "success" },
+            { text: "[+] Threat Enrichment: Tagged 12 CVEs via NIST NVD / CIRCL endpoints", type: "info" },
+            { text: "[+] Delta Regression vs Baseline Build v1.0:", type: "highlight" },
+            { text: "    └── Δ_NEW: 3 new flaws | Δ_FIXED: 10 resolved | Δ_UNCHANGED: 37", type: "info" },
+            { text: "[!] CI/CD Policy Gate: Found High severity findings -> Process Exit Code 1", type: "danger" }
+        ];
+
+        function replaySimulation() {
+            const feed = document.getElementById("terminalFeed");
+            feed.innerHTML = "";
+            let idx = 0;
+
+            function printLine() {
+                if (idx >= streamLines.length) return;
+                const item = streamLines[idx];
                 const div = document.createElement("div");
                 div.style.marginBottom = "4px";
 
-                if (line.type === "cmd") {
-                    div.innerHTML = `<span class="t-prompt">></span> <span class="t-cmd">${line.text}</span>`;
-                } else if (line.type === "danger") {
-                    div.innerHTML = `<span class="t-danger">${line.text}</span>`;
-                } else if (line.type === "warning") {
-                    div.innerHTML = `<span class="t-warning">${line.text}</span>`;
-                } else if (line.type === "success") {
-                    div.innerHTML = `<span class="t-success">${line.text}</span>`;
-                } else if (line.type === "highlight") {
-                    div.innerHTML = `<span class="t-highlight">${line.text}</span>`;
+                if (item.type === "cmd") {
+                    div.innerHTML = `<span class="t-prompt">></span> <span class="t-cmd">${item.text}</span>`;
+                } else if (item.type === "danger") {
+                    div.innerHTML = `<span class="t-danger">${item.text}</span>`;
+                } else if (item.type === "warning") {
+                    div.innerHTML = `<span class="t-warning">${item.text}</span>`;
+                } else if (item.type === "success") {
+                    div.innerHTML = `<span class="t-success">${item.text}</span>`;
+                } else if (item.type === "highlight") {
+                    div.innerHTML = `<span class="t-highlight">${item.text}</span>`;
                 } else {
-                    div.innerHTML = `<span class="t-info">${line.text}</span>`;
+                    div.innerHTML = `<span class="t-info">${item.text}</span>`;
                 }
 
-                body.appendChild(div);
-                body.scrollTop = body.scrollHeight;
-                currentLine++;
-                setTimeout(printNext, 220);
+                feed.appendChild(div);
+                feed.scrollTop = feed.scrollHeight;
+                idx++;
+                setTimeout(printLine, 200);
             }
 
-            printNext();
+            printLine();
         }
 
-        // Auto-run simulation on page load
         window.addEventListener("DOMContentLoaded", () => {
-            simulateScan();
+            drawRadar();
+            replaySimulation();
         });
     </script>
 </body>
