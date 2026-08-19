@@ -56,6 +56,10 @@ class BaseScanner(ABC):
         if self._tool_available is not None:
             return self._tool_available
 
+        if tool_name in ("python-requests", "internal", "python", "requests", "builtin"):
+            self._tool_available = True
+            return True
+
         self._tool_available = shutil.which(tool_name) is not None
         if not self._tool_available:
             logger.warning(f"Tool '{tool_name}' not found. Plugin will run in mock mode.")
@@ -93,7 +97,7 @@ class BaseScanner(ABC):
     # ------------------------------------------------------------------
 
     def _get_baseline(self, url: str, param: str, method: str = "GET",
-                      headers: Optional[Dict] = None, timeout: int = 10) -> Optional[Dict[str, Any]]:
+                      headers: Optional[Dict] = None, timeout: Any = 10) -> Optional[Dict[str, Any]]:
         """
         Fetch a baseline (safe) response for an endpoint.
         Caches results so we only hit each endpoint once.
@@ -104,7 +108,10 @@ class BaseScanner(ABC):
 
         try:
             safe_value = "test123"
-            req_timeout = (3.0, float(timeout))
+            if isinstance(timeout, tuple):
+                req_timeout = timeout
+            else:
+                req_timeout = (3.0, float(timeout))
             if method.upper() == "GET":
                 resp = requests.get(
                     url, params={param: safe_value},
