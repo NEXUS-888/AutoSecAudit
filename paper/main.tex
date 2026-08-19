@@ -15,7 +15,7 @@
 \usepackage{url}
 \usepackage{microtype}
 
-% Ensure generous float thresholds and tight spacing for strict 5-page budget
+% Float thresholds and spacing for a clean 5-page balance
 \renewcommand{\topfraction}{0.95}
 \renewcommand{\bottomfraction}{0.95}
 \renewcommand{\textfraction}{0.05}
@@ -76,11 +76,7 @@
 \maketitle
 
 \begin{abstract}
-Continuous Integration and Continuous Deployment (CI/CD) pipelines require fast, automated security verification without interrupting release velocity. However, software engineering studies show that development teams routinely disable or bypass automated scanners because of toolchain fragmentation, overwhelming alert volume from duplicate findings, and a lack of historical regression tracking between commits.
-
-We present AutoSecAudit, an extensible vulnerability assessment framework engineered for continuous integration environments. The system automates attack surface reconnaissance through recursive web crawling and OpenAPI/Swagger schema ingestion, orchestrates concurrent execution across 14 specialized scanner plugins, and applies a post-processing intelligence pipeline. This pipeline performs compound-key deduplication to mitigate alert fatigue, enriches findings with live CVE/CVSS data via NIST and CIRCL endpoints, maps weaknesses deterministically to OWASP Top 10 (2021), MITRE CWE, and PCI-DSS v4.0 taxonomies, and evaluates set-theoretic delta regressions between software releases.
-
-Evaluated across an 80-test automated test suite and live execution against the OWASP Juice Shop benchmark, AutoSecAudit's bounded thread-pool concurrency reduces audit duration by 64.8\% over sequential execution. The correlation engine consolidates raw tool outputs with a 38.2\% reduction in redundant alerts at 97.9\% detection precision (88.5\% recall), while the delta analyzer achieves 100\% classification fidelity in tracking new, remediated, and persistent vulnerabilities across build transitions.
+Automating security checks in continuous integration pipelines often creates friction between development velocity and code safety. In practice, developers frequently disable automated DAST tools when flooded with redundant alerts from fragmented point utilities, or when scanners fail to highlight newly introduced regressions between commits. We present AutoSecAudit, an extensible vulnerability auditing framework designed specifically for automated CI/CD gating. The framework seeds attack surfaces using a breadth-first crawler alongside OpenAPI 3.0 specification parsers, parallelizes 14 specialized scanner plugins across a bounded thread pool, and post-processes raw findings through an intelligence layer. This pipeline applies compound-key deduplication to suppress duplicate findings, enriches alerts with live CVSS/CVE feeds from NIST NVD and CIRCL, tags issues against OWASP Top 10 (2021), MITRE CWE, and PCI-DSS v4.0 standards, and evaluates build regressions via set-theoretic delta diffing. Tested against an 80-case suite and the OWASP Juice Shop benchmark, AutoSecAudit's 8-worker thread pool cuts scan duration by 64.8\% over sequential runs. The correlation engine achieves a 38.2\% alert reduction at 97.9\% precision (88.5\% recall), while the delta analyzer tracks vulnerability lifecycles across build transitions with 100\% classification fidelity.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -88,17 +84,17 @@ Vulnerability Assessment, DevSecOps, Scanner Orchestration, Compliance Mapping, 
 \end{IEEEkeywords}
 
 \section{Introduction}
-Modern web applications and REST services evolve continuously through agile deployment pipelines. Maintaining security across rapid release cycles requires shift-left testing, where dynamic vulnerability analysis runs directly inside automated build and merge workflows~\cite{myrbakken2017devsecops}.
+Modern web backends and microservices move fast, deploying multiple times a day through automated CI/CD pipelines. Keeping these services secure requires catching dynamic flaws early, well before changes reach production staging~\cite{myrbakken2017devsecops}.
 
-Despite the clear benefits of early testing, developer adoption of Dynamic Application Security Testing (DAST) remains constrained by practical friction. Empirical studies by Johnson et al.~\cite{johnson2013developers} and Bau et al.~\cite{bau2010state} observe that engineers frequently disregard automated security warnings when scanners generate excessive noise, lack clear remediation context, or produce uncoordinated reports. In continuous delivery workflows, these issues stem from four architectural gaps:
+Yet, adding dynamic application security testing (DAST) into live build pipelines routinely frustrates development teams. Field studies by Johnson et al.~\cite{johnson2013developers} and Bau et al.~\cite{bau2010state} show that engineers ignore or turn off automated security scanners when reports are noisy, full of duplicates, or disconnected from practical bug fixes. In day-to-day delivery pipelines, this breakdown stems from four recurring issues:
 \begin{enumerate}
-    \item \textbf{Heterogeneous Tool Friction}: Comprehensive testing requires multiple point tools for network discovery (Nmap~\cite{nmap}), web server audits (Nikto~\cite{nikto}), and API fuzzing. Each tool produces different, non-standardized output formats (XML, plain text, custom JSON), forcing teams to write brittle parsing wrappers.
-    \item \textbf{Alert Fatigue from Redundant Findings}: Distinct scanning utilities often flag the same underlying bug on a single endpoint under different names. Without cross-tool deduplication, developers receive multiple notifications for a single issue~\cite{johnson2013developers}.
-    \item \textbf{Absence of Compliance Context}: Raw tool logs rarely connect technical vulnerabilities to regulatory standards like PCI-DSS v4.0~\cite{pci_dss}, CWE definitions, or OWASP Top 10 categories~\cite{owasp_top10}, requiring manual risk classification.
-    \item \textbf{Stateless Execution Without Regression Tracking}: As Vassallo et al.~\cite{vassallo2020continuous} note, managing code quality in CI/CD requires continuous delta awareness. Standard scanners evaluate builds statelessly, failing to distinguish newly introduced flaws from established technical debt.
+    \item \textbf{Point-Tool Fragmentation}: A thorough audit demands multiple specialized tools for port discovery (Nmap~\cite{nmap}), web server hygiene (Nikto~\cite{nikto}), and API parameter fuzzing. Each tool outputs a different raw format (XML, console text, custom JSON), forcing engineering teams to maintain fragile parsing scripts.
+    \item \textbf{Duplicate Alert Sprawl}: Different scanning modules frequently flag the exact same defect on an endpoint under slightly varied names. Without cross-plugin deduplication, engineers end up triaging multiple notifications for a single bug~\cite{johnson2013developers}.
+    \item \textbf{Missing Compliance Context}: Raw tool logs rarely indicate how a bug relates to mandatory industry frameworks like PCI-DSS v4.0~\cite{pci_dss}, CWE types, or OWASP Top 10 categories~\cite{owasp_top10}, leaving teams to manually look up regulatory severity.
+    \item \textbf{Stateless Scans Lacking Diff Awareness}: Managing technical debt in CI/CD requires knowing what changed~\cite{vassallo2020continuous}. Most scanners evaluate targets in isolation without tracking history, making it impossible to separate old accepted debt from critical newly introduced regressions.
 \end{enumerate}
 
-To bridge these gaps, we introduce AutoSecAudit, an extensible vulnerability auditing framework. AutoSecAudit unifies automated reconnaissance, parallel multi-scanner execution, intelligent deduplication, compliance tagging, and set-theoretic regression tracking into a unified pipeline suitable for automated build gating.
+To tackle these operational challenges, we built AutoSecAudit, an extensible vulnerability auditing engine. AutoSecAudit unifies automated surface reconnaissance, concurrent scanner execution, compound-key deduplication, compliance tagging, and set-theoretic delta tracking into an automated pipeline built for fast CI/CD gating.
 
 \begin{figure*}[t]
 \centering
@@ -108,16 +104,16 @@ To bridge these gaps, we introduce AutoSecAudit, an extensible vulnerability aud
 \end{figure*}
 
 \section{Related Work and Comparative Analysis}
-Security testing tools generally fall into three architectural categories: specialized point scanners, interactive DAST proxies, and centralized vulnerability dashboards. Table~\ref{tab:comparison_framework} compares these approaches with AutoSecAudit.
+Security testing tools generally fit into three architectural categories: standalone point scanners, interactive DAST proxies, and centralized vulnerability hubs. Table~\ref{tab:comparison_framework} summarizes their design trade-offs alongside AutoSecAudit.
 
 \subsection{Point Scanners and Specialized Utilities}
-Network scanners such as Nmap~\cite{nmap} handle port discovery and service fingerprinting, while web server utilities like Nikto~\cite{nikto} scan for misconfigurations and vulnerable default files. Signature scanners such as Nuclei~\cite{nuclei} offer fast HTTP pattern matching using YAML templates. However, these utilities run as standalone binaries without native cross-layer correlation, multi-standard compliance labeling, or historical regression diffing.
+Network scanners like Nmap~\cite{nmap} handle port discovery and service fingerprinting, while web server checkers like Nikto~\cite{nikto} scan for misconfigurations and outdated defaults. Template-driven scanners like Nuclei~\cite{nuclei} run fast YAML pattern matches over HTTP. However, these utilities execute as standalone binaries and lack built-in multi-plugin correlation, automated compliance tagging, or historical regression diffing.
 
 \subsection{Stateful DAST Proxies and API Fuzzers}
-State-aware scanners, such as those investigated by Doup{\'e} et al.~\cite{doupe2012enemy}, track web application navigation states to identify deep injection points. In API testing, Atlidakis et al.~\cite{atlidakis2019restler} demonstrated with RESTler that effective fuzzing requires structured parsing of OpenAPI specifications. Full-featured proxies like OWASP ZAP~\cite{owasp_zap} and PortSwigger Burp Suite provide thorough coverage, but their heavyweight runtimes, manual setup overhead, and extended scan durations make them difficult to embed in fast CI/CD pull-request checks.
+State-aware scanners, explored by Doup{\'e} et al.~\cite{doupe2012enemy}, track application navigation states to uncover deeper injection points. In API fuzzing, Atlidakis et al.~\cite{atlidakis2019restler} demonstrated with RESTler that effective testing requires parsing OpenAPI structures. Comprehensive proxies like OWASP ZAP~\cite{owasp_zap} and PortSwigger Burp Suite provide thorough coverage, but their heavy resource consumption and extended scan runtimes make them difficult to run on fast pull-request merge checks.
 
 \subsection{Vulnerability Management Platforms}
-Platforms such as OWASP DefectDojo~\cite{defectdojo} aggregate findings from third-party tools into a centralized database for compliance tracking. However, DefectDojo functions primarily as a passive repository; it requires separate pipeline scripts to trigger scanners, parse disparate log files, and upload results over REST APIs.
+Platforms like OWASP DefectDojo~\cite{defectdojo} aggregate findings from third-party scanners into a central dashboard. However, DefectDojo functions primarily as a passive repository; it still requires teams to write external pipeline jobs to run individual tools, parse diverse log formats, and push results over REST APIs.
 
 \begin{table*}[t]
 \caption{Architectural Comparison: AutoSecAudit vs. Existing Security Testing Approaches}
@@ -141,13 +137,13 @@ Deployment Footprint & CLI Binaries & Java Daemon & Go Binary & Django + DB & Py
 \end{table*}
 
 \section{System Architecture and Methodology}
-AutoSecAudit comprises four decoupled subsystems: (i) Surface Discovery, (ii) Core Scanner Engine and Plugin System, (iii) Post-Processing Intelligence Layer, and (iv) Delivery and Policy Gating (Fig.~\ref{fig:architecture}).
+AutoSecAudit separates concerns across four core stages: (i) Attack Surface Discovery, (ii) Multi-Scanner Engine and Plugin Subsystem, (iii) Post-Processing Intelligence Layer, and (iv) CI/CD Delivery and Policy Gating (Fig.~\ref{fig:architecture}).
 
 \subsection{Attack Surface Discovery}
-The discovery module accepts hostnames, IP addresses, or base URLs. Drawing from principles outlined in~\cite{doupe2012enemy,atlidakis2019restler}, the engine populates an endpoint pool $\mathcal{E}$ prior to active probing via two complementary techniques (Algorithm~\ref{alg:crawling}):
+Given a hostname, IP, or base URL, the discovery module seeds an endpoint pool $\mathcal{E}$ before triggering active scans~\cite{doupe2012enemy,atlidakis2019restler}. Seeding combines two methods (formalized in Algorithm~\ref{alg:crawling}):
 \begin{itemize}
-    \item \textbf{Breadth-First Web Crawler (\texttt{WebCrawler})}: Traverses application links from the root URL up to a configured depth $D_{\max}$. It extracts internal URLs, query parameters, and HTML form fields (action targets, HTTP verbs, and input names).
-    \item \textbf{OpenAPI/Swagger Ingestion (\texttt{OpenAPIImporter})}: For REST APIs, the parser ingests OpenAPI 2.0/3.0 definitions, registering all URI paths, HTTP methods (\texttt{GET}, \texttt{POST}, \texttt{PUT}, \texttt{DELETE}), parameter types, and JSON schemas.
+    \item \textbf{Breadth-First Web Crawler (\texttt{WebCrawler})}: Explores target links starting from the root URL up to a depth limit $D_{\max}$, extracting query parameters, links, and HTML form inputs (action endpoints, HTTP verbs, and field names).
+    \item \textbf{OpenAPI/Swagger Ingestion (\texttt{OpenAPIImporter})}: For REST backends, the engine ingests OpenAPI 2.0/3.0 specifications, registering all routes, HTTP methods (\texttt{GET}, \texttt{POST}, \texttt{PUT}, \texttt{DELETE}), payload schemas, and path variables.
 \end{itemize}
 
 \begin{algorithm}[t]
@@ -280,7 +276,7 @@ AutoSecAudit is built in Python 3.10+ and packaged with Docker. The web dashboar
 Our evaluation investigates three core research questions:
 \begin{itemize}
     \item \textbf{RQ1 (Latency)}: How effectively does bounded concurrency reduce scan execution time?
-    \item \textbf{RQ2 (Accuracy \& Noise)}: What detection precision and alert reduction are achieved on benchmark applications?
+    \item \textbf{RQ2 (Accuracy \& Noise)}: What detection precision, recall, and alert reduction are achieved on benchmark applications?
     \item \textbf{RQ3 (Delta Fidelity)}: Does set-theoretic delta analysis reliably categorize vulnerability lifecycles across builds?
 \end{itemize}
 
