@@ -355,15 +355,18 @@ We validated regression tracking across a three-phase synthetic release sequence
 \end{itemize}
 Across all transitions, the delta engine achieved 100\% classification accuracy without manual state reconciliation.
 
-\section{Discussion and Limitations}
-Two practical considerations should be noted:
+\section{Discussion and Threats to Validity}
+Practical deployment across production CI/CD workflows entails several engineering considerations:
 \begin{itemize}
-    \item \textbf{Client-Side JavaScript}: The built-in crawler parses static HTML. Dynamic single-page applications (SPAs) that build DOM structures asynchronously benefit from pairing with headless browser automation (e.g., Playwright).
-    \item \textbf{External API Rate Limits}: In air-gapped or restricted network environments, the enrichment module relies on local offline CVE/CWE caches to prevent pipeline stalls.
+    \item \textbf{Dynamic Client-Side Runtimes}: The lightweight crawler parses static DOM trees. Single-page applications (SPAs) that render views dynamically via client-side frameworks require integration with headless browser drivers (e.g., Playwright or Selenium) to uncover late-bound endpoints.
+    \item \textbf{Network Isolation and Threat Enrichment}: In air-gapped or egress-restricted deployment environments, external REST queries to NIST NVD or CIRCL endpoints can be substituted with AutoSecAudit's localized SQLite CVE/CWE dictionary to prevent CI pipeline stalls.
+    \item \textbf{Threats to Internal \& External Validity}: Internal validity is supported by deterministic mock fixtures across an 80-test automated suite. External validity was demonstrated on the OWASP Juice Shop benchmark; however, enterprise codebases with custom proprietary authentication (e.g., SAML/mTLS) may require custom plugin extensions to maintain full coverage.
 \end{itemize}
 
-\section{Conclusion}
-AutoSecAudit delivers an extensible vulnerability auditing framework for continuous integration pipelines. By combining automated surface discovery, parallel execution across 14 scanner plugins, heuristic deduplication, threat intelligence enrichment, multi-standard compliance mapping, and set-theoretic delta auditing, the system eliminates key operational bottlenecks in automated security testing. Future work will investigate local LLM agents for automated patch synthesis and distributed multi-node scanning.
+\section{Conclusion and Future Work}
+AutoSecAudit provides an extensible, low-latency vulnerability assessment framework engineered for continuous integration environments. By orchestrating parallel execution across 14 modular scanner plugins, the system reduces scan latency by 64.8\% ($2.84\times$ speedup) over sequential auditing. The post-processing pipeline addresses primary causes of developer friction by eliminating 39.5\% of duplicate alerts via compound-key deduplication, automatically generating OWASP, CWE, and PCI-DSS compliance metadata, and tracking regression lifecycles with 100\% classification accuracy via set-theoretic delta auditing. 
+
+Future work will expand AutoSecAudit with headless browser crawling for client-rendered JavaScript applications, explore distributed multi-node scanning across Kubernetes clusters, and integrate local LLM agents for automated, context-aware remediation patch synthesis.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
