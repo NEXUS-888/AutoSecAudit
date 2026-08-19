@@ -190,6 +190,9 @@ T_{\text{parallel}} = \max_{1 \le i \le N}(T_i) + \delta_{\text{sync}}
 \end{equation}
 where $\delta_{\text{sync}}$ accounts for thread allocation and result collection overhead.
 
+\subsection{Post-Processing Intelligence Layer}
+Following raw plugin execution, the intelligence subsystem processes the finding set through four deterministic steps (formalized in Algorithm~\ref{alg:intelligence}):
+
 \begin{algorithm}[t]
 \caption{Intelligence Correlation and Delta Auditing}
 \label{alg:intelligence}
@@ -219,9 +222,6 @@ where $\delta_{\text{sync}}$ accounts for thread allocation and result collectio
 \RETURN $S_t, \langle \Delta_{\text{NEW}}, \Delta_{\text{FIXED}}, \Delta_{\text{UNCHANGED}} \rangle$
 \end{algorithmic}
 \end{algorithm}
-
-\subsection{Post-Processing Intelligence Layer}
-Following raw plugin execution, the intelligence subsystem processes the finding set through four deterministic steps (Algorithm~\ref{alg:intelligence}):
 
 \subsubsection{Heuristic Deduplication and Correlation}
 To combat alert fatigue~\cite{johnson2013developers}, the engine groups raw alerts sharing a compound key:
