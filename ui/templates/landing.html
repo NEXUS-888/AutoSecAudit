@@ -9,13 +9,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-base: #05070c;
-            --bg-surface: #0a0e17;
-            --bg-card: #0e1422;
-            --bg-elevated: #151d30;
-            --border-color: rgba(148, 163, 184, 0.14);
-            --border-subtle: rgba(255, 255, 255, 0.06);
+            --bg-base: #04060a;
+            --bg-surface: #080c14;
+            --bg-card: #0d121e;
+            --bg-elevated: #131a2c;
+            --border-color: rgba(148, 163, 184, 0.12);
+            --border-subtle: rgba(255, 255, 255, 0.05);
             --border-active: rgba(99, 102, 241, 0.45);
+            --border-cyan: rgba(6, 182, 212, 0.4);
+            --border-emerald: rgba(16, 185, 129, 0.4);
+            --border-rose: rgba(244, 63, 94, 0.4);
+            
             --fg-primary: #f1f5f9;
             --fg-secondary: #94a3b8;
             --fg-muted: #64748b;
@@ -27,7 +31,7 @@
             --accent-amber: #f59e0b;
             --accent-purple: #8b5cf6;
             
-            --glass-bg: rgba(7, 10, 18, 0.88);
+            --glass-bg: rgba(6, 9, 16, 0.88);
             --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
             --font-mono: 'JetBrains Mono', monospace;
         }
@@ -40,6 +44,9 @@
             --border-color: rgba(148, 163, 184, 0.28);
             --border-subtle: rgba(0, 0, 0, 0.08);
             --border-active: rgba(99, 102, 241, 0.35);
+            --border-cyan: rgba(6, 182, 212, 0.35);
+            --border-emerald: rgba(16, 185, 129, 0.35);
+            --border-rose: rgba(244, 63, 94, 0.35);
             --fg-primary: #0f172a;
             --fg-secondary: #475569;
             --fg-muted: #64748b;
@@ -50,7 +57,7 @@
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
         }
 
         body {
@@ -60,22 +67,61 @@
             line-height: 1.6;
             overflow-x: hidden;
             background-image: 
-                radial-gradient(circle at 12% 10%, rgba(99, 102, 241, 0.08) 0%, transparent 40%),
-                radial-gradient(circle at 88% 20%, rgba(6, 182, 212, 0.06) 0%, transparent 40%),
-                radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+                radial-gradient(circle at 10% 12%, rgba(99, 102, 241, 0.09) 0%, transparent 45%),
+                radial-gradient(circle at 90% 20%, rgba(6, 182, 212, 0.07) 0%, transparent 45%),
+                radial-gradient(circle at 50% 88%, rgba(16, 185, 129, 0.06) 0%, transparent 50%);
             background-attachment: fixed;
+            perspective: 1200px;
         }
 
-        /* ── Grid Line Overlay (Engineering aesthetic) ──────── */
-        .grid-backdrop {
+        /* ── Dynamic Background Canvas Grid & Particles ──────── */
+        #bgCanvas {
             position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-size: 40px 40px;
-            background-image: 
-                linear-gradient(to right, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+            top: 0; left: 0; width: 100vw; height: 100vh;
             pointer-events: none;
             z-index: 0;
+            opacity: 0.65;
+        }
+
+        /* ── Subtle Global Pipeline Scroll Tracker Rail ─────── */
+        .pipeline-scroll-rail {
+            position: fixed;
+            right: 1.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            z-index: 999;
+            pointer-events: none;
+        }
+
+        .rail-step {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            color: var(--fg-muted);
+            opacity: 0.4;
+            transition: opacity 0.3s ease, color 0.3s ease;
+        }
+
+        .rail-step.active {
+            opacity: 1;
+            color: var(--accent-cyan);
+            font-weight: 700;
+        }
+
+        .rail-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        @media (max-width: 1200px) {
+            .pipeline-scroll-rail { display: none; }
         }
 
         /* ── Navbar ─────────────────────────────────────────── */
@@ -84,8 +130,8 @@
             top: 0; left: 0; right: 0;
             height: 68px;
             background: var(--glass-bg);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
             border-bottom: 1px solid var(--border-color);
             z-index: 1000;
             display: flex;
@@ -154,18 +200,20 @@
             text-decoration: none;
             cursor: pointer;
             border: 1px solid transparent;
-            transition: all 0.18s ease;
+            transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
         }
+
+        .btn:active { transform: scale(0.98); }
 
         .btn-primary {
             background: linear-gradient(135deg, var(--accent-indigo), #4338ca);
             color: white;
-            box-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);
+            box-shadow: 0 2px 12px rgba(99, 102, 241, 0.35);
         }
 
         .btn-primary:hover {
             transform: translateY(-1px);
-            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.5);
+            box-shadow: 0 4px 18px rgba(99, 102, 241, 0.55);
             color: white;
         }
 
@@ -178,14 +226,8 @@
         .btn-secondary:hover {
             background: var(--bg-elevated);
             border-color: var(--accent-cyan);
+            transform: translateY(-1px);
         }
-
-        .btn-cyan {
-            background: #0284c7;
-            color: white;
-        }
-
-        .btn-cyan:hover { background: #0369a1; }
 
         .theme-toggle-btn {
             background: transparent;
@@ -231,6 +273,7 @@
             letter-spacing: 0.04em;
             text-transform: uppercase;
             margin-bottom: 1.25rem;
+            animation: fadeInDown 0.6s ease-out;
         }
 
         .status-dot-pulse {
@@ -253,6 +296,7 @@
             line-height: 1.12;
             letter-spacing: -0.035em;
             margin-bottom: 1.25rem;
+            animation: fadeInUp 0.7s ease-out 0.1s both;
         }
 
         .hero-title .highlight-accent {
@@ -266,6 +310,7 @@
             margin-bottom: 2.25rem;
             max-width: 620px;
             line-height: 1.65;
+            animation: fadeInUp 0.7s ease-out 0.2s both;
         }
 
         .hero-cta-row {
@@ -274,6 +319,7 @@
             gap: 1.1rem;
             flex-wrap: wrap;
             margin-bottom: 2.5rem;
+            animation: fadeInUp 0.7s ease-out 0.3s both;
         }
 
         .evidence-metrics-bar {
@@ -282,6 +328,7 @@
             gap: 1rem;
             padding-top: 1.75rem;
             border-top: 1px solid var(--border-color);
+            animation: fadeInUp 0.7s ease-out 0.4s both;
         }
 
         .metric-block .metric-val {
@@ -293,7 +340,7 @@
         }
 
         .metric-block .metric-lbl {
-            font-size: 0.72rem;
+            font-size: 0.7rem;
             color: var(--fg-muted);
             font-family: var(--font-mono);
             font-weight: 600;
@@ -301,15 +348,44 @@
             letter-spacing: 0.05em;
         }
 
-        /* ── Live Security Telemetry Console (Signature UI) ── */
+        /* ── Live Security Telemetry Console (3D Depth) ────── */
+        .hero-telemetry-wrapper {
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.15s ease-out;
+        }
+
+        /* Sparse 3D Floating Telemetry Chips around console */
+        .floating-chip {
+            position: absolute;
+            background: rgba(13, 18, 30, 0.88);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 0.3rem 0.65rem;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            z-index: 10;
+            backdrop-filter: blur(8px);
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .chip-1 { top: -14px; right: 28px; color: #10b981; border-color: rgba(16, 185, 129, 0.35); }
+        .chip-2 { bottom: 20px; left: -22px; color: #f43f5e; border-color: rgba(244, 63, 94, 0.35); }
+        .chip-3 { top: 45%; right: -20px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.35); }
+
         .telemetry-console {
             background: #080c14;
             border: 1px solid var(--border-color);
             border-radius: 12px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(99, 102, 241, 0.15);
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 35px rgba(99, 102, 241, 0.18);
             overflow: hidden;
             font-family: var(--font-mono);
             font-size: 0.78rem;
+            animation: fadeInScale 0.8s ease-out 0.25s both;
         }
 
         .console-topbar {
@@ -379,8 +455,9 @@
         }
         .progress-bar-fill {
             height: 100%;
-            width: 100%;
+            width: 0%;
             background: linear-gradient(90deg, #6366f1, #06b6d4);
+            transition: width 1.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .discovery-stats-row {
             display: grid;
@@ -407,6 +484,12 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            transition: border-color 0.25s ease, background 0.25s ease;
+        }
+
+        .scanner-node-item.active-scan {
+            border-color: rgba(6, 182, 212, 0.45);
+            background: #111a2c;
         }
 
         .scanner-tag {
@@ -419,6 +502,12 @@
             font-weight: 600;
         }
         .scanner-res.alert { color: #f43f5e; font-weight: 700; }
+        .scanner-res.running { color: #f59e0b; font-weight: 700; animation: blink-run 1s infinite; }
+
+        @keyframes blink-run {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
 
         /* Correlation & Diff Pipeline */
         .corr-gate-row {
@@ -439,8 +528,8 @@
             color: var(--fg-secondary);
             font-size: 0.74rem;
         }
-        .flow-math .num-raw { color: #f59e0b; }
-        .flow-math .num-corr { color: #38bdf8; }
+        .flow-math .num-raw { color: #f59e0b; font-weight: 700; }
+        .flow-math .num-corr { color: #38bdf8; font-weight: 700; }
         .flow-math .num-conf { color: #f43f5e; font-weight: 800; }
 
         .gate-status-box {
@@ -456,6 +545,7 @@
             border: 1px solid rgba(244, 63, 94, 0.4);
             padding: 3px 8px;
             border-radius: 4px;
+            transition: all 0.3s ease;
         }
 
         /* Live Terminal Log */
@@ -471,11 +561,25 @@
             line-height: 1.45;
         }
 
+        /* ── Viewport Scroll Reveal Transitions ──────────────── */
+        .reveal-section {
+            opacity: 0;
+            transform: translateY(24px) scale(0.98);
+            filter: blur(3px);
+            transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1), filter 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .reveal-section.is-visible {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: blur(0);
+        }
+
         /* ── Differentiator (SAST vs DAST Flow) ─────────────── */
         .section {
             position: relative;
             z-index: 1;
-            padding: 90px 2.5rem;
+            padding: 100px 2.5rem;
             max-width: 1400px;
             margin: 0 auto;
         }
@@ -520,6 +624,11 @@
             border: 1px solid var(--border-color);
             border-radius: 12px;
             padding: 2.25rem;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .flow-panel:hover {
+            transform: translateY(-3px);
         }
 
         .flow-panel.sast {
@@ -558,6 +667,15 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            opacity: 0.5;
+            transform: translateX(-5px);
+            transition: opacity 0.4s ease, transform 0.4s ease, border-color 0.4s ease;
+        }
+
+        .flow-step-node.active-step {
+            opacity: 1;
+            transform: translateX(0);
+            border-color: rgba(99, 102, 241, 0.4);
         }
 
         .flow-step-arrow {
@@ -587,10 +705,17 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            transition: all 0.3s ease;
         }
 
         .pipeline-card:hover {
             border-color: var(--border-active);
+            transform: translateY(-4px);
+        }
+
+        .pipeline-card.executing {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.2);
         }
 
         .pipeline-num {
@@ -625,13 +750,16 @@
             color: #94a3b8;
         }
 
-        /* ── Attack Path & Threat Graph (Technical) ────────── */
+        /* ── 3D Attack Path / Threat Graph Section ─────────── */
         .attack-graph-card {
             background: #080d16;
             border: 1px solid var(--border-color);
             border-radius: 12px;
             padding: 2.25rem;
             font-family: var(--font-mono);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            transform-style: preserve-3d;
+            transition: transform 0.2s ease-out;
         }
 
         .graph-flow-horizontal {
@@ -640,7 +768,7 @@
             justify-content: space-between;
             gap: 0.5rem;
             overflow-x: auto;
-            padding: 1rem 0;
+            padding: 1.5rem 0.5rem;
         }
 
         .graph-node {
@@ -651,11 +779,18 @@
             text-align: center;
             min-width: 140px;
             flex-shrink: 0;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .graph-node.vulnerable {
             border-color: #ef4444;
-            box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
+            box-shadow: 0 0 18px rgba(239, 68, 68, 0.3);
+            animation: pulse-node 2s infinite;
+        }
+
+        @keyframes pulse-node {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.03); }
         }
 
         .graph-node .node-type {
@@ -676,13 +811,13 @@
             font-weight: 800;
             font-size: 1.2rem;
             flex-shrink: 0;
-            animation: packetFlow 1.5s infinite;
+            animation: packetFlow 1.4s infinite;
         }
 
         @keyframes packetFlow {
-            0% { opacity: 0.3; transform: translateX(-2px); }
-            50% { opacity: 1; transform: translateX(2px); }
-            100% { opacity: 0.3; transform: translateX(-2px); }
+            0% { opacity: 0.2; transform: translateX(-3px); }
+            50% { opacity: 1; transform: translateX(3px); }
+            100% { opacity: 0.2; transform: translateX(-3px); }
         }
 
         /* ── Real Security Findings Table ───────────────────── */
@@ -711,6 +846,18 @@
             grid-template-columns: 100px 1.8fr 1.2fr 120px 100px;
             align-items: center;
             border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.4s ease, transform 0.4s ease, background-color 0.18s ease;
+        }
+
+        .findings-row.is-scanned {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .findings-row:hover {
+            background-color: rgba(255, 255, 255, 0.025);
         }
 
         .findings-row:last-child { border-bottom: none; }
@@ -862,6 +1009,30 @@
         .auth-alert.error { background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.3); display: block; }
         .auth-alert.success { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); display: block; }
 
+        /* Keyframes */
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(18px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.95) translateY(15px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        /* ── Reduced Motion Accessibility ──────────────────── */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+            .reveal-section { opacity: 1 !important; transform: none !important; filter: none !important; }
+        }
+
         /* ── Responsive ─────────────────────────────────────── */
         @media (max-width: 1024px) {
             .hero { grid-template-columns: 1fr; padding-top: 100px; }
@@ -871,6 +1042,7 @@
             .nav-links { display: none; }
             .findings-row-head, .findings-row { grid-template-columns: 80px 1.5fr 1fr 90px; }
             .findings-row-head span:last-child, .findings-row span:last-child { display: none; }
+            .floating-chip { display: none; }
         }
         @media (max-width: 640px) {
             .pipeline-track { grid-template-columns: 1fr; }
@@ -882,7 +1054,18 @@
 </head>
 <body>
 
-    <div class="grid-backdrop"></div>
+    <!-- ── Ambient Grid & Particle Canvas ─────────────────── -->
+    <canvas id="bgCanvas"></canvas>
+
+    <!-- ── Global Pipeline Scroll Tracker Rail ────────────── -->
+    <div class="pipeline-scroll-rail">
+        <div class="rail-step active" id="rail-hero"><span class="rail-dot"></span> 01 RECON</div>
+        <div class="rail-step" id="rail-sast"><span class="rail-dot"></span> 02 DAST PROOF</div>
+        <div class="rail-step" id="rail-pipeline"><span class="rail-dot"></span> 03 4-STAGE ENGINE</div>
+        <div class="rail-step" id="rail-threat"><span class="rail-dot"></span> 04 ATTACK PATH</div>
+        <div class="rail-step" id="rail-findings"><span class="rail-dot"></span> 05 FINDINGS</div>
+        <div class="rail-step" id="rail-audit"><span class="rail-dot"></span> 06 AUDIT</div>
+    </div>
 
     <!-- ── Navbar ─────────────────────────────────────────── -->
     <nav class="navbar">
@@ -939,7 +1122,7 @@
     </nav>
 
     <!-- ── Hero Section ───────────────────────────────────── -->
-    <section class="hero">
+    <section class="hero" id="sec-hero">
         <div class="hero-left">
             <div class="platform-badge">
                 <span class="status-dot-pulse"></span>
@@ -967,117 +1150,124 @@
                 </button>
             </div>
 
-            <!-- Evidence Benchmark Metrics -->
+            <!-- Evidence Benchmark Metrics (Count-up enabled) -->
             <div class="evidence-metrics-bar" id="metrics">
                 <div class="metric-block">
-                    <div class="metric-val">64.8s</div>
+                    <div class="metric-val" id="metric-latency">64.8s</div>
                     <div class="metric-lbl">Audit Latency (k=8)</div>
                 </div>
                 <div class="metric-block">
-                    <div class="metric-val">14 Nodes</div>
+                    <div class="metric-val" id="metric-scanners">14 Nodes</div>
                     <div class="metric-lbl">Parallel Scanners</div>
                 </div>
                 <div class="metric-block">
-                    <div class="metric-val">-38.2%</div>
+                    <div class="metric-val" id="metric-noise">-38.2%</div>
                     <div class="metric-lbl">Noise Cut (47/76)</div>
                 </div>
                 <div class="metric-block">
-                    <div class="metric-val">97.9%</div>
+                    <div class="metric-val" id="metric-prec">97.9%</div>
                     <div class="metric-lbl">Precision (46/47 TP)</div>
                 </div>
             </div>
         </div>
 
-        <!-- ── Right Side: Live Security Telemetry Console ────── -->
-        <div class="telemetry-console">
-            <div class="console-topbar">
-                <div class="console-pills">
-                    <span style="color: var(--fg-muted); font-size: 0.72rem;">TARGET</span>
-                    <span class="pill-target">http://localhost:3000</span>
-                </div>
-                <div class="pill-running">
-                    <span class="status-dot-pulse"></span>
-                    AUDIT ENGINE: ACTIVE (k=8)
-                </div>
-            </div>
+        <!-- ── Right Side: Live Security Telemetry Console (3D Layered) ── -->
+        <div class="hero-telemetry-wrapper" id="heroConsoleWrapper">
+            <!-- Sparse floating telemetry chips in 3D depth -->
+            <div class="floating-chip chip-1" id="chip1">NMAP :443 [OPEN]</div>
+            <div class="floating-chip chip-2" id="chip2">JWT alg:none [CRITICAL]</div>
+            <div class="floating-chip chip-3" id="chip3">OWASP A03:2021</div>
 
-            <div class="console-body">
-                <!-- Surface Discovery -->
-                <div>
-                    <div class="progress-line-wrap">
-                        <span class="telemetry-section-title">01. Surface Discovery (BFS + OpenAPI)</span>
-                        <span style="color: #38bdf8; font-weight: 700;">100% COMPLETE</span>
+            <div class="telemetry-console" id="telemetryCard">
+                <div class="console-topbar">
+                    <div class="console-pills">
+                        <span style="color: var(--fg-muted); font-size: 0.72rem;">TARGET</span>
+                        <span class="pill-target">http://localhost:3000</span>
                     </div>
-                    <div class="progress-bar-bg">
-                        <div class="progress-bar-fill"></div>
-                    </div>
-                    <div class="discovery-stats-row">
-                        <span><strong>143</strong> Endpoints</span>
-                        <span><strong>12</strong> Services</span>
-                        <span><strong>67</strong> API Routes</span>
-                        <span><strong>9</strong> Tech Stacks</span>
+                    <div class="pill-running">
+                        <span class="status-dot-pulse"></span>
+                        AUDIT ENGINE: ACTIVE (k=8)
                     </div>
                 </div>
 
-                <!-- Live Scanner Dispatch Grid -->
-                <div>
-                    <div class="telemetry-section-title">02. Concurrent Scanner Execution</div>
-                    <div class="scanner-nodes-grid">
-                        <div class="scanner-node-item">
-                            <span class="scanner-tag">[NMAP]</span>
-                            <span class="scanner-res">✓ 12 open ports</span>
+                <div class="console-body">
+                    <!-- Surface Discovery -->
+                    <div>
+                        <div class="progress-line-wrap">
+                            <span class="telemetry-section-title">01. Surface Discovery (BFS + OpenAPI)</span>
+                            <span id="discoveryProgressText" style="color: #38bdf8; font-weight: 700;">100% COMPLETE</span>
                         </div>
-                        <div class="scanner-node-item">
-                            <span class="scanner-tag">[NIKTO]</span>
-                            <span class="scanner-res alert">⚠ 18 misconfigs</span>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="discoveryFill"></div>
                         </div>
-                        <div class="scanner-node-item">
-                            <span class="scanner-tag">[SQLI_PROBE]</span>
-                            <span class="scanner-res alert">🚨 2 injections</span>
-                        </div>
-                        <div class="scanner-node-item">
-                            <span class="scanner-tag">[JWT_VALIDATOR]</span>
-                            <span class="scanner-res alert">🚨 1 alg:none</span>
-                        </div>
-                        <div class="scanner-node-item">
-                            <span class="scanner-tag">[XSS_SCANNER]</span>
-                            <span class="scanner-res alert">⚠ 7 reflected</span>
-                        </div>
-                        <div class="scanner-node-item">
-                            <span class="scanner-tag">[DIRBRUTE]</span>
-                            <span class="scanner-res alert">⚠ 4 exposed</span>
+                        <div class="discovery-stats-row">
+                            <span><strong id="statEndpoints">143</strong> Endpoints</span>
+                            <span><strong>12</strong> Services</span>
+                            <span><strong>67</strong> API Routes</span>
+                            <span><strong>9</strong> Tech Stacks</span>
                         </div>
                     </div>
-                </div>
 
-                <!-- Correlation & CI/CD Gate -->
-                <div>
-                    <div class="telemetry-section-title">03. Intelligence Correlation & CI/CD Gating</div>
-                    <div class="corr-gate-row">
-                        <div class="flow-math">
-                            <span class="num-raw">76 Raw</span>
-                            <span>➔</span>
-                            <span class="num-corr">47 Correlated</span>
-                            <span>➔</span>
-                            <span class="num-conf">11 Criticals</span>
-                        </div>
-                        <div class="gate-status-box">
-                            <span style="font-size: 0.72rem; color: var(--fg-muted);">CI/CD:</span>
-                            <span class="gate-fail-pill">● GATE FAILED (Exit 1)</span>
+                    <!-- Live Scanner Dispatch Grid -->
+                    <div>
+                        <div class="telemetry-section-title">02. Concurrent Scanner Execution</div>
+                        <div class="scanner-nodes-grid" id="scannerNodesGrid">
+                            <div class="scanner-node-item" id="node-nmap">
+                                <span class="scanner-tag">[NMAP]</span>
+                                <span class="scanner-res">✓ 12 open ports</span>
+                            </div>
+                            <div class="scanner-node-item" id="node-nikto">
+                                <span class="scanner-tag">[NIKTO]</span>
+                                <span class="scanner-res alert">⚠ 18 misconfigs</span>
+                            </div>
+                            <div class="scanner-node-item" id="node-sqli">
+                                <span class="scanner-tag">[SQLI_PROBE]</span>
+                                <span class="scanner-res alert">🚨 2 injections</span>
+                            </div>
+                            <div class="scanner-node-item" id="node-jwt">
+                                <span class="scanner-tag">[JWT_VALIDATOR]</span>
+                                <span class="scanner-res alert">🚨 1 alg:none</span>
+                            </div>
+                            <div class="scanner-node-item" id="node-xss">
+                                <span class="scanner-tag">[XSS_SCANNER]</span>
+                                <span class="scanner-res alert">⚠ 7 reflected</span>
+                            </div>
+                            <div class="scanner-node-item" id="node-dirbrute">
+                                <span class="scanner-tag">[DIRBRUTE]</span>
+                                <span class="scanner-res alert">⚠ 4 exposed</span>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Real-time Console Log -->
-                <div class="console-stream" id="telemetryStream">
-                    <!-- Streamed via JS -->
+                    <!-- Correlation & CI/CD Gate -->
+                    <div>
+                        <div class="telemetry-section-title">03. Intelligence Correlation & CI/CD Gating</div>
+                        <div class="corr-gate-row">
+                            <div class="flow-math">
+                                <span class="num-raw" id="numRaw">76 Raw</span>
+                                <span>➔</span>
+                                <span class="num-corr" id="numCorr">47 Correlated</span>
+                                <span>➔</span>
+                                <span class="num-conf" id="numConf">11 Criticals</span>
+                            </div>
+                            <div class="gate-status-box">
+                                <span style="font-size: 0.72rem; color: var(--fg-muted);">CI/CD:</span>
+                                <span class="gate-fail-pill" id="gatePill">● GATE FAILED (Exit 1)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Real-time Console Log -->
+                    <div class="console-stream" id="telemetryStream">
+                        <!-- Streamed via JS -->
+                    </div>
                 </div>
             </div>
         </div>
     </section>
 
     <!-- ── Differentiator: SAST vs AutoSecAudit Dynamic ──── -->
-    <section class="section" id="why-autosec">
+    <section class="section reveal-section" id="why-autosec">
         <div class="section-header">
             <span class="section-tag">Empirical Proof vs. Static Guessing</span>
             <h2 class="section-title">Why Static Code Review (SAST) Falls Short</h2>
@@ -1088,7 +1278,7 @@
 
         <div class="flow-compare-grid">
             <!-- Left: SAST / LLM -->
-            <div class="flow-panel sast">
+            <div class="flow-panel sast" id="panelSast">
                 <div class="flow-header">
                     <div>
                         <span style="color: #f43f5e; font-size: 0.72rem; font-family: var(--font-mono); font-weight: 800;">STATIC ANALYSIS (SAST / LLM)</span>
@@ -1097,20 +1287,20 @@
                     <span style="font-size: 1.3rem;">⚠️</span>
                 </div>
                 <div class="flow-steps-v">
-                    <div class="flow-step-node"><span>01. Source Code Repository</span> <span>(Text Only)</span></div>
+                    <div class="flow-step-node active-step"><span>01. Source Code Repository</span> <span>(Text Only)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node"><span>02. Pattern / Regex Detection</span> <span>(AST Guess)</span></div>
+                    <div class="flow-step-node active-step"><span>02. Pattern / Regex Detection</span> <span>(AST Guess)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node"><span>03. Potential Vulnerability Flagged</span> <span>(Unverified)</span></div>
+                    <div class="flow-step-node active-step"><span>03. Potential Vulnerability Flagged</span> <span>(Unverified)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node node-crit"><span>04. Unknown Runtime Behavior</span> <span>(Blind to Ports/Auth)</span></div>
+                    <div class="flow-step-node node-crit active-step"><span>04. Unknown Runtime Behavior</span> <span>(Blind to Ports/Auth)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node node-crit"><span>05. Alert Noise & False Positives</span> <span>(Dev Fatigue)</span></div>
+                    <div class="flow-step-node node-crit active-step"><span>05. Alert Noise & False Positives</span> <span>(Dev Fatigue)</span></div>
                 </div>
             </div>
 
             <!-- Right: AutoSecAudit DAST -->
-            <div class="flow-panel dast">
+            <div class="flow-panel dast" id="panelDast">
                 <div class="flow-header">
                     <div>
                         <span style="color: #10b981; font-size: 0.72rem; font-family: var(--font-mono); font-weight: 800;">AUTOSECAUDIT DYNAMIC ORCHESTRATION</span>
@@ -1119,22 +1309,22 @@
                     <span style="font-size: 1.3rem;">🛡️</span>
                 </div>
                 <div class="flow-steps-v">
-                    <div class="flow-step-node"><span>01. Live Running Application & Container</span> <span>(Network Target)</span></div>
+                    <div class="flow-step-node active-step"><span>01. Live Running Application & Container</span> <span>(Network Target)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node"><span>02. Real Crafted Exploit Request</span> <span>(Payload Delivery)</span></div>
+                    <div class="flow-step-node active-step"><span>02. Real Crafted Exploit Request</span> <span>(Payload Delivery)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node"><span>03. Real HTTP Server Response & Timing</span> <span>(Direct Evidence)</span></div>
+                    <div class="flow-step-node active-step"><span>03. Real HTTP Server Response & Timing</span> <span>(Direct Evidence)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node node-ok"><span>04. Compound-Key Finding Deduplication</span> <span>(-38.2% Noise)</span></div>
+                    <div class="flow-step-node node-ok active-step"><span>04. Compound-Key Finding Deduplication</span> <span>(-38.2% Noise)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node node-ok"><span>05. Confirmed Finding + Gated CI/CD Exit</span> <span>(0 Hallucinations)</span></div>
+                    <div class="flow-step-node node-ok active-step"><span>05. Confirmed Finding + Gated CI/CD Exit</span> <span>(0 Hallucinations)</span></div>
                 </div>
             </div>
         </div>
     </section>
 
     <!-- ── 4-Stage Security Engine Pipeline ──────────────── -->
-    <section class="section" id="pipeline" style="background: rgba(8, 12, 20, 0.5); border-radius: 18px; border: 1px solid var(--border-color);">
+    <section class="section reveal-section" id="pipeline" style="background: rgba(8, 12, 20, 0.5); border-radius: 18px; border: 1px solid var(--border-color);">
         <div class="section-header">
             <span class="section-tag">Architecture Execution</span>
             <h2 class="section-title">The 4-Stage Security Engine</h2>
@@ -1145,7 +1335,7 @@
 
         <div class="pipeline-track">
             <!-- Stage 1 -->
-            <div class="pipeline-card">
+            <div class="pipeline-card" id="pipeCard1">
                 <div>
                     <div class="pipeline-num">STAGE 01</div>
                     <h4>Surface Discovery</h4>
@@ -1157,7 +1347,7 @@
             </div>
 
             <!-- Stage 2 -->
-            <div class="pipeline-card">
+            <div class="pipeline-card" id="pipeCard2">
                 <div>
                     <div class="pipeline-num">STAGE 02</div>
                     <h4>Concurrent Scanners</h4>
@@ -1169,7 +1359,7 @@
             </div>
 
             <!-- Stage 3 -->
-            <div class="pipeline-card">
+            <div class="pipeline-card" id="pipeCard3">
                 <div>
                     <div class="pipeline-num">STAGE 03</div>
                     <h4>Intelligence & Correlation</h4>
@@ -1181,7 +1371,7 @@
             </div>
 
             <!-- Stage 4 -->
-            <div class="pipeline-card">
+            <div class="pipeline-card" id="pipeCard4">
                 <div>
                     <div class="pipeline-num">STAGE 04</div>
                     <h4>CI/CD Delta Diffing</h4>
@@ -1195,7 +1385,7 @@
     </section>
 
     <!-- ── Live Attack Path / Threat Graph ───────────────── -->
-    <section class="section" id="threat-graph">
+    <section class="section reveal-section" id="threat-graph">
         <div class="section-header">
             <span class="section-tag">Attack Surface Graph</span>
             <h2 class="section-title">Visual Attack Path & Exploit Chain</h2>
@@ -1204,7 +1394,7 @@
             </p>
         </div>
 
-        <div class="attack-graph-card">
+        <div class="attack-graph-card" id="attackGraphCard">
             <div style="font-size: 0.75rem; color: var(--fg-muted); margin-bottom: 1rem; display: flex; justify-content: space-between;">
                 <span>EXPLOIT PATH TRACE: CVE-2021-99999 [JWT_ALG_NONE]</span>
                 <span style="color: #ef4444; font-weight: 700;">CONFIRMED ATTACK VECTOR</span>
@@ -1245,7 +1435,7 @@
     </section>
 
     <!-- ── Confirmed Security Findings ───────────────────── -->
-    <section class="section" id="findings">
+    <section class="section reveal-section" id="findings">
         <div class="section-header">
             <span class="section-tag">Audit Findings Feed</span>
             <h2 class="section-title">Verified Security Finding Records</h2>
@@ -1263,7 +1453,7 @@
                 <span>STATUS</span>
             </div>
 
-            <div class="findings-row">
+            <div class="findings-row is-scanned">
                 <span><span class="sev-pill sev-crit">CRITICAL</span></span>
                 <div>
                     <div style="font-weight: 700; color: #f1f5f9;">SQL Injection (Union-Based)</div>
@@ -1274,7 +1464,7 @@
                 <span style="color: #10b981; font-weight: 700;">CONFIRMED</span>
             </div>
 
-            <div class="findings-row">
+            <div class="findings-row is-scanned">
                 <span><span class="sev-pill sev-crit">CRITICAL</span></span>
                 <div>
                     <div style="font-weight: 700; color: #f1f5f9;">JWT Unsigned Token Bypass</div>
@@ -1285,7 +1475,7 @@
                 <span style="color: #10b981; font-weight: 700;">CONFIRMED</span>
             </div>
 
-            <div class="findings-row">
+            <div class="findings-row is-scanned">
                 <span><span class="sev-pill sev-high">HIGH</span></span>
                 <div>
                     <div style="font-weight: 700; color: #f1f5f9;">Exposed Administrator Portal</div>
@@ -1296,7 +1486,7 @@
                 <span style="color: #10b981; font-weight: 700;">CONFIRMED</span>
             </div>
 
-            <div class="findings-row">
+            <div class="findings-row is-scanned">
                 <span><span class="sev-pill sev-high">HIGH</span></span>
                 <div>
                     <div style="font-weight: 700; color: #f1f5f9;">Open Daemon Port Exposed</div>
@@ -1310,7 +1500,7 @@
     </section>
 
     <!-- ── Launch Scan Action CTA ────────────────────────── -->
-    <section class="section">
+    <section class="section reveal-section" id="sec-audit">
         <div class="action-box">
             <h2>Run Your First Security Audit</h2>
             <p style="color: var(--fg-secondary); max-width: 600px; margin: 0 auto; font-size: 1rem;">
@@ -1374,7 +1564,7 @@
         </div>
     </div>
 
-    <!-- ── JavaScript Engine ──────────────────────────────── -->
+    <!-- ── JavaScript Engine, 3D Parallax & Motion Systems ── -->
     <script>
         // 1. Dark/Light Theme Switcher (Preserves test_theme.py hooks)
         function toggleTheme() {
@@ -1411,7 +1601,96 @@
             updateThemeIcon(savedTheme);
         })();
 
-        // 2. Auth Modal Controls
+        // 2. Ambient Particles & Security Grid Background Canvas
+        const bgCanvas = document.getElementById("bgCanvas");
+        const bgCtx = bgCanvas.getContext("2d");
+        let particles = [];
+
+        function resizeBg() {
+            bgCanvas.width = window.innerWidth;
+            bgCanvas.height = window.innerHeight;
+        }
+        window.addEventListener("resize", resizeBg);
+        resizeBg();
+
+        for (let i = 0; i < 35; i++) {
+            particles.push({
+                x: Math.random() * bgCanvas.width,
+                y: Math.random() * bgCanvas.height,
+                vx: (Math.random() - 0.5) * 0.35,
+                vy: (Math.random() - 0.5) * 0.35,
+                size: Math.random() * 1.5 + 0.5,
+                color: Math.random() > 0.5 ? "rgba(6, 182, 212, 0.4)" : "rgba(99, 102, 241, 0.35)"
+            });
+        }
+
+        function animateBg() {
+            bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                if (p.x < 0) p.x = bgCanvas.width;
+                if (p.x > bgCanvas.width) p.x = 0;
+                if (p.y < 0) p.y = bgCanvas.height;
+                if (p.y > bgCanvas.height) p.y = 0;
+
+                bgCtx.fillStyle = p.color;
+                bgCtx.beginPath();
+                bgCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                bgCtx.fill();
+            });
+            requestAnimationFrame(animateBg);
+        }
+        animateBg();
+
+        // 3. Subtle 3D Mouse Parallax on Hero Console
+        const heroWrapper = document.getElementById("heroConsoleWrapper");
+        const chip1 = document.getElementById("chip1");
+        const chip2 = document.getElementById("chip2");
+        const chip3 = document.getElementById("chip3");
+
+        if (window.innerWidth > 992) {
+            document.addEventListener("mousemove", (e) => {
+                const x = (window.innerWidth / 2 - e.pageX) / 45;
+                const y = (window.innerHeight / 2 - e.pageY) / 45;
+                if (heroWrapper) {
+                    heroWrapper.style.transform = `rotateY(${-x * 0.6}deg) rotateX(${y * 0.6}deg) translateZ(10px)`;
+                }
+                if (chip1) chip1.style.transform = `translate(${x * 0.8}px, ${y * 0.8}px)`;
+                if (chip2) chip2.style.transform = `translate(${-x * 0.7}px, ${-y * 0.7}px)`;
+                if (chip3) chip3.style.transform = `translate(${x * 0.6}px, ${-y * 0.6}px)`;
+            });
+        }
+
+        // 4. Viewport Intersection Observer for Cinematic Section Reveals & Rail Tracker
+        const sections = document.querySelectorAll(".reveal-section");
+        const railMap = {
+            "sec-hero": "rail-hero",
+            "why-autosec": "rail-sast",
+            "pipeline": "rail-pipeline",
+            "threat-graph": "rail-threat",
+            "findings": "rail-findings",
+            "sec-audit": "rail-audit"
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add("is-visible");
+                    const secId = entry.target.id;
+                    const railId = railMap[secId];
+                    if (railId) {
+                        document.querySelectorAll(".rail-step").forEach(r => r.classList.remove("active"));
+                        const activeRail = document.getElementById(railId);
+                        if (activeRail) activeRail.classList.add("active");
+                    }
+                }
+            });
+        }, { threshold: 0.15 });
+
+        sections.forEach(s => observer.observe(s));
+
+        // 5. Auth Modal Controls
         function openAuthModal(tab) {
             document.getElementById("authModal").classList.add("active");
             switchAuthTab(tab);
@@ -1489,7 +1768,7 @@
             }
         }
 
-        // 3. Live Telemetry Console Stream
+        // 6. Live Telemetry Console Stream & Animation Sequence
         const liveLogs = [
             "[DISPATCH] Initializing 14 scanner plugins in ThreadPool (k=8)...",
             "[CRAWLER] Discovered 143 endpoints across 8 pages and OpenAPI schema",
@@ -1503,8 +1782,14 @@
 
         function replayLiveTelemetry() {
             const container = document.getElementById("telemetryStream");
+            const discoveryFill = document.getElementById("discoveryFill");
             container.innerHTML = "";
             let idx = 0;
+
+            if (discoveryFill) {
+                discoveryFill.style.width = "0%";
+                setTimeout(() => { discoveryFill.style.width = "100%"; }, 100);
+            }
 
             function appendLog() {
                 if (idx >= liveLogs.length) return;
