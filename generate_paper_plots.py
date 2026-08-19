@@ -68,10 +68,11 @@ for s in stages:
             ha="center", va="center", fontsize=8.5, color="#334155", zorder=3, linespacing=1.35)
 
 # Connecting arrows
-arrow_props = dict(facecolor='#334155', edgecolor='#334155', width=1.1, headwidth=4.5, shrink=0.02)
+arrow_props = dict(facecolor='#334155', edgecolor='#334155', width=1.2, headwidth=5.0, shrink=0.02)
 ax.annotate('', xy=(0.355, 0.72), xytext=(0.31, 0.72), arrowprops=arrow_props)
 ax.annotate('', xy=(0.69, 0.72), xytext=(0.645, 0.72), arrowprops=arrow_props)
-ax.annotate('', xy=(0.50, 0.40), xytext=(0.835, 0.50), arrowprops=dict(facecolor='#334155', edgecolor='#334155', width=1.1, headwidth=4.5, shrink=0.02))
+# Clean vertical downward arrow from Stage 3 to Stage 4
+ax.annotate('', xy=(0.835, 0.40), xytext=(0.835, 0.50), arrowprops=arrow_props)
 
 plt.savefig("paper/figures/fig1_architecture.pdf")
 plt.savefig("paper/figures/fig1_architecture.png")

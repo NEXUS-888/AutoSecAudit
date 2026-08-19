@@ -14,10 +14,23 @@
 \usepackage{booktabs}
 \usepackage{url}
 \usepackage{microtype}
-\usepackage{balance}
 
 % Clean hyperlink setup without colored borders
 \usepackage[hidelinks]{hyperref}
+
+% Ensure abstract body is normal regular weight (not bold)
+\makeatletter
+\renewenvironment{abstract}{%
+  \normalfont\small
+  \textbf{\textit{Abstract}}---%
+  \ignorespaces
+}{\par\normalfont\normalsize}
+\renewenvironment{IEEEkeywords}{%
+  \normalfont\small
+  \textbf{\textit{Index Terms}}---%
+  \ignorespaces
+}{\par\normalfont\normalsize}
+\makeatother
 
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
@@ -31,15 +44,14 @@
 % ---------------------------------------------------------------------------
 \author{
 \IEEEauthorblockN{
-  Kodi Vishruth Aithal\textsuperscript{1}, 
-  Thilak N\textsuperscript{1}, 
-  Vinaya Kumar B\textsuperscript{1}, 
-  Vishal Gowda B\textsuperscript{1}, and 
-  Ranjitha R\textsuperscript{2,*}
+  Kodi Vishruth Aithal, 
+  Thilak N, 
+  Vinaya Kumar B, 
+  Vishal Gowda B, and 
+  Ranjitha R\textsuperscript{*}
 }
 \IEEEauthorblockA{
-  \textsuperscript{1}\textit{Department of Computer Science and Engineering, Don Bosco Institute of Technology, Bangalore, Karnataka, India}\\
-  \textsuperscript{2}\textit{Department of Computer Science and Engineering, Don Bosco Institute of Technology, Bangalore, Karnataka, India}\\
+  \textit{Department of Computer Science and Engineering, Don Bosco Institute of Technology}, Bangalore, Karnataka, India \\
   Emails: \{aithalvishruth, gowdathilakn, bvinaykumar70, vishalgb2005\}@gmail.com, \textsuperscript{*}ranjitha.r@dbit.co.in
 }
 }
@@ -293,10 +305,11 @@ We evaluated audit latency across concurrency levels from 1 to 16 threads. As sh
 \subsection{Detection Accuracy and Noise Reduction (RQ2)}
 To evaluate detection quality, we audited the benchmark target and verified findings against ground-truth challenge definitions~\cite{bau2010state}. Table~\ref{tab:evaluation} lists the results across all 14 scanner plugins grouped into major vulnerability classifications.
 
-\begin{table}[htbp]
+\begin{table}[!t]
 \caption{Vulnerability Detection and Correlation Metrics across 14 Plugins}
 \label{tab:evaluation}
 \centering
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{lcccc}
 \toprule
 \textbf{Vulnerability Class (Active Plugins)} & \textbf{TP} & \textbf{FP} & \textbf{Raw} & \textbf{Correlated} \\
@@ -309,12 +322,13 @@ API \& Tokens (\texttt{APIAbuse}, \texttt{JWT}, \texttt{CORS}) & 5 & 0 & 8 & 5 \
 \midrule
 \textbf{Total / Summary} & \textbf{46} & \textbf{1} & \textbf{76} & \textbf{46} \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 Across 76 raw tool alerts, the correlation module consolidated findings into 46 actionable issues, achieving a 39.5\% reduction in alert volume (Fig.~\ref{fig:noise_reduction}). Manual validation confirmed 46 true positives and 1 false positive, resulting in a 97.8\% detection precision ($46 / 47$).
 
-\begin{figure}[t]
+\begin{figure}[!b]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig4_delta_diff.pdf}
 \caption{Vulnerability lifecycle tracking across sequential software builds via set-theoretic delta diffing.}
@@ -339,8 +353,6 @@ Two practical considerations should be noted:
 
 \section{Conclusion}
 AutoSecAudit delivers an extensible vulnerability auditing framework for continuous integration pipelines. By combining automated surface discovery, parallel execution across 14 scanner plugins, heuristic deduplication, threat intelligence enrichment, multi-standard compliance mapping, and set-theoretic delta auditing, the system eliminates key operational bottlenecks in automated security testing. Future work will investigate local LLM agents for automated patch synthesis and distributed multi-node scanning.
-
-\balance
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
