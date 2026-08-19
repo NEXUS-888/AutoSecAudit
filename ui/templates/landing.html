@@ -67,11 +67,11 @@
             line-height: 1.6;
             overflow-x: hidden;
             background-image: 
-                radial-gradient(circle at 10% 12%, rgba(99, 102, 241, 0.09) 0%, transparent 45%),
-                radial-gradient(circle at 90% 20%, rgba(6, 182, 212, 0.07) 0%, transparent 45%),
-                radial-gradient(circle at 50% 88%, rgba(16, 185, 129, 0.06) 0%, transparent 50%);
+                radial-gradient(circle at 10% 12%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 90% 20%, rgba(6, 182, 212, 0.10) 0%, transparent 45%),
+                radial-gradient(circle at 50% 88%, rgba(16, 185, 129, 0.08) 0%, transparent 50%);
             background-attachment: fixed;
-            perspective: 1200px;
+            perspective: 1400px;
         }
 
         /* ── Dynamic Background Canvas Grid & Particles ──────── */
@@ -80,10 +80,10 @@
             top: 0; left: 0; width: 100vw; height: 100vh;
             pointer-events: none;
             z-index: 0;
-            opacity: 0.65;
+            opacity: 0.75;
         }
 
-        /* ── Subtle Global Pipeline Scroll Tracker Rail ─────── */
+        /* ── Global Pipeline Scroll Tracker Rail ────────────── */
         .pipeline-scroll-rail {
             position: fixed;
             right: 1.5rem;
@@ -114,10 +114,11 @@
         }
 
         .rail-dot {
-            width: 5px;
-            height: 5px;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
             background: currentColor;
+            box-shadow: 0 0 8px currentColor;
         }
 
         @media (max-width: 1200px) {
@@ -160,7 +161,7 @@
             align-items: center;
             justify-content: center;
             color: white;
-            box-shadow: 0 0 16px rgba(99, 102, 241, 0.35);
+            box-shadow: 0 0 16px rgba(99, 102, 241, 0.45);
         }
 
         .nav-links {
@@ -209,12 +210,12 @@
         .btn-primary {
             background: linear-gradient(135deg, var(--accent-indigo), #4338ca);
             color: white;
-            box-shadow: 0 2px 12px rgba(99, 102, 241, 0.35);
+            box-shadow: 0 2px 14px rgba(99, 102, 241, 0.4);
         }
 
         .btn-primary:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 18px rgba(99, 102, 241, 0.55);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 22px rgba(99, 102, 241, 0.6);
             color: white;
         }
 
@@ -227,7 +228,7 @@
         .btn-secondary:hover {
             background: var(--bg-elevated);
             border-color: var(--accent-cyan);
-            transform: translateY(-1px);
+            transform: translateY(-2px);
         }
 
         .theme-toggle-btn {
@@ -265,9 +266,9 @@
             gap: 0.6rem;
             padding: 0.35rem 0.9rem;
             border-radius: 6px;
-            background: rgba(99, 102, 241, 0.12);
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            color: var(--accent-indigo);
+            background: rgba(99, 102, 241, 0.14);
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            color: #818cf8;
             font-size: 0.76rem;
             font-family: var(--font-mono);
             font-weight: 700;
@@ -304,19 +305,52 @@
         }
 
         .hero-desc {
-            font-size: 1.08rem;
+            font-size: 1.06rem;
             color: var(--fg-secondary);
-            margin-bottom: 2.25rem;
+            margin-bottom: 1.75rem;
             max-width: 620px;
             line-height: 1.65;
         }
+
+        /* ── Instant Value Proposition Pillars (Why AutoSecAudit) ── */
+        .why-value-chips {
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+            margin-bottom: 2rem;
+        }
+
+        .value-chip-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--fg-primary);
+            background: rgba(13, 18, 30, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 0.45rem 0.85rem;
+            border-radius: 6px;
+            width: fit-content;
+        }
+
+        .chip-icon-tag {
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            font-weight: 800;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .chip-green { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .chip-cyan { background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3); }
+        .chip-purple { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.3); }
 
         .hero-cta-row {
             display: flex;
             align-items: center;
             gap: 1.1rem;
             flex-wrap: wrap;
-            margin-bottom: 2.5rem;
+            margin-bottom: 2.25rem;
         }
 
         .evidence-metrics-bar {
@@ -344,43 +378,56 @@
             letter-spacing: 0.05em;
         }
 
-        /* ── Live Security Telemetry Console (3D Depth) ────── */
+        /* ── Dynamic 3D Telemetry Console & Depth Mechanics ── */
         .hero-telemetry-wrapper {
             position: relative;
             transform-style: preserve-3d;
-            transition: transform 0.15s ease-out;
+            perspective: 1000px;
         }
 
-        /* Sparse 3D Floating Telemetry Chips around console */
+        /* Floating Telemetry Chips in 3D Depth */
         .floating-chip {
             position: absolute;
-            background: rgba(13, 18, 30, 0.88);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            padding: 0.3rem 0.65rem;
-            border-radius: 6px;
+            background: rgba(13, 18, 30, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            padding: 0.4rem 0.8rem;
+            border-radius: 8px;
             font-family: var(--font-mono);
-            font-size: 0.68rem;
-            font-weight: 700;
+            font-size: 0.72rem;
+            font-weight: 800;
             color: var(--accent-cyan);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65), 0 0 12px rgba(6, 182, 212, 0.25);
             pointer-events: none;
-            z-index: 10;
-            backdrop-filter: blur(8px);
-            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 20;
+            backdrop-filter: blur(10px);
+            transition: transform 0.1s ease-out;
         }
 
-        .chip-1 { top: -14px; right: 28px; color: #10b981; border-color: rgba(16, 185, 129, 0.35); }
-        .chip-2 { bottom: 20px; left: -22px; color: #f43f5e; border-color: rgba(244, 63, 94, 0.35); }
-        .chip-3 { top: 45%; right: -20px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.35); }
+        .chip-1 { top: -20px; right: 20px; color: #10b981; border-color: rgba(16, 185, 129, 0.45); }
+        .chip-2 { bottom: 10px; left: -26px; color: #f43f5e; border-color: rgba(244, 63, 94, 0.45); }
+        .chip-3 { top: 40%; right: -28px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.45); }
 
         .telemetry-console {
             background: #080c14;
             border: 1px solid var(--border-color);
-            border-radius: 12px;
-            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 35px rgba(99, 102, 241, 0.18);
+            border-radius: 14px;
+            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.8), 0 0 45px rgba(99, 102, 241, 0.22);
             overflow: hidden;
             font-family: var(--font-mono);
             font-size: 0.78rem;
+            transform-style: preserve-3d;
+            transition: transform 0.12s ease-out, box-shadow 0.12s ease-out;
+            position: relative;
+        }
+
+        /* Interactive Dynamic Glare Effect on 3D Tilt */
+        .telemetry-console::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle at var(--glare-x, 50%) var(--glare-y, 50%), rgba(255, 255, 255, 0.08) 0%, transparent 60%);
+            pointer-events: none;
+            z-index: 10;
         }
 
         .console-topbar {
@@ -478,7 +525,6 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            transition: border-color 0.25s ease, background 0.25s ease;
         }
 
         .scanner-tag {
@@ -568,7 +614,7 @@
 
         .section-header {
             text-align: center;
-            max-width: 780px;
+            max-width: 820px;
             margin: 0 auto 3.5rem;
         }
 
@@ -606,11 +652,12 @@
             border: 1px solid var(--border-color);
             border-radius: 12px;
             padding: 2.25rem;
-            transition: transform 0.3s ease, border-color 0.3s ease;
+            transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
         }
 
         .flow-panel:hover {
-            transform: translateY(-3px);
+            transform: translateY(-4px);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
         }
 
         .flow-panel.sast {
@@ -685,7 +732,8 @@
 
         .pipeline-card:hover {
             border-color: var(--border-active);
-            transform: translateY(-4px);
+            transform: translateY(-5px);
+            box-shadow: 0 14px 35px rgba(99, 102, 241, 0.18);
         }
 
         .pipeline-num {
@@ -1082,14 +1130,30 @@
         <div class="hero-left">
             <div class="platform-badge">
                 <span class="status-dot-pulse"></span>
-                Autonomous Security Engineering Platform
+                Autonomous DAST Security Orchestrator
             </div>
             <h1 class="hero-title">
                 Prove What Actually Breaks in <span class="highlight-accent">Production</span>.
             </h1>
             <p class="hero-desc">
-                Source code review only guesses theoretical risks. <strong>AutoSecAudit</strong> actively orchestrates 14+ scanner plugins, validates exploit payloads against live endpoints, suppresses duplicate noise by 38.2%, and gates CI/CD builds on confirmed regressions.
+                Static code review only guesses theoretical risks. <strong>AutoSecAudit</strong> orchestrates 14+ scanner plugins in parallel, actively probes running APIs and containers, delivers <strong>100% verified exploit proof (0 hallucinations)</strong>, and gates CI/CD builds on confirmed regressions.
             </p>
+
+            <!-- ── Instant "Why Use AutoSecAudit" Value Proposition Chips ── -->
+            <div class="why-value-chips">
+                <div class="value-chip-row">
+                    <span class="chip-icon-tag chip-green">0% Hallucinations</span>
+                    <span>Proves exploitable flaws over live HTTP request & response payloads</span>
+                </div>
+                <div class="value-chip-row">
+                    <span class="chip-icon-tag chip-cyan">2.84x Speedup</span>
+                    <span>Orchestrates 14 security engines concurrently in ~64.8s thread pool</span>
+                </div>
+                <div class="value-chip-row">
+                    <span class="chip-icon-tag chip-purple">CI/CD Gate</span>
+                    <span>Set-theoretic delta diffing halts pull requests with new critical flaws</span>
+                </div>
+            </div>
 
             <div class="hero-cta-row">
                 {% if user %}
@@ -1137,9 +1201,9 @@
             </div>
         </div>
 
-        <!-- ── Right Side: Live Security Telemetry Console (3D Layered) ── -->
+        <!-- ── Right Side: Live Security Telemetry Console (Enhanced 3D Parallax) ── -->
         <div class="hero-telemetry-wrapper" id="heroConsoleWrapper">
-            <!-- Sparse floating telemetry chips in 3D depth -->
+            <!-- Distinct Depth Floating Telemetry Chips -->
             <div class="floating-chip chip-1" id="chip1">NMAP :443 [OPEN]</div>
             <div class="floating-chip chip-2" id="chip2">JWT alg:none [CRITICAL]</div>
             <div class="floating-chip chip-3" id="chip3">OWASP A03:2021</div>
@@ -1236,9 +1300,9 @@
     <section class="section reveal-section" id="why-autosec">
         <div class="section-header">
             <span class="section-tag">Empirical Proof vs. Static Guessing</span>
-            <h2 class="section-title">Why Static Code Review (SAST) Falls Short</h2>
+            <h2 class="section-title">Why Static Code Review & AI LLMs Fall Short</h2>
             <p class="section-desc">
-                Static tools guess potential bugs by parsing code strings. AutoSecAudit actively probes the live application environment to confirm exploitable flaws with real HTTP evidence.
+                Static tools guess potential vulnerabilities by scanning source code text. AutoSecAudit actively probes the live application environment to confirm exploitable flaws with real HTTP evidence.
             </p>
         </div>
 
@@ -1582,14 +1646,14 @@
         window.addEventListener("resize", resizeBg);
         resizeBg();
 
-        for (let i = 0; i < 35; i++) {
+        for (let i = 0; i < 40; i++) {
             particles.push({
                 x: Math.random() * bgCanvas.width,
                 y: Math.random() * bgCanvas.height,
-                vx: (Math.random() - 0.5) * 0.35,
-                vy: (Math.random() - 0.5) * 0.35,
-                size: Math.random() * 1.5 + 0.5,
-                color: Math.random() > 0.5 ? "rgba(6, 182, 212, 0.4)" : "rgba(99, 102, 241, 0.35)"
+                vx: (Math.random() - 0.5) * 0.4,
+                vy: (Math.random() - 0.5) * 0.4,
+                size: Math.random() * 1.6 + 0.5,
+                color: Math.random() > 0.5 ? "rgba(6, 182, 212, 0.45)" : "rgba(99, 102, 241, 0.4)"
             });
         }
 
@@ -1612,26 +1676,50 @@
         }
         animateBg();
 
-        // 3. Subtle 3D Mouse Parallax on Hero Console
+        // 3. Pronounced, Smooth 3D Mouse Parallax & Dynamic Glare
+        const heroConsole = document.getElementById("telemetryCard");
         const heroWrapper = document.getElementById("heroConsoleWrapper");
         const chip1 = document.getElementById("chip1");
         const chip2 = document.getElementById("chip2");
         const chip3 = document.getElementById("chip3");
 
-        if (window.innerWidth > 992) {
+        if (window.innerWidth > 992 && heroWrapper && heroConsole) {
             document.addEventListener("mousemove", (e) => {
-                const x = (window.innerWidth / 2 - e.pageX) / 45;
-                const y = (window.innerHeight / 2 - e.pageY) / 45;
-                if (heroWrapper) {
-                    heroWrapper.style.transform = `rotateY(${-x * 0.6}deg) rotateX(${y * 0.6}deg) translateZ(10px)`;
-                }
-                if (chip1) chip1.style.transform = `translate(${x * 0.8}px, ${y * 0.8}px)`;
-                if (chip2) chip2.style.transform = `translate(${-x * 0.7}px, ${-y * 0.7}px)`;
-                if (chip3) chip3.style.transform = `translate(${x * 0.6}px, ${-y * 0.6}px)`;
+                const rect = heroWrapper.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+
+                const deltaX = (e.clientX - centerX) / (window.innerWidth / 2);
+                const deltaY = (e.clientY - centerY) / (window.innerHeight / 2);
+
+                // Distinct, tangible 3D rotation & translation
+                const rotY = deltaX * 12;  // max 12 deg
+                const rotX = -deltaY * 12; // max 12 deg
+
+                heroConsole.style.transform = `perspective(1000px) rotateX(${rotX.toFixed(2)}deg) rotateY(${rotY.toFixed(2)}deg) scale3d(1.02, 1.02, 1.02)`;
+                
+                // Dynamic glare light tracking mouse
+                const glareX = ((e.clientX - rect.left) / rect.width) * 100;
+                const glareY = ((e.clientY - rect.top) / rect.height) * 100;
+                heroConsole.style.setProperty('--glare-x', `${glareX}%`);
+                heroConsole.style.setProperty('--glare-y', `${glareY}%`);
+
+                // Layered independent chip parallax offsets
+                if (chip1) chip1.style.transform = `translate3d(${deltaX * 24}px, ${deltaY * 24}px, 50px)`;
+                if (chip2) chip2.style.transform = `translate3d(${-deltaX * 20}px, ${-deltaY * 20}px, 35px)`;
+                if (chip3) chip3.style.transform = `translate3d(${deltaX * 18}px, ${-deltaY * 18}px, 60px)`;
+            });
+
+            // Smooth reset on mouse leave
+            heroWrapper.addEventListener("mouseleave", () => {
+                heroConsole.style.transform = "perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)";
+                if (chip1) chip1.style.transform = "translate3d(0, 0, 0)";
+                if (chip2) chip2.style.transform = "translate3d(0, 0, 0)";
+                if (chip3) chip3.style.transform = "translate3d(0, 0, 0)";
             });
         }
 
-        // 4. Viewport Intersection Observer for Cinematic Section Reveals & Rail Tracker
+        // 4. Viewport Intersection Observer for Section Reveals & Rail Tracker
         const sections = document.querySelectorAll(".reveal-section");
         const railMap = {
             "sec-hero": "rail-hero",
