@@ -898,6 +898,7 @@ HTML_FORM = """
     </script>
     <script>
         document.getElementById('scanForm').addEventListener('submit', function (e) {
+            e.preventDefault();
             var targetInput = document.getElementById('target');
             if (!targetInput || !targetInput.value.trim()) return;
 
@@ -911,37 +912,87 @@ HTML_FORM = """
             container.style.display = 'flex';
 
             var progressFill = document.getElementById('scanProgressFill');
-            var progress = 0;
-            var progressInterval = setInterval(function () {
-                if (progress < 90) {
-                    var increment = (95 - progress) * 0.04;
-                    progress += increment;
-                    progressFill.style.width = progress + '%';
-                }
-            }, 400);
-
-            var statusMessages = [
-                "Initializing security audit engine...",
-                "Validating host and verifying authorization...",
-                "Running configuration check on environment...",
-                "Loading security plugins (SQLi, XSS, Information Disclosure)...",
-                "Analyzing network response headers...",
-                "Scanning endpoints for SQL Injection vulnerabilities...",
-                "Testing authentication controllers and inputs...",
-                "Analyzing security headers (X-Frame-Options, CSP, HSTS)...",
-                "Cross-checking discovered endpoints for potential threats...",
-                "Mapping findings to compliance standards...",
-                "Running delta analyzer against historical scans...",
-                "Compiling final report data and artifacts...",
-                "Generating HTML interactive dashboard..."
-            ];
-            
             var consoleText = document.getElementById('scanConsoleText');
-            var messageIndex = 0;
-            var messageInterval = setInterval(function () {
-                messageIndex = (messageIndex + 1) % statusMessages.length;
-                consoleText.textContent = statusMessages[messageIndex];
-            }, 1800);
+            progressFill.style.width = '5%';
+            consoleText.textContent = 'Submitting target for automated analysis...';
+
+            var formData = new FormData(this);
+
+            fetch('/scan/async', {
+                method: 'POST',
+                body: formData
+            })
+            .then(function (res) {
+                if (!res.ok) {
+                    return res.json().then(function (err) { throw new Error(err.error || 'Scan request blocked or failed'); });
+                }
+                return res.json();
+            })
+            .then(function (data) {
+                var scanId = data.scan_id;
+                var evtSource = new EventSource('/scan/progress/' + scanId);
+
+                evtSource.onmessage = function (event) {
+                    try {
+                        var payload = JSON.parse(event.data);
+                        if (payload.percent !== undefined) {
+                            progressFill.style.width = Math.max(5, payload.percent) + '%';
+                        }
+                        if (payload.message) {
+                            consoleText.textContent = payload.message;
+                        }
+                        if (payload.stage === 'done') {
+                            evtSource.close();
+                            progressFill.style.width = '100%';
+                            consoleText.textContent = 'Audit complete! Opening interactive dashboard...';
+                            setTimeout(function () {
+                                window.location.href = '/report/' + payload.report_name;
+                            }, 700);
+                        } else if (payload.stage === 'error') {
+                            evtSource.close();
+                            consoleText.style.color = '#ef4444';
+                            consoleText.textContent = 'Error: ' + payload.message;
+                            showRetryButton();
+                        }
+                    } catch (err) {
+                        console.error('SSE parse error:', err);
+                    }
+                };
+
+                evtSource.onerror = function () {
+                    evtSource.close();
+                    var pollInterval = setInterval(function () {
+                        fetch('/scan/status/' + scanId)
+                        .then(function (r) { return r.json(); })
+                        .then(function (statusData) {
+                            if (statusData.status === 'done') {
+                                clearInterval(pollInterval);
+                                window.location.href = '/report/' + statusData.report_name;
+                            } else if (statusData.status === 'error') {
+                                clearInterval(pollInterval);
+                                consoleText.style.color = '#ef4444';
+                                consoleText.textContent = 'Error: ' + (statusData.error || 'Scan failed');
+                                showRetryButton();
+                            }
+                        })
+                        .catch(function () {});
+                    }, 1200);
+                };
+            })
+            .catch(function (err) {
+                consoleText.style.color = '#ef4444';
+                consoleText.textContent = 'Error: ' + err.message;
+                showRetryButton();
+            });
+
+            function showRetryButton() {
+                var retryBtn = document.createElement('button');
+                retryBtn.textContent = '← Return & Try Again';
+                retryBtn.className = 'btn-primary';
+                retryBtn.style.marginTop = '20px';
+                retryBtn.onclick = function () { window.location.reload(); };
+                container.appendChild(retryBtn);
+            }
         });
     </script>
 </body>
