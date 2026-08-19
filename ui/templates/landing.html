@@ -31,7 +31,7 @@
             --accent-amber: #f59e0b;
             --accent-purple: #8b5cf6;
             
-            --glass-bg: rgba(6, 9, 16, 0.88);
+            --glass-bg: rgba(6, 9, 16, 0.95);
             --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
             --font-mono: 'JetBrains Mono', monospace;
         }
@@ -50,14 +50,13 @@
             --fg-primary: #0f172a;
             --fg-secondary: #475569;
             --fg-muted: #64748b;
-            --glass-bg: rgba(255, 255, 255, 0.94);
+            --glass-bg: rgba(255, 255, 255, 0.98);
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
         }
 
         body {
@@ -67,20 +66,11 @@
             line-height: 1.6;
             overflow-x: hidden;
             background-image: 
-                radial-gradient(circle at 10% 12%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
-                radial-gradient(circle at 90% 20%, rgba(6, 182, 212, 0.10) 0%, transparent 45%),
-                radial-gradient(circle at 50% 88%, rgba(16, 185, 129, 0.08) 0%, transparent 50%);
+                radial-gradient(circle at 15% 10%, rgba(99, 102, 241, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 85% 20%, rgba(6, 182, 212, 0.06) 0%, transparent 40%),
+                radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.05) 0%, transparent 45%);
             background-attachment: fixed;
-            perspective: 1400px;
-        }
-
-        /* ── Dynamic Background Canvas Grid & Particles ──────── */
-        #bgCanvas {
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            pointer-events: none;
-            z-index: 0;
-            opacity: 0.75;
+            transform: translateZ(0);
         }
 
         /* ── Global Pipeline Scroll Tracker Rail ────────────── */
@@ -103,8 +93,8 @@
             font-family: var(--font-mono);
             font-size: 0.65rem;
             color: var(--fg-muted);
-            opacity: 0.4;
-            transition: opacity 0.3s ease, color 0.3s ease;
+            opacity: 0.35;
+            transition: opacity 0.2s ease, color 0.2s ease;
         }
 
         .rail-step.active {
@@ -118,7 +108,6 @@
             height: 6px;
             border-radius: 50%;
             background: currentColor;
-            box-shadow: 0 0 8px currentColor;
         }
 
         @media (max-width: 1200px) {
@@ -131,14 +120,13 @@
             top: 0; left: 0; right: 0;
             height: 68px;
             background: var(--glass-bg);
-            backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
             border-bottom: 1px solid var(--border-color);
             z-index: 1000;
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 0 2.5rem;
+            transform: translateZ(0);
         }
 
         .nav-brand {
@@ -161,7 +149,6 @@
             align-items: center;
             justify-content: center;
             color: white;
-            box-shadow: 0 0 16px rgba(99, 102, 241, 0.45);
         }
 
         .nav-links {
@@ -178,6 +165,7 @@
             font-weight: 600;
             letter-spacing: -0.01em;
             cursor: pointer;
+            transition: color 0.15s ease;
         }
 
         .nav-link:hover { color: var(--accent-cyan); }
@@ -202,7 +190,7 @@
             text-decoration: none;
             cursor: pointer;
             border: 1px solid transparent;
-            transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: transform 0.12s ease, background 0.12s ease;
         }
 
         .btn:active { transform: scale(0.98); }
@@ -210,12 +198,10 @@
         .btn-primary {
             background: linear-gradient(135deg, var(--accent-indigo), #4338ca);
             color: white;
-            box-shadow: 0 2px 14px rgba(99, 102, 241, 0.4);
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 22px rgba(99, 102, 241, 0.6);
             color: white;
         }
 
@@ -282,13 +268,7 @@
             height: 7px;
             border-radius: 50%;
             background: var(--accent-emerald);
-            box-shadow: 0 0 8px var(--accent-emerald);
-            animation: pulse-active 2s infinite;
-        }
-
-        @keyframes pulse-active {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.3); opacity: 0.6; }
+            box-shadow: 0 0 6px var(--accent-emerald);
         }
 
         .hero-title {
@@ -301,7 +281,6 @@
 
         .hero-title .highlight-accent {
             color: var(--accent-cyan);
-            text-shadow: 0 0 25px rgba(6, 182, 212, 0.35);
         }
 
         .hero-desc {
@@ -327,7 +306,7 @@
             font-size: 0.85rem;
             font-weight: 600;
             color: var(--fg-primary);
-            background: rgba(13, 18, 30, 0.6);
+            background: rgba(13, 18, 30, 0.7);
             border: 1px solid rgba(255, 255, 255, 0.06);
             padding: 0.45rem 0.85rem;
             border-radius: 6px;
@@ -378,17 +357,15 @@
             letter-spacing: 0.05em;
         }
 
-        /* ── Dynamic 3D Telemetry Console & Depth Mechanics ── */
+        /* ── Hardware-Accelerated 3D Telemetry Console ─────── */
         .hero-telemetry-wrapper {
             position: relative;
-            transform-style: preserve-3d;
             perspective: 1000px;
         }
 
-        /* Floating Telemetry Chips in 3D Depth */
         .floating-chip {
             position: absolute;
-            background: rgba(13, 18, 30, 0.92);
+            background: #0d121e;
             border: 1px solid rgba(255, 255, 255, 0.14);
             padding: 0.4rem 0.8rem;
             border-radius: 8px;
@@ -396,10 +373,10 @@
             font-size: 0.72rem;
             font-weight: 800;
             color: var(--accent-cyan);
-            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65), 0 0 12px rgba(6, 182, 212, 0.25);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
             pointer-events: none;
             z-index: 20;
-            backdrop-filter: blur(10px);
+            will-change: transform;
             transition: transform 0.1s ease-out;
         }
 
@@ -411,23 +388,14 @@
             background: #080c14;
             border: 1px solid var(--border-color);
             border-radius: 14px;
-            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.8), 0 0 45px rgba(99, 102, 241, 0.22);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
             overflow: hidden;
             font-family: var(--font-mono);
             font-size: 0.78rem;
-            transform-style: preserve-3d;
-            transition: transform 0.12s ease-out, box-shadow 0.12s ease-out;
+            will-change: transform;
+            transition: transform 0.1s ease-out;
             position: relative;
-        }
-
-        /* Interactive Dynamic Glare Effect on 3D Tilt */
-        .telemetry-console::after {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: radial-gradient(circle at var(--glare-x, 50%) var(--glare-y, 50%), rgba(255, 255, 255, 0.08) 0%, transparent 60%);
-            pointer-events: none;
-            z-index: 10;
+            transform: translateZ(0);
         }
 
         .console-topbar {
@@ -589,18 +557,17 @@
             line-height: 1.45;
         }
 
-        /* ── Viewport Scroll Reveal Transitions ──────────────── */
+        /* ── Viewport Scroll Reveal Transitions (GPU Safe) ─── */
         .reveal-section {
             opacity: 0;
-            transform: translateY(24px) scale(0.98);
-            filter: blur(3px);
-            transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1), filter 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+            transform: translateY(20px);
+            transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+            will-change: opacity, transform;
         }
 
         .reveal-section.is-visible {
             opacity: 1;
-            transform: translateY(0) scale(1);
-            filter: blur(0);
+            transform: translateY(0);
         }
 
         /* ── Differentiator (SAST vs DAST Flow) ─────────────── */
@@ -652,12 +619,11 @@
             border: 1px solid var(--border-color);
             border-radius: 12px;
             padding: 2.25rem;
-            transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+            transition: transform 0.2s ease;
         }
 
         .flow-panel:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+            transform: translateY(-3px);
         }
 
         .flow-panel.sast {
@@ -696,8 +662,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            opacity: 0.85;
-            transition: opacity 0.4s ease, transform 0.4s ease, border-color 0.4s ease;
+            opacity: 0.9;
         }
 
         .flow-step-arrow {
@@ -727,13 +692,12 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            transition: all 0.3s ease;
+            transition: transform 0.2s ease, border-color 0.2s ease;
         }
 
         .pipeline-card:hover {
             border-color: var(--border-active);
-            transform: translateY(-5px);
-            box-shadow: 0 14px 35px rgba(99, 102, 241, 0.18);
+            transform: translateY(-4px);
         }
 
         .pipeline-num {
@@ -768,16 +732,14 @@
             color: #94a3b8;
         }
 
-        /* ── 3D Attack Path / Threat Graph Section ─────────── */
+        /* ── Live Attack Path / Threat Graph Section ───────── */
         .attack-graph-card {
             background: #080d16;
             border: 1px solid var(--border-color);
             border-radius: 12px;
             padding: 2.25rem;
             font-family: var(--font-mono);
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-            transform-style: preserve-3d;
-            transition: transform 0.2s ease-out;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
         }
 
         .graph-flow-horizontal {
@@ -797,18 +759,11 @@
             text-align: center;
             min-width: 140px;
             flex-shrink: 0;
-            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .graph-node.vulnerable {
             border-color: #ef4444;
-            box-shadow: 0 0 18px rgba(239, 68, 68, 0.3);
-            animation: pulse-node 2s infinite;
-        }
-
-        @keyframes pulse-node {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.03); }
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.25);
         }
 
         .graph-node .node-type {
@@ -829,13 +784,6 @@
             font-weight: 800;
             font-size: 1.2rem;
             flex-shrink: 0;
-            animation: packetFlow 1.4s infinite;
-        }
-
-        @keyframes packetFlow {
-            0% { opacity: 0.2; transform: translateX(-3px); }
-            50% { opacity: 1; transform: translateX(3px); }
-            100% { opacity: 0.2; transform: translateX(-3px); }
         }
 
         /* ── Real Security Findings Table ───────────────────── */
@@ -864,11 +812,11 @@
             grid-template-columns: 100px 1.8fr 1.2fr 120px 100px;
             align-items: center;
             border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-            transition: background-color 0.18s ease;
+            transition: background-color 0.15s ease;
         }
 
         .findings-row:hover {
-            background-color: rgba(255, 255, 255, 0.025);
+            background-color: rgba(255, 255, 255, 0.03);
         }
 
         .findings-row:last-child { border-bottom: none; }
@@ -930,8 +878,7 @@
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(2, 4, 8, 0.85);
-            backdrop-filter: blur(10px);
+            background: rgba(2, 4, 8, 0.9);
             display: none;
             align-items: center;
             justify-content: center;
@@ -948,7 +895,7 @@
             width: 100%;
             max-width: 420px;
             padding: 2.25rem;
-            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
             position: relative;
         }
 
@@ -1021,16 +968,6 @@
         .auth-alert.success { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); display: block; }
         .auth-alert.info { background: rgba(6, 182, 212, 0.15); color: #38bdf8; border: 1px solid rgba(6, 182, 212, 0.3); display: block; }
 
-        /* ── Reduced Motion Accessibility ──────────────────── */
-        @media (prefers-reduced-motion: reduce) {
-            *, *::before, *::after {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-            }
-            .reveal-section { opacity: 1 !important; transform: none !important; filter: none !important; }
-        }
-
         /* ── Responsive ─────────────────────────────────────── */
         @media (max-width: 1024px) {
             .hero { grid-template-columns: 1fr; padding-top: 100px; }
@@ -1051,9 +988,6 @@
     </style>
 </head>
 <body>
-
-    <!-- ── Ambient Grid & Particle Canvas ─────────────────── -->
-    <canvas id="bgCanvas"></canvas>
 
     <!-- ── Global Pipeline Scroll Tracker Rail ────────────── -->
     <div class="pipeline-scroll-rail">
@@ -1201,9 +1135,8 @@
             </div>
         </div>
 
-        <!-- ── Right Side: Live Security Telemetry Console (Enhanced 3D Parallax) ── -->
+        <!-- ── Right Side: Live Security Telemetry Console (GPU Throttled Parallax) ── -->
         <div class="hero-telemetry-wrapper" id="heroConsoleWrapper">
-            <!-- Distinct Depth Floating Telemetry Chips -->
             <div class="floating-chip chip-1" id="chip1">NMAP :443 [OPEN]</div>
             <div class="floating-chip chip-2" id="chip2">JWT alg:none [CRITICAL]</div>
             <div class="floating-chip chip-3" id="chip3">OWASP A03:2021</div>
@@ -1317,15 +1250,15 @@
                     <span style="font-size: 1.3rem;">⚠️</span>
                 </div>
                 <div class="flow-steps-v">
-                    <div class="flow-step-node active-step"><span>01. Source Code Repository</span> <span>(Text Only)</span></div>
+                    <div class="flow-step-node"><span>01. Source Code Repository</span> <span>(Text Only)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node active-step"><span>02. Pattern / Regex Detection</span> <span>(AST Guess)</span></div>
+                    <div class="flow-step-node"><span>02. Pattern / Regex Detection</span> <span>(AST Guess)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node active-step"><span>03. Potential Vulnerability Flagged</span> <span>(Unverified)</span></div>
+                    <div class="flow-step-node"><span>03. Potential Vulnerability Flagged</span> <span>(Unverified)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node node-crit active-step"><span>04. Unknown Runtime Behavior</span> <span>(Blind to Ports/Auth)</span></div>
+                    <div class="flow-step-node node-crit"><span>04. Unknown Runtime Behavior</span> <span>(Blind to Ports/Auth)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node node-crit active-step"><span>05. Alert Noise & False Positives</span> <span>(Dev Fatigue)</span></div>
+                    <div class="flow-step-node node-crit"><span>05. Alert Noise & False Positives</span> <span>(Dev Fatigue)</span></div>
                 </div>
             </div>
 
@@ -1339,15 +1272,15 @@
                     <span style="font-size: 1.3rem;">🛡️</span>
                 </div>
                 <div class="flow-steps-v">
-                    <div class="flow-step-node active-step"><span>01. Live Running Application & Container</span> <span>(Network Target)</span></div>
+                    <div class="flow-step-node"><span>01. Live Running Application & Container</span> <span>(Network Target)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node active-step"><span>02. Real Crafted Exploit Request</span> <span>(Payload Delivery)</span></div>
+                    <div class="flow-step-node"><span>02. Real Crafted Exploit Request</span> <span>(Payload Delivery)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node active-step"><span>03. Real HTTP Server Response & Timing</span> <span>(Direct Evidence)</span></div>
+                    <div class="flow-step-node"><span>03. Real HTTP Server Response & Timing</span> <span>(Direct Evidence)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node node-ok active-step"><span>04. Compound-Key Finding Deduplication</span> <span>(-38.2% Noise)</span></div>
+                    <div class="flow-step-node node-ok"><span>04. Compound-Key Finding Deduplication</span> <span>(-38.2% Noise)</span></div>
                     <div class="flow-step-arrow">↓</div>
-                    <div class="flow-step-node node-ok active-step"><span>05. Confirmed Finding + Gated CI/CD Exit</span> <span>(0 Hallucinations)</span></div>
+                    <div class="flow-step-node node-ok"><span>05. Confirmed Finding + Gated CI/CD Exit</span> <span>(0 Hallucinations)</span></div>
                 </div>
             </div>
         </div>
@@ -1594,12 +1527,11 @@
         </div>
     </div>
 
-    <!-- ── JavaScript Engine, 3D Parallax & Motion Systems ── -->
+    <!-- ── JavaScript Engine, Throttled 3D Parallax & UI ──── -->
     <script>
-        // Check if user is logged in
         const IS_LOGGED_IN = {% if user %}true{% else %}false{% endif %};
 
-        // 1. Dark/Light Theme Switcher (Preserves test_theme.py hooks)
+        // 1. Dark/Light Theme Switcher
         function toggleTheme() {
             const currentTheme = document.documentElement.getAttribute("data-theme") || "dark";
             const newTheme = currentTheme === "dark" ? "light" : "dark";
@@ -1634,92 +1566,44 @@
             updateThemeIcon(savedTheme);
         })();
 
-        // 2. Ambient Particles & Security Grid Background Canvas
-        const bgCanvas = document.getElementById("bgCanvas");
-        const bgCtx = bgCanvas.getContext("2d");
-        let particles = [];
-
-        function resizeBg() {
-            bgCanvas.width = window.innerWidth;
-            bgCanvas.height = window.innerHeight;
-        }
-        window.addEventListener("resize", resizeBg);
-        resizeBg();
-
-        for (let i = 0; i < 40; i++) {
-            particles.push({
-                x: Math.random() * bgCanvas.width,
-                y: Math.random() * bgCanvas.height,
-                vx: (Math.random() - 0.5) * 0.4,
-                vy: (Math.random() - 0.5) * 0.4,
-                size: Math.random() * 1.6 + 0.5,
-                color: Math.random() > 0.5 ? "rgba(6, 182, 212, 0.45)" : "rgba(99, 102, 241, 0.4)"
-            });
-        }
-
-        function animateBg() {
-            bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
-            particles.forEach(p => {
-                p.x += p.vx;
-                p.y += p.vy;
-                if (p.x < 0) p.x = bgCanvas.width;
-                if (p.x > bgCanvas.width) p.x = 0;
-                if (p.y < 0) p.y = bgCanvas.height;
-                if (p.y > bgCanvas.height) p.y = 0;
-
-                bgCtx.fillStyle = p.color;
-                bgCtx.beginPath();
-                bgCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                bgCtx.fill();
-            });
-            requestAnimationFrame(animateBg);
-        }
-        animateBg();
-
-        // 3. Pronounced, Smooth 3D Mouse Parallax & Dynamic Glare
+        // 2. High-Performance Throttled 3D Parallax Tilt (Zero Battery Burn)
         const heroConsole = document.getElementById("telemetryCard");
         const heroWrapper = document.getElementById("heroConsoleWrapper");
         const chip1 = document.getElementById("chip1");
         const chip2 = document.getElementById("chip2");
         const chip3 = document.getElementById("chip3");
 
+        let ticking = false;
         if (window.innerWidth > 992 && heroWrapper && heroConsole) {
-            document.addEventListener("mousemove", (e) => {
-                const rect = heroWrapper.getBoundingClientRect();
-                const centerX = rect.left + rect.width / 2;
-                const centerY = rect.top + rect.height / 2;
+            heroWrapper.addEventListener("mousemove", (e) => {
+                if (!ticking) {
+                    window.requestAnimationFrame(() => {
+                        const rect = heroWrapper.getBoundingClientRect();
+                        const deltaX = (e.clientX - (rect.left + rect.width / 2)) / (rect.width / 2);
+                        const deltaY = (e.clientY - (rect.top + rect.height / 2)) / (rect.height / 2);
 
-                const deltaX = (e.clientX - centerX) / (window.innerWidth / 2);
-                const deltaY = (e.clientY - centerY) / (window.innerHeight / 2);
+                        const rotY = deltaX * 10;
+                        const rotX = -deltaY * 10;
 
-                // Distinct, tangible 3D rotation & translation
-                const rotY = deltaX * 12;  // max 12 deg
-                const rotX = -deltaY * 12; // max 12 deg
-
-                heroConsole.style.transform = `perspective(1000px) rotateX(${rotX.toFixed(2)}deg) rotateY(${rotY.toFixed(2)}deg) scale3d(1.02, 1.02, 1.02)`;
-                
-                // Dynamic glare light tracking mouse
-                const glareX = ((e.clientX - rect.left) / rect.width) * 100;
-                const glareY = ((e.clientY - rect.top) / rect.height) * 100;
-                heroConsole.style.setProperty('--glare-x', `${glareX}%`);
-                heroConsole.style.setProperty('--glare-y', `${glareY}%`);
-
-                // Layered independent chip parallax offsets
-                if (chip1) chip1.style.transform = `translate3d(${deltaX * 24}px, ${deltaY * 24}px, 50px)`;
-                if (chip2) chip2.style.transform = `translate3d(${-deltaX * 20}px, ${-deltaY * 20}px, 35px)`;
-                if (chip3) chip3.style.transform = `translate3d(${deltaX * 18}px, ${-deltaY * 18}px, 60px)`;
+                        heroConsole.style.transform = `rotateX(${rotX.toFixed(2)}deg) rotateY(${rotY.toFixed(2)}deg) scale3d(1.02, 1.02, 1.02)`;
+                        if (chip1) chip1.style.transform = `translate3d(${deltaX * 18}px, ${deltaY * 18}px, 0)`;
+                        if (chip2) chip2.style.transform = `translate3d(${-deltaX * 16}px, ${-deltaY * 16}px, 0)`;
+                        if (chip3) chip3.style.transform = `translate3d(${deltaX * 14}px, ${-deltaY * 14}px, 0)`;
+                        ticking = false;
+                    });
+                    ticking = true;
+                }
             });
 
-            // Smooth reset on mouse leave
             heroWrapper.addEventListener("mouseleave", () => {
-                heroConsole.style.transform = "perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)";
+                heroConsole.style.transform = "rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)";
                 if (chip1) chip1.style.transform = "translate3d(0, 0, 0)";
                 if (chip2) chip2.style.transform = "translate3d(0, 0, 0)";
                 if (chip3) chip3.style.transform = "translate3d(0, 0, 0)";
             });
         }
 
-        // 4. Viewport Intersection Observer for Section Reveals & Rail Tracker
+        // 3. Viewport Intersection Observer for Rail Tracker & Section Reveals
         const sections = document.querySelectorAll(".reveal-section");
         const railMap = {
             "sec-hero": "rail-hero",
@@ -1747,7 +1631,7 @@
 
         sections.forEach(s => observer.observe(s));
 
-        // 5. Auth Modal & Guard Controls
+        // 4. Auth Modal & Guard Controls
         function requireAuthPrompt(msg) {
             openAuthModal('login', msg);
         }
@@ -1854,7 +1738,7 @@
             }
         }
 
-        // 6. Live Telemetry Console Stream & Animation Sequence
+        // 5. Live Telemetry Console Stream (One-shot run)
         const liveLogs = [
             "[DISPATCH] Initializing 14 scanner plugins in ThreadPool (k=8)...",
             "[CRAWLER] Discovered 143 endpoints across 8 pages and OpenAPI schema",
@@ -1868,6 +1752,7 @@
 
         function replayLiveTelemetry() {
             const container = document.getElementById("telemetryStream");
+            if (!container) return;
             container.innerHTML = "";
             let idx = 0;
 
