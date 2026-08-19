@@ -15,6 +15,15 @@
 \usepackage{url}
 \usepackage{microtype}
 
+% Ensure generous float thresholds so figures are placed immediately
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\bottomfraction}{0.95}
+\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.85}
+\setcounter{topnumber}{4}
+\setcounter{bottomnumber}{4}
+\setcounter{totalnumber}{8}
+
 % Clean hyperlink setup without colored borders
 \usepackage[hidelinks]{hyperref}
 
@@ -295,12 +304,21 @@ We evaluated audit latency across concurrency levels from 1 to 16 threads. As sh
 \end{tabular}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure*}[t]
 \centering
-\includegraphics[width=\columnwidth]{figures/fig3_noise_reduction.pdf}
-\caption{Raw tool alerts vs. correlated actionable findings across major vulnerability categories (-39.5\% alert reduction).}
-\label{fig:noise_reduction}
-\end{figure}
+\begin{minipage}[t]{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig3_noise_reduction.pdf}
+  \caption{Raw tool alerts vs. correlated actionable findings across major vulnerability categories (-39.5\% alert reduction).}
+  \label{fig:noise_reduction}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig4_delta_diff.pdf}
+  \caption{Vulnerability lifecycle tracking across sequential software builds via set-theoretic delta diffing.}
+  \label{fig:delta_diff}
+\end{minipage}
+\end{figure*}
 
 \subsection{Detection Accuracy and Noise Reduction (RQ2)}
 To evaluate detection quality, we audited the benchmark target and verified findings against ground-truth challenge definitions~\cite{bau2010state}. Table~\ref{tab:evaluation} lists the results across all 14 scanner plugins grouped into major vulnerability classifications.
@@ -335,14 +353,6 @@ We validated regression tracking across a three-phase synthetic release sequence
     \item \textbf{Build v1.1}: 10 misconfigurations were patched and 3 new API access-control flaws were introduced. The delta engine correctly classified 3 $\Delta_{\text{NEW}}$, 10 $\Delta_{\text{FIXED}}$, and 36 $\Delta_{\text{UNCHANGED}}$ issues.
     \item \textbf{Build v1.2}: 14 remaining injection flaws were remediated. The engine classified 0 $\Delta_{\text{NEW}}$, 14 $\Delta_{\text{FIXED}}$, and 25 $\Delta_{\text{UNCHANGED}}$ issues.
 \end{itemize}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\columnwidth]{figures/fig4_delta_diff.pdf}
-\caption{Vulnerability lifecycle tracking across sequential software builds via set-theoretic delta diffing.}
-\label{fig:delta_diff}
-\end{figure}
-
 Across all transitions, the delta engine achieved 100\% classification accuracy without manual state reconciliation.
 
 \section{Discussion and Limitations}
