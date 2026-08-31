@@ -26,8 +26,10 @@ class ReportGenerator:
     def generate_html(self, report: Report, output_path: Optional[str] = None) -> str:
         """Generate HTML report from Report object."""
         template = self.env.get_template("report.html")
-        
-        html_content = template.render(report=report.to_dict())
+        report_dict = report.to_dict()
+        if output_path:
+            report_dict.setdefault("report_id", Path(output_path).stem.replace("report_", "").replace("scan_", ""))
+        html_content = template.render(report=report_dict, report_id=report_dict.get("report_id"))
         
         if output_path:
             output_file = Path(output_path)
@@ -43,8 +45,9 @@ class ReportGenerator:
                           output_path: Optional[str] = None) -> str:
         """Generate HTML report from dictionary."""
         template = self.env.get_template("report.html")
-        
-        html_content = template.render(report=report_data)
+        if output_path:
+            report_data.setdefault("report_id", Path(output_path).stem.replace("report_", "").replace("scan_", ""))
+        html_content = template.render(report=report_data, report_id=report_data.get("report_id"))
         
         if output_path:
             output_file = Path(output_path)
@@ -97,13 +100,16 @@ class ReportGenerator:
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
+        target_name = str(report_data.get('target', 'Security Assessment'))
         doc = SimpleDocTemplate(
             str(output_file),
             pagesize=letter,
             leftMargin=36,
             rightMargin=36,
             topMargin=40,
-            bottomMargin=45
+            bottomMargin=45,
+            title=f"AutoSecAudit Report - {target_name}",
+            author="AutoSecAudit Security Framework"
         )
 
         styles = getSampleStyleSheet()
@@ -212,8 +218,10 @@ class ReportGenerator:
             tool_text = saxutils.escape(str(f.get('tool_name', 'N/A')))
             owasp_text = saxutils.escape(str(f.get('owasp_tag', 'N/A')))
             cwe_text = saxutils.escape(str(f.get('cwe_id', 'N/A')))
-            desc_text = saxutils.escape(str(f.get('description', 'No description provided.')))
-            rem_text = saxutils.escape(str(f.get('remediation', '') or ''))
+            desc_raw = str(f.get('description', 'No description provided.'))
+            desc_text = saxutils.escape(desc_raw).replace('\n', '<br/>')
+            rem_raw = str(f.get('remediation', '') or '')
+            rem_text = saxutils.escape(rem_raw).replace('\n', '<br/>') if rem_raw else ''
 
             header_table_data = [[
                 Paragraph(f'<b>[{sev_text}] #{idx}: {title_text}</b>', finding_title),
@@ -246,7 +254,11 @@ class ReportGenerator:
                 card_elements.extend([Spacer(1, 3), rem_table])
 
             card_elements.append(Spacer(1, 8))
-            story.append(KeepTogether(card_elements))
+            # Wrap in KeepTogether only if concise, otherwise allow natural flow
+            if len(desc_raw) + len(rem_raw) < 1500:
+                story.append(KeepTogether(card_elements))
+            else:
+                story.extend(card_elements)
 
         doc.build(story, canvasmaker=NumberedCanvas)
         logger.info(f"PDF report saved to {output_path}")
@@ -265,6 +277,8 @@ class ReportGenerator:
             report_data = report.to_dict()
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_data["report_id"] = timestamp
         output_path = f"{config.REPORTS_DIR}/report_{timestamp}.html"
         
         return self.generate_from_dict(report_data, output_path)
+

@@ -265,8 +265,8 @@ class SQLiScanner(BaseScanner):
                             "type": "path_injection",
                         })
                         return
-                except requests.RequestException:
-                    pass
+                except requests.RequestException as exc:
+                    logger.debug(f"[SQLi] Path injection probe to {url} failed: {exc}")
 
     # ------------------------------------------------------------------
     # run() – main entry point

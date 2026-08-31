@@ -133,7 +133,8 @@ class BaseScanner(ABC):
             }
             self._baseline_cache[cache_key] = baseline
             return baseline
-        except requests.RequestException:
+        except requests.RequestException as exc:
+            logger.debug(f"[BaseScanner] Baseline probe for {url} ({param}) failed: {exc}")
             return None
 
     @staticmethod

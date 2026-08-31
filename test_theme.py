@@ -43,6 +43,65 @@ with app.test_client() as client:
     assert 'r="5"' in html, "Should have sun icon circle"
     print("[PASS] Sun (dark mode) and moon (light mode) icons are present")
 
+# Test 6: Light theme component overrides in landing.html
+with app.test_client() as client:
+    resp = client.get("/")
+    html = resp.data.decode("utf-8")
+    assert '[data-theme="light"] .flow-step-node' in html, "Flow step nodes must have light mode styling"
+    assert '[data-theme="light"] .pipeline-meta' in html, "Pipeline meta must have light mode styling"
+    assert '[data-theme="light"] .value-chip-row' in html, "Value chips must have light mode styling"
+    assert '[data-theme="light"] .attack-graph-card' in html, "Attack graph card must have light mode styling"
+    assert '[data-theme="light"] .action-box' in html, "Action CTA box must have light mode styling"
+    assert '[data-theme="light"] .findings-table-wrap' in html, "Findings table must have light mode styling"
+    print("[PASS] All landing page components properly configured for light mode")
+
+# Test 7: PDF Generation and Safe Download Headers
+import os
+import json
+import config
+from reports.generator import ReportGenerator
+from ui.app import _resolve_report_data
+
+generator = ReportGenerator()
+sample_report = {
+    "target": "http://localhost:3000",
+    "timestamp": "2026-08-31 19:20:31",
+    "summary": {"total": 2, "critical": 1, "high": 1, "medium": 0, "low": 0},
+    "all_findings": [
+        {
+            "id": "SEC-01",
+            "title": "SQL Injection",
+            "severity": "critical",
+            "tool_name": "SQLiScanner",
+            "owasp_tag": "A03:2021-Injection",
+            "cwe_id": "CWE-89",
+            "description": "SQL injection in query parameter.\nPayload: ' OR 1=1--",
+            "remediation": "Use parameterized queries."
+        }
+    ]
+}
+
+sample_json_path = f"{config.REPORTS_DIR}/scan_test_theme_sample.json"
+with open(sample_json_path, "w", encoding="utf-8") as f:
+    json.dump(sample_report, f)
+
+with app.test_client() as client:
+    resp = client.get("/download_pdf/test_theme_sample")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    assert "application/pdf" in resp.headers.get("Content-Type", ""), "MIME type must be application/pdf"
+    assert "attachment" in resp.headers.get("Content-Disposition", ""), "Must be attachment"
+    assert "report_test_theme_sample.pdf" in resp.headers.get("Content-Disposition", "")
+    assert resp.headers.get("X-Content-Type-Options") == "nosniff", "Must enforce nosniff"
+    assert resp.data.startswith(b"%PDF-"), "Must be valid PDF binary"
+    print("[PASS] PDF generation and safe download headers verified")
+
+for p in [sample_json_path, f"{config.REPORTS_DIR}/report_test_theme_sample.pdf"]:
+    if os.path.exists(p):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
 print()
 print("=" * 50)
 print("ALL TESTS PASSED")

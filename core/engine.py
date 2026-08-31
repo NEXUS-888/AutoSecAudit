@@ -124,19 +124,44 @@ class Engine:
                 try:
                     result = future.result(timeout=config.SCAN_TIMEOUT)
                     if result:
+                        status = result.get("status", "success")
+                        error = result.get("error")
                         scan_result = ScanResult(
                             tool_name=result.get("tool_name", plugin.__class__.__name__),
                             target=self.target,
                             timestamp=timestamp,
                             findings=self._dict_to_findings(result.get("findings", [])),
-                            raw_output=result.get("raw_output", "")
+                            raw_output=result.get("raw_output", ""),
+                            status=status,
+                            error=error
                         )
                         self.scan_results.append(scan_result)
-                        logger.info(f"Plugin {plugin.__class__.__name__} completed with {len(scan_result.findings)} findings")
+                        if status == "failed":
+                            logger.warning(f"Plugin {plugin.__class__.__name__} reported failure: {error}")
+                        else:
+                            logger.info(f"Plugin {plugin.__class__.__name__} completed with {len(scan_result.findings)} findings")
                 except TimeoutError:
                     logger.error(f"Plugin {plugin.__class__.__name__} timed out after {config.SCAN_TIMEOUT}s")
+                    self.scan_results.append(ScanResult(
+                        tool_name=plugin.__class__.__name__,
+                        target=self.target,
+                        timestamp=timestamp,
+                        findings=[],
+                        raw_output=f"Plugin timed out after {config.SCAN_TIMEOUT}s",
+                        status="timeout",
+                        error=f"Timeout after {config.SCAN_TIMEOUT}s"
+                    ))
                 except Exception as e:
-                    logger.error(f"Plugin {plugin.__class__.__name__} failed: {e}")
+                    logger.error(f"Plugin {plugin.__class__.__name__} failed: {e}", exc_info=True)
+                    self.scan_results.append(ScanResult(
+                        tool_name=plugin.__class__.__name__,
+                        target=self.target,
+                        timestamp=timestamp,
+                        findings=[],
+                        raw_output=f"Plugin failed: {str(e)}",
+                        status="failed",
+                        error=str(e)
+                    ))
 
         return self.scan_results
 
@@ -144,10 +169,19 @@ class Engine:
         """Execute a single plugin and return results."""
         try:
             plugin.configure(self.target)
-            return plugin.get_standardized_output()
+            output = plugin.get_standardized_output()
+            output.setdefault("status", "success")
+            output.setdefault("error", None)
+            return output
         except Exception as e:
-            logger.error(f"Error executing {plugin.__class__.__name__}: {e}")
-            return {"tool_name": plugin.__class__.__name__, "findings": []}
+            logger.error(f"Error executing {plugin.__class__.__name__}: {e}", exc_info=True)
+            return {
+                "tool_name": plugin.__class__.__name__,
+                "findings": [],
+                "status": "failed",
+                "error": str(e),
+                "raw_output": f"Plugin failed with error: {str(e)}"
+            }
 
     def _dict_to_findings(self, findings_data: List[Dict]) -> List[Finding]:
         """Convert dictionary data to Finding objects."""

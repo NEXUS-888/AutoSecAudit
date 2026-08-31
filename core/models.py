@@ -35,6 +35,8 @@ class ScanResult:
     timestamp: str
     findings: List[Finding] = field(default_factory=list)
     raw_output: Optional[str] = None
+    status: str = "success"
+    error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -42,7 +44,9 @@ class ScanResult:
             "target": self.target,
             "timestamp": self.timestamp,
             "findings": [f.to_dict() for f in self.findings],
-            "raw_output": self.raw_output
+            "raw_output": self.raw_output,
+            "status": self.status,
+            "error": self.error,
         }
 
 

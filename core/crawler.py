@@ -159,7 +159,8 @@ def _normalize_url(base_url: str, href: str) -> Optional[str]:
         # Strip fragment
         resolved = urllib.parse.urlunparse(parsed_resolved._replace(fragment=""))
         return resolved
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[Crawler] URL normalize failed for base={base_url} href={href}: {e}")
         return None
 
 

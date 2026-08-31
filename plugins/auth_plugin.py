@@ -349,7 +349,8 @@ class AuthScanner(BaseScanner):
                 # If the server keeps responding (not 429), it lacks limiting
                 if resp.status_code != 429:
                     success_count += 1
-            except requests.RequestException:
+            except requests.RequestException as exc:
+                logger.debug(f"[AuthScanner] Rate-limit probe failed on attempt {success_count+1} to {login_url}: {exc}")
                 break
         elapsed = time.time() - start
 

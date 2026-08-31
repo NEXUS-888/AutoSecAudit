@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 import time
@@ -48,7 +49,7 @@ class Enricher:
                 self.cve_cache[cve_id] = cve_data
                 return cve_data
         except Exception as e:
-            logger.warning(f"NVD API failed for {cve_id}: {e}")
+            logger.warning(f"NVD API fetch failed for {cve_id}: {e}")
 
         try:
             cve_data = self._fetch_from_circl(cve_id)
@@ -56,7 +57,7 @@ class Enricher:
                 self.cve_cache[cve_id] = cve_data
                 return cve_data
         except Exception as e:
-            logger.warning(f"CIRCL API failed for {cve_id}: {e}")
+            logger.warning(f"CIRCL API fetch failed for {cve_id}: {e}")
 
         return None
 
@@ -66,11 +67,16 @@ class Enricher:
         
         try:
             response = requests.get(url, headers=headers, timeout=2)
-        except Exception:
-            return None
-        if response.status_code == 200:
-            data = response.json()
-            return self._parse_nvd_response(data)
+            if response.status_code == 200:
+                data = response.json()
+                return self._parse_nvd_response(data)
+            logger.debug(f"NVD API returned HTTP {response.status_code} for {cve_id}")
+        except requests.RequestException as e:
+            logger.debug(f"NVD API network error for {cve_id}: {e}")
+        except json.JSONDecodeError as e:
+            logger.warning(f"NVD API response for {cve_id} was not valid JSON: {e}")
+        except Exception as e:
+            logger.warning(f"Unexpected error fetching NVD data for {cve_id}: {e}")
         return None
 
     def _parse_nvd_response(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -118,12 +124,17 @@ class Enricher:
         
         try:
             response = requests.get(url, timeout=2)
-        except Exception:
-            return None
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                "cvss_score": data.get("cvss"),
-                "references": [data.get("id")] if data.get("id") else []
-            }
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "cvss_score": data.get("cvss"),
+                    "references": [data.get("id")] if data.get("id") else []
+                }
+            logger.debug(f"CIRCL API returned HTTP {response.status_code} for {cve_id}")
+        except requests.RequestException as e:
+            logger.debug(f"CIRCL API network error for {cve_id}: {e}")
+        except json.JSONDecodeError as e:
+            logger.warning(f"CIRCL API response for {cve_id} was not valid JSON: {e}")
+        except Exception as e:
+            logger.warning(f"Unexpected error fetching CIRCL data for {cve_id}: {e}")
         return None

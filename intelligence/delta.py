@@ -14,15 +14,25 @@ class DeltaAnalyzer:
 
     def compare(self, current_report: Report, previous_report: Report) -> Dict[str, Any]:
         """Compare current findings with previous findings."""
-        current_ids = {f.id for f in current_report.all_findings}
-        previous_ids = {f.id for f in previous_report.all_findings}
+        if not current_report or not hasattr(current_report, "all_findings"):
+            current_findings_list = []
+        else:
+            current_findings_list = [f for f in current_report.all_findings if f and getattr(f, "id", None)]
+
+        if not previous_report or not hasattr(previous_report, "all_findings"):
+            previous_findings_list = []
+        else:
+            previous_findings_list = [f for f in previous_report.all_findings if f and getattr(f, "id", None)]
+
+        current_ids = {f.id for f in current_findings_list}
+        previous_ids = {f.id for f in previous_findings_list}
 
         new_issues = current_ids - previous_ids
         fixed_issues = previous_ids - current_ids
         unchanged = current_ids & previous_ids
 
-        current_map = {f.id: f for f in current_report.all_findings}
-        previous_map = {f.id: f for f in previous_report.all_findings}
+        current_map = {f.id: f for f in current_findings_list}
+        previous_map = {f.id: f for f in previous_findings_list}
 
         new_findings = [current_map[fid] for fid in new_issues if fid in current_map]
         fixed_findings = [previous_map[fid] for fid in fixed_issues if fid in previous_map]
@@ -46,14 +56,27 @@ class DeltaAnalyzer:
     def compare_with_dict(self, current_findings: List[Dict], 
                          previous_report: Dict[str, Any]) -> Dict[str, Any]:
         """Compare current findings with previous report dictionary."""
-        previous_findings = previous_report.get("all_findings", [])
+        if not isinstance(previous_report, dict):
+            previous_report = {}
+        if not isinstance(current_findings, list):
+            current_findings = []
+
+        previous_findings = [
+            f for f in previous_report.get("all_findings", [])
+            if isinstance(f, dict) and f.get("id")
+        ]
+        valid_current_findings = [
+            f for f in current_findings
+            if isinstance(f, dict) and f.get("id")
+        ]
+
         previous_ids = {f["id"] for f in previous_findings}
-        current_ids = {f["id"] for f in current_findings}
+        current_ids = {f["id"] for f in valid_current_findings}
 
         new_issues = current_ids - previous_ids
         fixed_issues = previous_ids - current_ids
 
-        current_map = {f["id"]: f for f in current_findings}
+        current_map = {f["id"]: f for f in valid_current_findings}
         previous_map = {f["id"]: f for f in previous_findings}
 
         return {

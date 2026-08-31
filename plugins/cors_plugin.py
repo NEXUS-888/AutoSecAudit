@@ -104,8 +104,8 @@ class CORSScanner(BaseScanner):
                     "acac": resp.headers.get("Access-Control-Allow-Credentials", ""),
                     "detail": "ACAO set to wildcard (*). Any website can read responses.",
                 })
-        except requests.RequestException:
-            pass
+        except requests.RequestException as exc:
+            logger.debug(f"[CORS] Wildcard probe to {url} failed: {exc}")
 
     def _test_origin_reflection(self, url: str, path: str, evil_origin: str) -> None:
         """Check if the server reflects back an arbitrary Origin header."""
@@ -137,8 +137,8 @@ class CORSScanner(BaseScanner):
                     "evil_origin": "null",
                     "detail": "Server allows 'null' origin. Sandboxed iframes and data: URIs can exploit this.",
                 })
-        except requests.RequestException:
-            pass
+        except requests.RequestException as exc:
+            logger.debug(f"[CORS] Origin reflection probe to {url} failed: {exc}")
 
     def _test_subdomain_bypass(self, url: str, path: str, target_domain: str) -> None:
         """Check if a subdomain-like origin is accepted."""
@@ -160,8 +160,8 @@ class CORSScanner(BaseScanner):
                     "evil_origin": fake_subdomain,
                     "detail": f"Server accepts subdomain-style origin '{fake_subdomain}'. Weak regex matching.",
                 })
-        except requests.RequestException:
-            pass
+        except requests.RequestException as exc:
+            logger.debug(f"[CORS] Subdomain bypass probe to {url} failed: {exc}")
 
     def _test_credentials_with_wildcard(self, url: str, path: str) -> None:
         """Check for credentials: true with wildcard (browser blocks but indicates misconfiguration)."""
@@ -192,8 +192,8 @@ class CORSScanner(BaseScanner):
                 if acao and acao != "*" and acao != "":
                     pass  # Already covered by origin reflection tests
 
-        except requests.RequestException:
-            pass
+        except requests.RequestException as exc:
+            logger.debug(f"[CORS] Credentials wildcard probe to {url} failed: {exc}")
 
     def parse_output(self) -> Dict[str, Any]:
         """Convert results to standardized findings."""

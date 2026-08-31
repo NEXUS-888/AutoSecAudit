@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoSecAudit — Autonomous Web Application Security Auditing Framework</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
@@ -13,6 +14,10 @@
             --bg-surface: #080c14;
             --bg-card: #0d121e;
             --bg-elevated: #131a2c;
+            --bg-input: #05080e;
+            --bg-node: #090e18;
+            --bg-chip: rgba(13, 18, 30, 0.7);
+            
             --border-color: rgba(148, 163, 184, 0.12);
             --border-subtle: rgba(255, 255, 255, 0.05);
             --border-active: rgba(99, 102, 241, 0.45);
@@ -28,29 +33,32 @@
             --accent-cyan: #06b6d4;
             --accent-emerald: #10b981;
             --accent-rose: #f43f5e;
-            --accent-amber: #f59e0b;
-            --accent-purple: #8b5cf6;
             
-            --glass-bg: rgba(6, 9, 16, 0.95);
-            --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            --glass-bg: rgba(6, 9, 16, 0.85);
+            --font-sans: 'Plus Jakarta Sans', sans-serif;
             --font-mono: 'JetBrains Mono', monospace;
         }
 
         [data-theme="light"] {
             --bg-base: #f8fafc;
             --bg-surface: #ffffff;
-            --bg-card: #f1f5f9;
-            --bg-elevated: #e2e8f0;
-            --border-color: rgba(148, 163, 184, 0.28);
-            --border-subtle: rgba(0, 0, 0, 0.08);
-            --border-active: rgba(99, 102, 241, 0.35);
-            --border-cyan: rgba(6, 182, 212, 0.35);
-            --border-emerald: rgba(16, 185, 129, 0.35);
-            --border-rose: rgba(244, 63, 94, 0.35);
+            --bg-card: #ffffff;
+            --bg-elevated: #f1f5f9;
+            --bg-input: #f8fafc;
+            --bg-node: #ffffff;
+            --bg-chip: #ffffff;
+            
+            --border-color: #e2e8f0;
+            --border-subtle: #f1f5f9;
+            --border-active: rgba(99, 102, 241, 0.5);
+            --border-cyan: rgba(6, 182, 212, 0.5);
+            --border-emerald: rgba(16, 185, 129, 0.5);
+            --border-rose: rgba(244, 63, 94, 0.5);
+            
             --fg-primary: #0f172a;
-            --fg-secondary: #475569;
+            --fg-secondary: #334155;
             --fg-muted: #64748b;
-            --glass-bg: rgba(255, 255, 255, 0.98);
+            --glass-bg: rgba(255, 255, 255, 0.95);
         }
 
         * {
@@ -70,6 +78,7 @@
                 radial-gradient(circle at 85% 20%, rgba(6, 182, 212, 0.07) 0%, transparent 40%),
                 radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.05) 0%, transparent 45%);
             background-attachment: fixed;
+            transition: background-color 0.2s ease, color 0.2s ease;
         }
 
         /* ── Global Pipeline Scroll Tracker Rail ────────────── */
@@ -125,6 +134,9 @@
             align-items: center;
             justify-content: space-between;
             padding: 0 2.5rem;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            transition: background-color 0.2s ease, border-color 0.2s ease;
         }
 
         .nav-brand {
@@ -139,15 +151,22 @@
         }
 
         .brand-badge-icon {
-            width: 34px;
-            height: 34px;
-            background: linear-gradient(135deg, #4f46e5, #06b6d4);
-            border-radius: 8px;
+            width: 36px;
+            height: 36px;
+            border-radius: 9px;
+            overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
-            box-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+            box-shadow: 0 0 14px rgba(94, 106, 210, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            flex-shrink: 0;
+        }
+        .brand-badge-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
         }
 
         .nav-links {
@@ -167,7 +186,7 @@
             transition: color 0.15s ease;
         }
 
-        .nav-link:hover { color: var(--accent-cyan); }
+        .nav-link:hover { color: var(--accent-indigo); }
 
         .nav-actions {
             display: flex;
@@ -189,7 +208,7 @@
             text-decoration: none;
             cursor: pointer;
             border: 1px solid transparent;
-            transition: transform 0.12s ease, background 0.12s ease;
+            transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
         }
 
         .btn:active { transform: scale(0.98); }
@@ -214,12 +233,12 @@
 
         .btn-secondary:hover {
             background: var(--bg-elevated);
-            border-color: var(--accent-cyan);
+            border-color: var(--accent-indigo);
             transform: translateY(-2px);
         }
 
         .theme-toggle-btn {
-            background: transparent;
+            background: var(--bg-card);
             border: 1px solid var(--border-color);
             color: var(--fg-primary);
             width: 36px;
@@ -229,6 +248,7 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            transition: border-color 0.15s ease, background-color 0.15s ease;
         }
 
         .theme-toggle-btn:hover { border-color: var(--accent-indigo); }
@@ -278,6 +298,7 @@
             line-height: 1.12;
             letter-spacing: -0.035em;
             margin-bottom: 1.25rem;
+            color: var(--fg-primary);
         }
 
         .hero-title .highlight-accent {
@@ -308,11 +329,13 @@
             font-size: 0.85rem;
             font-weight: 600;
             color: var(--fg-primary);
-            background: rgba(13, 18, 30, 0.7);
-            border: 1px solid rgba(255, 255, 255, 0.06);
+            background: var(--bg-chip);
+            border: 1px solid var(--border-color);
             padding: 0.45rem 0.85rem;
             border-radius: 6px;
             width: fit-content;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+            transition: background-color 0.2s ease, border-color 0.2s ease;
         }
 
         .chip-icon-tag {
@@ -367,19 +390,19 @@
 
         .floating-chip {
             position: absolute;
-            background: #0d121e;
-            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
             padding: 0.4rem 0.8rem;
             border-radius: 8px;
             font-family: var(--font-mono);
             font-size: 0.72rem;
             font-weight: 800;
             color: var(--accent-cyan);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
             pointer-events: none;
             z-index: 20;
             will-change: transform;
-            transition: transform 0.1s ease-out;
+            transition: transform 0.1s ease-out, background-color 0.2s ease;
         }
 
         .chip-1 { top: -20px; right: 20px; color: #10b981; border-color: rgba(16, 185, 129, 0.45); }
@@ -387,20 +410,20 @@
         .chip-3 { top: 40%; right: -28px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.45); }
 
         .telemetry-console {
-            background: #080c14;
+            background: var(--bg-surface);
             border: 1px solid var(--border-color);
             border-radius: 14px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
             overflow: hidden;
             font-family: var(--font-mono);
             font-size: 0.78rem;
             will-change: transform;
-            transition: transform 0.1s ease-out;
+            transition: transform 0.1s ease-out, background-color 0.2s ease, border-color 0.2s ease;
             position: relative;
         }
 
         .console-topbar {
-            background: #0d1320;
+            background: var(--bg-elevated);
             padding: 0.75rem 1rem;
             display: flex;
             align-items: center;
@@ -415,7 +438,7 @@
         }
 
         .pill-target {
-            background: rgba(255, 255, 255, 0.06);
+            background: rgba(99, 102, 241, 0.12);
             padding: 2px 8px;
             border-radius: 4px;
             color: #38bdf8;
@@ -439,7 +462,7 @@
             display: flex;
             flex-direction: column;
             gap: 1.1rem;
-            background: #080c14;
+            background: var(--bg-surface);
         }
 
         .telemetry-section-title {
@@ -460,7 +483,7 @@
         }
         .progress-bar-bg {
             height: 6px;
-            background: rgba(255, 255, 255, 0.08);
+            background: var(--border-color);
             border-radius: 3px;
             overflow: hidden;
         }
@@ -477,7 +500,7 @@
             color: var(--fg-secondary);
             margin-top: 0.5rem;
         }
-        .discovery-stats-row span strong { color: #f1f5f9; }
+        .discovery-stats-row span strong { color: var(--fg-primary); }
 
         /* Scanner Execution Grid */
         .scanner-nodes-grid {
@@ -487,8 +510,8 @@
         }
 
         .scanner-node-item {
-            background: #0d1422;
-            border: 1px solid rgba(255, 255, 255, 0.06);
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
             padding: 0.45rem 0.65rem;
             border-radius: 6px;
             display: flex;
@@ -512,8 +535,8 @@
             display: grid;
             grid-template-columns: 1.4fr 1fr;
             gap: 0.75rem;
-            background: #0c121e;
-            border: 1px solid rgba(255, 255, 255, 0.06);
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
             padding: 0.75rem 0.9rem;
             border-radius: 8px;
         }
@@ -547,13 +570,13 @@
 
         /* Live Terminal Log */
         .console-stream {
-            background: #04060a;
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
             padding: 0.65rem 0.85rem;
             border-radius: 6px;
             height: 90px;
             overflow-y: auto;
-            color: #94a3b8;
+            color: var(--fg-secondary);
             font-size: 0.72rem;
             line-height: 1.45;
         }
@@ -602,6 +625,7 @@
             font-weight: 900;
             letter-spacing: -0.03em;
             margin-bottom: 0.9rem;
+            color: var(--fg-primary);
         }
 
         .section-desc {
@@ -620,7 +644,8 @@
             border: 1px solid var(--border-color);
             border-radius: 12px;
             padding: 2.25rem;
-            transition: transform 0.2s ease;
+            transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
         }
 
         .flow-panel:hover {
@@ -628,12 +653,13 @@
         }
 
         .flow-panel.sast {
-            border-color: rgba(244, 63, 94, 0.22);
+            border-color: rgba(244, 63, 94, 0.25);
+            background: var(--bg-card);
         }
 
         .flow-panel.dast {
             border-color: rgba(16, 185, 129, 0.35);
-            background: linear-gradient(180deg, #0e1422 0%, rgba(16, 185, 129, 0.04) 100%);
+            background: var(--bg-card);
         }
 
         .flow-header {
@@ -645,7 +671,7 @@
             border-bottom: 1px solid var(--border-subtle);
         }
 
-        .flow-header h3 { font-size: 1.2rem; font-weight: 800; }
+        .flow-header h3 { font-size: 1.2rem; font-weight: 800; color: var(--fg-primary); }
 
         .flow-steps-v {
             display: flex;
@@ -656,14 +682,24 @@
         }
 
         .flow-step-node {
-            background: #090e18;
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: var(--bg-node);
+            border: 1px solid var(--border-color);
             padding: 0.65rem 1rem;
             border-radius: 6px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            opacity: 0.9;
+            color: var(--fg-primary);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+
+        .flow-step-node span {
+            color: var(--fg-primary);
+        }
+
+        .flow-step-node span:last-child {
+            color: var(--fg-muted);
         }
 
         .flow-step-arrow {
@@ -673,10 +709,30 @@
             line-height: 1;
         }
 
-        .node-crit { border-color: rgba(244, 63, 94, 0.3); color: #f43f5e; font-weight: 700; }
-        .node-ok { border-color: rgba(16, 185, 129, 0.3); color: #10b981; font-weight: 700; }
+        .node-crit {
+            border-color: rgba(244, 63, 94, 0.4);
+            font-weight: 700;
+        }
+        .node-crit span {
+            color: #f43f5e !important;
+        }
+
+        .node-ok {
+            border-color: rgba(16, 185, 129, 0.4);
+            font-weight: 700;
+        }
+        .node-ok span {
+            color: #10b981 !important;
+        }
 
         /* ── 4-Stage Security Engine Pipeline ──────────────── */
+        .pipeline-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        }
+
         .pipeline-track {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -685,7 +741,7 @@
         }
 
         .pipeline-card {
-            background: var(--bg-card);
+            background: var(--bg-elevated);
             border: 1px solid var(--border-color);
             border-radius: 10px;
             padding: 1.75rem 1.4rem;
@@ -693,7 +749,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            transition: transform 0.2s ease, border-color 0.2s ease;
+            transition: transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
         }
 
         .pipeline-card:hover {
@@ -714,6 +770,7 @@
             font-size: 1.12rem;
             font-weight: 800;
             margin-bottom: 0.75rem;
+            color: var(--fg-primary);
         }
 
         .pipeline-card p {
@@ -724,23 +781,23 @@
         }
 
         .pipeline-meta {
-            background: #080d16;
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
             padding: 0.6rem 0.75rem;
             border-radius: 6px;
             font-family: var(--font-mono);
             font-size: 0.74rem;
-            color: #94a3b8;
+            color: var(--fg-secondary);
         }
 
         /* ── Live Attack Path / Threat Graph Section ───────── */
         .attack-graph-card {
-            background: #080d16;
+            background: var(--bg-card);
             border: 1px solid var(--border-color);
             border-radius: 12px;
             padding: 2.25rem;
             font-family: var(--font-mono);
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
         }
 
         .graph-flow-horizontal {
@@ -753,18 +810,19 @@
         }
 
         .graph-node {
-            background: #0e1524;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 0.85rem 1.1rem;
             text-align: center;
             min-width: 140px;
             flex-shrink: 0;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
         }
 
         .graph-node.vulnerable {
             border-color: #ef4444;
-            box-shadow: 0 0 12px rgba(239, 68, 68, 0.25);
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
         }
 
         .graph-node .node-type {
@@ -777,7 +835,7 @@
         .graph-node .node-name {
             font-size: 0.85rem;
             font-weight: 700;
-            color: #f1f5f9;
+            color: var(--fg-primary);
         }
 
         .graph-arrow {
@@ -795,10 +853,11 @@
             overflow: hidden;
             font-family: var(--font-mono);
             font-size: 0.8rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
         }
 
         .findings-row-head {
-            background: #090e18;
+            background: var(--bg-elevated);
             padding: 0.85rem 1.25rem;
             display: grid;
             grid-template-columns: 100px 1.8fr 1.2fr 120px 100px;
@@ -812,15 +871,20 @@
             display: grid;
             grid-template-columns: 100px 1.8fr 1.2fr 120px 100px;
             align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            border-bottom: 1px solid var(--border-subtle);
             transition: background-color 0.15s ease;
+            color: var(--fg-primary);
         }
 
         .findings-row:hover {
-            background-color: rgba(255, 255, 255, 0.03);
+            background-color: var(--bg-elevated);
         }
 
         .findings-row:last-child { border-bottom: none; }
+
+        .finding-title-text {
+            color: var(--fg-primary) !important;
+        }
 
         .sev-pill {
             display: inline-block;
@@ -838,13 +902,15 @@
 
         /* ── Action Box ─────────────────────────────────────── */
         .action-box {
-            background: #090e18;
+            background: var(--bg-card);
             border: 1px solid var(--border-color);
             border-radius: 16px;
             padding: 3.5rem 2.5rem;
             text-align: center;
             margin: 40px auto 80px;
             max-width: 1000px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            color: var(--fg-primary);
         }
 
         .action-box h2 {
@@ -852,6 +918,7 @@
             font-weight: 900;
             letter-spacing: -0.02em;
             margin-bottom: 0.8rem;
+            color: var(--fg-primary);
         }
 
         .action-form {
@@ -863,7 +930,7 @@
 
         .action-input {
             flex: 1;
-            background: #05080e;
+            background: var(--bg-input);
             border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 0.85rem 1.25rem;
@@ -871,9 +938,13 @@
             font-family: var(--font-mono);
             font-size: 0.92rem;
             outline: none;
+            transition: border-color 0.15s ease, background-color 0.15s ease;
         }
 
-        .action-input:focus { border-color: var(--accent-indigo); }
+        .action-input:focus {
+            border-color: var(--accent-indigo);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+        }
 
         /* ── High-Contrast Centered Auth Modal ──────────────── */
         .modal-overlay {
@@ -897,15 +968,11 @@
         }
 
         .auth-card {
-            background: #0d1322;
-            border: 1px solid rgba(99, 102, 241, 0.45);
-            border-radius: 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
             width: 100%;
             max-width: 440px;
-            padding: 2.5rem 2.25rem;
-            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9), 0 0 35px rgba(99, 102, 241, 0.25);
-            position: relative;
-            z-index: 100000;
             color: #f1f5f9;
         }
 
@@ -915,19 +982,20 @@
             right: 1.25rem;
             background: transparent;
             border: none;
-            color: #94a3b8;
+            color: var(--fg-muted);
             font-size: 1.5rem;
             font-weight: 700;
             cursor: pointer;
             line-height: 1;
             padding: 0.25rem;
+            transition: color 0.15s ease;
         }
 
-        .modal-close:hover { color: #f1f5f9; }
+        .modal-close:hover { color: var(--fg-primary); }
 
         .auth-tabs {
             display: flex;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+            border-bottom: 1px solid var(--border-color);
             margin-bottom: 1.5rem;
         }
 
@@ -937,15 +1005,15 @@
             text-align: center;
             font-weight: 800;
             font-size: 0.92rem;
-            color: #94a3b8;
+            color: var(--fg-muted);
             cursor: pointer;
             border-bottom: 2px solid transparent;
             transition: all 0.15s ease;
         }
 
         .auth-tab.active {
-            color: var(--accent-cyan);
-            border-bottom-color: var(--accent-cyan);
+            color: var(--accent-indigo);
+            border-bottom-color: var(--accent-indigo);
         }
 
         .form-group { margin-bottom: 1.15rem; }
@@ -955,25 +1023,25 @@
             font-size: 0.82rem;
             font-weight: 700;
             margin-bottom: 0.4rem;
-            color: #cbd5e1;
+            color: var(--fg-secondary);
         }
 
         .form-control {
             width: 100%;
-            background: #060912;
-            border: 1px solid rgba(148, 163, 184, 0.25);
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 0.8rem 1rem;
-            color: #f8fafc;
+            color: var(--fg-primary);
             font-family: var(--font-sans);
             font-size: 0.92rem;
             outline: none;
-            transition: border-color 0.15s ease;
+            transition: border-color 0.15s ease, background-color 0.15s ease;
         }
 
         .form-control:focus {
             border-color: var(--accent-indigo);
-            box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.25);
         }
 
         .auth-alert {
@@ -989,6 +1057,328 @@
         .auth-alert.error { background: rgba(244, 63, 94, 0.18); color: #f87171; border: 1px solid rgba(244, 63, 94, 0.4); display: block; }
         .auth-alert.success { background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); display: block; }
         .auth-alert.info { background: rgba(6, 182, 212, 0.18); color: #38bdf8; border: 1px solid rgba(6, 182, 212, 0.4); display: block; }
+
+        /* ═══════════════════════════════════════════════════════
+           COMPREHENSIVE LIGHT THEME OVERRIDES (Guaranteed Precedence)
+           ═══════════════════════════════════════════════════════ */
+        [data-theme="light"] body {
+            background-color: #f8fafc !important;
+            color: #0f172a !important;
+            background-image: 
+                radial-gradient(circle at 15% 10%, rgba(99, 102, 241, 0.06) 0%, transparent 40%),
+                radial-gradient(circle at 85% 20%, rgba(6, 182, 212, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.04) 0%, transparent 45%) !important;
+        }
+
+        [data-theme="light"] .navbar {
+            background: rgba(255, 255, 255, 0.95) !important;
+            border-bottom: 1px solid #e2e8f0 !important;
+        }
+
+        [data-theme="light"] .nav-brand {
+            color: #0f172a !important;
+        }
+
+        [data-theme="light"] .nav-link {
+            color: #475569 !important;
+        }
+        [data-theme="light"] .nav-link:hover,
+        [data-theme="light"] .nav-link.active {
+            color: #4f46e5 !important;
+        }
+
+        [data-theme="light"] .platform-badge {
+            background: #eef2ff !important;
+            border-color: #c7d2fe !important;
+            color: #4338ca !important;
+        }
+
+        [data-theme="light"] .hero-title {
+            color: #0f172a !important;
+        }
+
+        [data-theme="light"] .hero-title .highlight-accent {
+            color: #0891b2 !important;
+            text-shadow: none !important;
+        }
+
+        [data-theme="light"] .hero-desc {
+            color: #334155 !important;
+        }
+
+        [data-theme="light"] .value-chip-row {
+            background: #ffffff !important;
+            border: 1px solid #cbd5e1 !important;
+            color: #0f172a !important;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04) !important;
+        }
+
+        [data-theme="light"] .value-chip-row .chip-green {
+            background: #ecfdf5 !important;
+            color: #047857 !important;
+            border: 1px solid #a7f3d0 !important;
+        }
+
+        [data-theme="light"] .value-chip-row .chip-cyan {
+            background: #ecfeff !important;
+            color: #0e7490 !important;
+            border: 1px solid #a5f3fc !important;
+        }
+
+        [data-theme="light"] .value-chip-row .chip-purple {
+            background: #f5f3ff !important;
+            color: #6d28d9 !important;
+            border: 1px solid #ddd6fe !important;
+        }
+
+        [data-theme="light"] .metric-block .metric-val {
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .metric-block .metric-lbl {
+            color: #64748b !important;
+        }
+
+        [data-theme="light"] .telemetry-console {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        [data-theme="light"] .console-topbar {
+            background: #f8fafc !important;
+            border-bottom: 1px solid #e2e8f0 !important;
+        }
+
+        [data-theme="light"] .console-body {
+            background: #ffffff !important;
+        }
+
+        [data-theme="light"] .scanner-node-item {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+        }
+        [data-theme="light"] .scanner-tag {
+            color: #2563eb !important;
+        }
+
+        [data-theme="light"] .corr-gate-row {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+        }
+
+        [data-theme="light"] .console-stream {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+            color: #334155 !important;
+        }
+
+        [data-theme="light"] .floating-chip {
+            background: #ffffff !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        [data-theme="light"] .section-title {
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .section-desc {
+            color: #334155 !important;
+        }
+
+        [data-theme="light"] .flow-panel {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04) !important;
+        }
+
+        [data-theme="light"] .flow-panel.sast {
+            border-color: #fecdd3 !important;
+            background: linear-gradient(180deg, #ffffff 0%, #fff1f2 100%) !important;
+        }
+
+        [data-theme="light"] .flow-panel.dast {
+            border-color: #a7f3d0 !important;
+            background: linear-gradient(180deg, #ffffff 0%, #ecfdf5 100%) !important;
+        }
+
+        [data-theme="light"] .flow-header h3 {
+            color: #0f172a !important;
+        }
+
+        [data-theme="light"] .flow-step-node {
+            background: #ffffff !important;
+            border: 1px solid #cbd5e1 !important;
+            color: #0f172a !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+        }
+
+        [data-theme="light"] .flow-step-node span {
+            color: #0f172a !important;
+        }
+
+        [data-theme="light"] .flow-step-node span:last-child {
+            color: #64748b !important;
+        }
+
+        [data-theme="light"] .flow-step-node.node-crit {
+            background: #fff1f2 !important;
+            border-color: #fecdd3 !important;
+        }
+        [data-theme="light"] .flow-step-node.node-crit span {
+            color: #e11d48 !important;
+        }
+
+        [data-theme="light"] .flow-step-node.node-ok {
+            background: #ecfdf5 !important;
+            border-color: #a7f3d0 !important;
+        }
+        [data-theme="light"] .flow-step-node.node-ok span {
+            color: #059669 !important;
+        }
+
+        [data-theme="light"] .pipeline-section {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04) !important;
+        }
+
+        [data-theme="light"] .pipeline-card {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+        }
+        [data-theme="light"] .pipeline-card:hover {
+            background: #ffffff !important;
+            border-color: #6366f1 !important;
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.1) !important;
+        }
+
+        [data-theme="light"] .pipeline-card h4 {
+            color: #0f172a !important;
+        }
+
+        [data-theme="light"] .pipeline-card p {
+            color: #334155 !important;
+        }
+
+        [data-theme="light"] .pipeline-meta {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            color: #475569 !important;
+        }
+
+        [data-theme="light"] .attack-graph-card {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.05) !important;
+        }
+
+        [data-theme="light"] .graph-node {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+        }
+        [data-theme="light"] .graph-node .node-name {
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .graph-node.vulnerable {
+            background: #fff1f2 !important;
+            border-color: #f43f5e !important;
+        }
+
+        [data-theme="light"] .findings-table-wrap {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04) !important;
+        }
+
+        [data-theme="light"] .findings-row-head {
+            background: #f1f5f9 !important;
+            color: #475569 !important;
+            border-bottom: 1px solid #e2e8f0 !important;
+        }
+
+        [data-theme="light"] .findings-row {
+            border-bottom: 1px solid #e2e8f0 !important;
+            color: #1e293b !important;
+        }
+        [data-theme="light"] .findings-row:hover {
+            background-color: #f8fafc !important;
+        }
+        [data-theme="light"] .finding-title-text {
+            color: #0f172a !important;
+        }
+
+        [data-theme="light"] .action-box {
+            background: #ffffff !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06) !important;
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .action-box h2 {
+            color: #0f172a !important;
+        }
+
+        [data-theme="light"] .action-input {
+            background: #f8fafc !important;
+            border: 1px solid #cbd5e1 !important;
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .action-input:focus {
+            background: #ffffff !important;
+            border-color: #6366f1 !important;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
+        }
+
+        [data-theme="light"] .auth-card {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.2) !important;
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .auth-card h3 {
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .form-label {
+            color: #334155 !important;
+        }
+        [data-theme="light"] .form-control {
+            background: #f8fafc !important;
+            border: 1px solid #cbd5e1 !important;
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .form-control:focus {
+            background: #ffffff !important;
+            border-color: #6366f1 !important;
+        }
+        [data-theme="light"] .modal-close {
+            color: #64748b !important;
+        }
+        [data-theme="light"] .modal-close:hover {
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .auth-tabs {
+            border-bottom-color: #e2e8f0 !important;
+        }
+        [data-theme="light"] .auth-tab {
+            color: #64748b !important;
+        }
+        [data-theme="light"] .auth-tab.active {
+            color: #4f46e5 !important;
+            border-bottom-color: #4f46e5 !important;
+        }
+        [data-theme="light"] .btn-secondary {
+            background: #ffffff !important;
+            color: #0f172a !important;
+            border-color: #cbd5e1 !important;
+        }
+        [data-theme="light"] .btn-secondary:hover {
+            background: #f1f5f9 !important;
+            border-color: #6366f1 !important;
+        }
+        [data-theme="light"] .theme-toggle-btn {
+            border-color: #cbd5e1 !important;
+            color: #0f172a !important;
+            background: #ffffff !important;
+        }
 
         /* ── Responsive ─────────────────────────────────────── */
         @media (max-width: 1024px) {
@@ -1026,10 +1416,7 @@
     <nav class="navbar">
         <a href="/" class="nav-brand">
             <div class="brand-badge-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    <path d="m9 12 2 2 4-4"/>
-                </svg>
+                <img src="/static/logo.jpg" alt="AutoSecAudit Logo">
             </div>
             AutoSecAudit
         </a>
@@ -1309,7 +1696,7 @@
     </section>
 
     <!-- ── 4-Stage Security Engine Pipeline ──────────────── -->
-    <section class="section reveal-section" id="pipeline" style="background: rgba(8, 12, 20, 0.5); border-radius: 18px; border: 1px solid var(--border-color);">
+    <section class="section reveal-section pipeline-section" id="pipeline">
         <div class="section-header">
             <span class="section-tag">Architecture Execution</span>
             <h2 class="section-title">The 4-Stage Security Engine</h2>
@@ -1441,7 +1828,7 @@
             <div class="findings-row">
                 <span><span class="sev-pill sev-crit">CRITICAL</span></span>
                 <div>
-                    <div style="font-weight: 700; color: #f1f5f9;">SQL Injection (Union-Based)</div>
+                    <div class="finding-title-text" style="font-weight: 700;">SQL Injection (Union-Based)</div>
                     <div style="font-size: 0.72rem; color: #38bdf8;">GET /rest/products/search?q=</div>
                 </div>
                 <span style="color: var(--fg-secondary);">Payload: <code>' UNION SELECT sqlite_version()...</code> (HTTP 200)</span>
@@ -1452,7 +1839,7 @@
             <div class="findings-row">
                 <span><span class="sev-pill sev-crit">CRITICAL</span></span>
                 <div>
-                    <div style="font-weight: 700; color: #f1f5f9;">JWT Unsigned Token Bypass</div>
+                    <div class="finding-title-text" style="font-weight: 700;">JWT Unsigned Token Bypass</div>
                     <div style="font-size: 0.72rem; color: #38bdf8;">POST /rest/user/login</div>
                 </div>
                 <span style="color: var(--fg-secondary);">Payload: <code>{"alg":"none"}</code> granted admin role</span>
@@ -1463,7 +1850,7 @@
             <div class="findings-row">
                 <span><span class="sev-pill sev-high">HIGH</span></span>
                 <div>
-                    <div style="font-weight: 700; color: #f1f5f9;">Exposed Administrator Portal</div>
+                    <div class="finding-title-text" style="font-weight: 700;">Exposed Administrator Portal</div>
                     <div style="font-size: 0.72rem; color: #38bdf8;">GET /admin</div>
                 </div>
                 <span style="color: var(--fg-secondary);">Unauthenticated admin dashboard accessible</span>
@@ -1474,7 +1861,7 @@
             <div class="findings-row">
                 <span><span class="sev-pill sev-high">HIGH</span></span>
                 <div>
-                    <div style="font-weight: 700; color: #f1f5f9;">Open Daemon Port Exposed</div>
+                    <div class="finding-title-text" style="font-weight: 700;">Open Daemon Port Exposed</div>
                     <div style="font-size: 0.72rem; color: #38bdf8;">TCP Port 3000 (Node.js Express)</div>
                 </div>
                 <span style="color: var(--fg-secondary);">Direct access bypassing external reverse-proxy</span>

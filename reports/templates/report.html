@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Security Report — {{ report.target }} — AutoSecAudit 2.0</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <style>
         /* ================================================================
            DESIGN TOKENS
@@ -477,19 +478,20 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 72px;
-            height: 72px;
+            width: 80px;
+            height: 80px;
             border-radius: 20px;
-            background: var(--accent-subtle);
+            overflow: hidden;
             border: 1px solid rgba(94,106,210,0.25);
             margin-bottom: var(--space-lg);
             box-shadow: 0 0 50px var(--accent-glow), 0 0 100px rgba(94,106,210,0.15);
         }
 
-        .hero-icon svg {
-            width: 36px;
-            height: 36px;
-            color: var(--accent-bright);
+        .hero-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
         }
 
         .hero-title {
@@ -1370,7 +1372,7 @@
                         <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
                     </svg>
                 </button>
-                <a href="/download/{{ report.timestamp | replace(' ', '_') | replace(':', '') | replace('-', '') }}" class="btn-download" id="downloadBtn">
+                <a href="/download/{{ report_id | default(report.report_id | default(report.timestamp | replace(' ', '_') | replace(':', '') | replace('-', ''))) }}" class="btn-download" id="downloadBtn">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                         <polyline points="7 10 12 15 17 10"></polyline>
@@ -1378,7 +1380,7 @@
                     </svg>
                     JSON
                 </a>
-                <a href="/download_pdf/{{ report.timestamp | replace(' ', '_') | replace(':', '') | replace('-', '') }}" class="btn-download" id="downloadPdfBtn" style="background: rgba(94,106,210,0.2);">
+                <a href="/download_pdf/{{ report_id | default(report.report_id | default(report.timestamp | replace(' ', '_') | replace(':', '') | replace('-', ''))) }}" class="btn-download" id="downloadPdfBtn" style="background: rgba(94,106,210,0.2);">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                         <polyline points="14 2 14 8 20 8"></polyline>
@@ -1400,10 +1402,7 @@
         <div class="section reveal">
             <div class="glass-card glass-card--gradient hero">
                 <div class="hero-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                        <path d="M9 12l2 2 4-4"></path>
-                    </svg>
+                    <img src="/static/logo.jpg" alt="AutoSecAudit Logo">
                 </div>
                 <h1 class="hero-title">Security Audit Report</h1>
                 <div class="hero-target">{{ report.target }}</div>
@@ -2066,6 +2065,15 @@
             if (saved) {
                 document.documentElement.setAttribute('data-theme', saved);
                 updateThemeIcon(saved);
+            }
+            // Resolve dynamic report id from URL path if on /report/<id>
+            var pathParts = window.location.pathname.split('/').filter(Boolean);
+            if (pathParts.length >= 2 && pathParts[0] === 'report') {
+                var currentReportId = pathParts[1];
+                var dlBtn = document.getElementById('downloadBtn');
+                var dlPdfBtn = document.getElementById('downloadPdfBtn');
+                if (dlBtn) dlBtn.href = '/download/' + currentReportId;
+                if (dlPdfBtn) dlPdfBtn.href = '/download_pdf/' + currentReportId;
             }
         })();
     </script>

@@ -26,8 +26,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"), static_url_path="/static")
 app.secret_key = config.SECRET_KEY
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
 # ---------------------------------------------------------------------------
 # SSE Scan Progress: in-memory job store
@@ -84,6 +86,7 @@ HTML_FORM = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoSecAudit — Intelligent Security Auditing</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
@@ -106,99 +109,6 @@ HTML_FORM = """
             --radius-lg:        16px;
             --ease-expo:        cubic-bezier(0.16,1,0.3,1);
         }
-
-        /* ── Light Theme ──────────────────────────────────────────── */
-        [data-theme="light"] {
-            --bg-deep:          #f8fafc;
-            --bg-base:          #f1f5f9;
-            --bg-elevated:      #ffffff;
-            --surface:          rgba(0,0,0,0.04);
-            --surface-hover:    rgba(0,0,0,0.07);
-            --fg:               #0f172a;
-            --fg-muted:         #475569;
-            --accent:           #4f46e5;
-            --accent-bright:    #6366f1;
-            --accent-glow:      rgba(79,70,229,0.20);
-            --border:           #e2e8f0;
-            --border-hover:     #cbd5e1;
-        }
-        [data-theme="light"] body { background: #f8fafc; color: #0f172a; }
-        [data-theme="light"] .bg-system { background: radial-gradient(ellipse 120% 80% at 50% 0%, #e2e8f0 0%, #f1f5f9 45%, #f8fafc 100%); }
-        [data-theme="light"] .blob--primary { background: radial-gradient(circle, rgba(79,70,229,0.12) 0%, transparent 70%); }
-        [data-theme="light"] .blob--secondary { background: radial-gradient(circle, rgba(139,92,246,0.08) 0%, transparent 70%); }
-        [data-theme="light"] .blob--tertiary { background: radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 70%); }
-        [data-theme="light"] .bg-grid { background-image: linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px); }
-        [data-theme="light"] .bg-noise { opacity: 0.02; }
-        [data-theme="light"] .hero-title {
-            background: linear-gradient(180deg, #0f172a 0%, #334155 100%) !important;
-            -webkit-background-clip: text !important;
-            -webkit-text-fill-color: transparent !important;
-            color: #0f172a !important;
-        }
-        [data-theme="light"] .hero-sub { color: #64748b; }
-        [data-theme="light"] .hero-icon {
-            background: linear-gradient(135deg, rgba(79,70,229,0.12) 0%, rgba(79,70,229,0.04) 100%);
-            box-shadow: 0 0 0 1px rgba(79,70,229,0.18), 0 8px 24px rgba(79,70,229,0.10);
-        }
-        [data-theme="light"] .card {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 10px 30px -5px rgba(0,0,0,0.06), 0 4px 6px -2px rgba(0,0,0,0.03);
-        }
-        [data-theme="light"] .card::before {
-            background: linear-gradient(90deg, transparent 0%, rgba(79,70,229,0.40) 50%, transparent 100%);
-        }
-        [data-theme="light"] .form-label { color: #334155; }
-        [data-theme="light"] .form-input {
-            background: #ffffff !important;
-            color: #0f172a !important;
-            border: 1px solid #cbd5e1 !important;
-        }
-        [data-theme="light"] .form-input::placeholder { color: #94a3b8; }
-        [data-theme="light"] .form-input:focus {
-            border-color: #6366f1 !important;
-            box-shadow: 0 0 0 3px rgba(99,102,241,0.18) !important;
-        }
-        [data-theme="light"] .form-input[type="file"]::file-selector-button {
-            background: #f1f5f9;
-            color: #1e293b;
-            border: 1px solid #cbd5e1;
-        }
-        [data-theme="light"] .form-input[type="file"]::file-selector-button:hover {
-            background: #e2e8f0;
-        }
-        [data-theme="light"] .info-box {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-left: 3px solid var(--accent);
-        }
-        [data-theme="light"] .info-box-title { color: #1e293b; }
-        [data-theme="light"] .target-list li { color: #475569; }
-        [data-theme="light"] .info-warning {
-            color: #b45309;
-            background: #fffbeb;
-            border: 1px solid #fef3c7;
-            border-radius: 6px;
-            padding: 8px 12px;
-        }
-        [data-theme="light"] .report-item {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            color: #1e293b;
-        }
-        [data-theme="light"] .report-item:hover {
-            background: #f8fafc;
-            border-color: var(--accent);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-        }
-        [data-theme="light"] .report-item-id { color: #0f172a; }
-        [data-theme="light"] .section-title { color: #64748b; }
-        [data-theme="light"] .section-line { background: #e2e8f0; }
-        [data-theme="light"] .scan-status-title { color: #0f172a; }
-        [data-theme="light"] .scan-status-target { color: #4f46e5; }
-        [data-theme="light"] .scan-progress-bar { background: #e2e8f0; border-color: #cbd5e1; }
-        [data-theme="light"] .scan-console { background: #f1f5f9; border: 1px solid #e2e8f0; color: #1e293b; }
-        [data-theme="light"] .scan-console-text { color: #334155; }
 
         /* ── Reset ─────────────────────────────────────────────────── */
         *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -301,18 +211,18 @@ HTML_FORM = """
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 72px; height: 72px;
+            width: 80px; height: 80px;
             margin-bottom: 28px;
             border-radius: 20px;
-            background: linear-gradient(135deg, rgba(94,106,210,0.18) 0%, rgba(94,106,210,0.06) 100%);
+            overflow: hidden;
             box-shadow:
                 0 0 0 1px rgba(94,106,210,0.20),
                 0 0 40px rgba(94,106,210,0.18),
                 0 8px 32px rgba(0,0,0,0.4);
         }
-        .hero-icon svg {
-            width: 36px; height: 36px;
-            color: var(--accent-bright);
+        .hero-icon img {
+            width: 100%; height: 100%;
+            object-fit: cover;
         }
 
         .hero-title {
@@ -350,14 +260,17 @@ HTML_FORM = """
         /* ── Glass Card ────────────────────────────────────────────── */
         .card {
             position: relative;
-            background: linear-gradient(160deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
+            z-index: 10;
+            background: linear-gradient(160deg, rgba(20, 24, 36, 0.85) 0%, rgba(10, 12, 18, 0.92) 100%);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
             border: 1px solid var(--border);
             border-radius: var(--radius-lg);
             padding: 36px 32px 32px;
             box-shadow:
                 0 1px 0 0 rgba(255,255,255,0.04) inset,
-                0 4px 24px rgba(0,0,0,0.25),
-                0 12px 48px rgba(0,0,0,0.20);
+                0 4px 24px rgba(0,0,0,0.35),
+                0 12px 48px rgba(0,0,0,0.30);
             overflow: hidden;
         }
 
@@ -370,55 +283,248 @@ HTML_FORM = """
             background: linear-gradient(90deg, transparent 0%, rgba(94,106,210,0.40) 50%, transparent 100%);
         }
 
+        /* ── Tactical Console Elements ─────────────────────────────── */
+        .card-status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 18px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+        .status-indicator-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 12px;
+            background: rgba(16, 185, 129, 0.10);
+            border: 1px solid rgba(16, 185, 129, 0.28);
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            color: #34d399;
+        }
+        .status-pulse-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 8px #10b981;
+            animation: statusDotPulse 1.8s ease-in-out infinite alternate;
+        }
+        @keyframes statusDotPulse {
+            0% { transform: scale(0.85); opacity: 0.6; }
+            100% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 12px #34d399; }
+        }
+        .card-meta-chips {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .meta-chip {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            padding: 3px 10px;
+            border-radius: 6px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--fg-muted);
+            font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+        }
+        .meta-chip-mode {
+            color: var(--accent-bright);
+            border-color: rgba(94, 106, 210, 0.3);
+            background: rgba(94, 106, 210, 0.08);
+        }
+
         /* ── Form ──────────────────────────────────────────────────── */
         .form-group { margin-bottom: 22px; }
 
+        .label-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
         .form-label {
             display: block;
             font-size: 13px;
-            font-weight: 500;
-            color: var(--fg-muted);
-            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--fg);
             letter-spacing: 0.1px;
         }
+        .label-hint {
+            font-size: 11px;
+            color: var(--fg-muted);
+            font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+        }
 
-        .form-input {
-            width: 100%;
-            padding: 12px 16px;
-            font-family: 'Inter', system-ui, sans-serif;
+        .input-with-icon {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .input-icon-glyph {
+            position: absolute;
+            left: 14px;
+            color: var(--fg-muted);
             font-size: 14px;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 200ms ease;
+        }
+        .custom-url-input {
+            width: 100%;
+            padding: 12px 16px 12px 42px !important;
+            font-family: 'SF Mono', 'Fira Code', Consolas, monospace !important;
+            font-size: 14px !important;
             color: var(--fg);
-            background: #0F0F12;
+            background: #0b0e17;
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
             outline: none;
             transition: border-color 250ms var(--ease-expo), box-shadow 250ms var(--ease-expo);
         }
-        .form-input::placeholder { color: rgba(138,143,152,0.50); }
-        .form-input:focus {
-            border-color: rgba(94,106,210,0.55);
-            box-shadow: 0 0 0 3px rgba(94,106,210,0.15), 0 0 20px rgba(94,106,210,0.08);
+        .custom-url-input::placeholder { color: rgba(138,143,152,0.45); }
+        .custom-url-input:focus {
+            border-color: rgba(94,106,210,0.65);
+            box-shadow: 0 0 0 3px rgba(94,106,210,0.18), 0 0 24px rgba(94,106,210,0.12);
+        }
+        .input-with-icon:focus-within .input-icon-glyph {
+            color: var(--accent-bright);
         }
 
-        .form-input[type="file"] {
-            padding: 10px 16px;
-            cursor: pointer;
+        .quick-presets-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
         }
-        .form-input[type="file"]::file-selector-button {
-            font-family: 'Inter', system-ui, sans-serif;
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--fg);
+        .presets-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--fg-muted);
+            letter-spacing: 0.2px;
+        }
+        .preset-pill {
             background: var(--surface);
             border: 1px solid var(--border);
+            color: var(--fg);
+            font-size: 11px;
+            font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+            font-weight: 500;
+            padding: 4px 10px;
             border-radius: 6px;
-            padding: 6px 14px;
-            margin-right: 12px;
             cursor: pointer;
-            transition: background 200ms var(--ease-expo);
+            transition: all 180ms ease;
         }
-        .form-input[type="file"]::file-selector-button:hover {
-            background: var(--surface-hover);
+        .preset-pill:hover {
+            background: rgba(94, 106, 210, 0.15);
+            border-color: var(--accent);
+            color: var(--accent-bright);
+            transform: translateY(-1px);
+        }
+        .preset-pill:active {
+            transform: translateY(0);
+        }
+        .input-highlight-pulse {
+            animation: inputGlowPulse 0.6s ease;
+        }
+        @keyframes inputGlowPulse {
+            0% { box-shadow: 0 0 0 0 rgba(94, 106, 210, 0.5); }
+            50% { box-shadow: 0 0 0 4px rgba(94, 106, 210, 0.3), 0 0 20px rgba(94, 106, 210, 0.4); }
+            100% { box-shadow: 0 0 0 0 rgba(94, 106, 210, 0); }
+        }
+
+        /* ── Dropzones Grid ─────────────────────────────────────────── */
+        .dropzones-section {
+            margin-bottom: 24px;
+        }
+        .dropzones-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .dropzone-box {
+            position: relative;
+            border: 1px dashed var(--border-hover);
+            border-radius: var(--radius-sm);
+            padding: 16px 14px;
+            background: var(--surface);
+            cursor: pointer;
+            text-align: center;
+            transition: all 220ms var(--ease-expo);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 88px;
+        }
+        .dropzone-box:hover, .dropzone-box.drag-over {
+            border-color: var(--accent-bright);
+            background: rgba(94, 106, 210, 0.08);
+            transform: translateY(-1px);
+        }
+        .dropzone-box.has-file {
+            border-style: solid;
+            border-color: rgba(16, 185, 129, 0.45);
+            background: rgba(16, 185, 129, 0.05);
+        }
+        .dropzone-icon {
+            font-size: 20px;
+            margin-bottom: 4px;
+        }
+        .dropzone-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--fg);
+            letter-spacing: -0.1px;
+        }
+        .dropzone-desc {
+            font-size: 11px;
+            color: var(--fg-muted);
+            margin-top: 2px;
+        }
+        .file-hidden-input {
+            display: none !important;
+        }
+        .file-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            border-radius: 6px;
+            max-width: 100%;
+        }
+        .file-badge-name {
+            font-size: 11px;
+            font-weight: 600;
+            color: #34d399;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+        }
+        .file-badge-remove {
+            background: none;
+            border: none;
+            color: var(--fg-muted);
+            font-size: 12px;
+            cursor: pointer;
+            padding: 0 4px;
+            line-height: 1;
+            transition: color 150ms;
+        }
+        .file-badge-remove:hover {
+            color: #f87171;
         }
 
         /* ── CTA Button ────────────────────────────────────────────── */
@@ -429,7 +535,7 @@ HTML_FORM = """
             justify-content: center;
             gap: 10px;
             width: 100%;
-            padding: 14px 28px;
+            padding: 15px 28px;
             font-family: 'Inter', system-ui, sans-serif;
             font-size: 15px;
             font-weight: 600;
@@ -469,50 +575,79 @@ HTML_FORM = """
 
         .btn-primary svg { width: 18px; height: 18px; flex-shrink: 0; }
 
-        /* ── Info Box ──────────────────────────────────────────────── */
-        .info-box {
-            margin-top: 28px;
-            padding: 20px 22px;
-            background: rgba(255,255,255,0.03);
+        /* ── Authorized Policy Accordion ────────────────────────────── */
+        .authorized-policy-badge {
+            margin-top: 22px;
+            background: var(--surface);
             border: 1px solid var(--border);
-            border-left: 3px solid var(--accent);
-            border-radius: var(--radius-md);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            transition: border-color 200ms ease;
         }
-
-        .info-box-header {
+        .authorized-policy-badge:hover {
+            border-color: var(--border-hover);
+        }
+        .policy-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 14px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .policy-left {
             display: flex;
             align-items: center;
             gap: 8px;
-            margin-bottom: 14px;
+            font-size: 12px;
+            color: var(--fg-muted);
         }
-        .info-box-header svg { width: 16px; height: 16px; color: var(--accent-bright); flex-shrink: 0; }
-        .info-box-title {
-            font-size: 13px;
-            font-weight: 600;
+        .shield-badge-icon {
+            font-size: 14px;
+        }
+        .policy-summary strong {
             color: var(--fg);
+            font-weight: 600;
         }
-
-        .target-list {
+        .policy-toggle-btn {
+            background: none;
+            border: none;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent-bright);
+            cursor: pointer;
+            padding: 2px 6px;
+        }
+        .policy-details {
+            display: none;
+            padding: 0 14px 14px;
+            border-top: 1px solid var(--border);
+        }
+        .policy-details.expanded {
+            display: block;
+            animation: fadeIn 0.25s ease forwards;
+        }
+        .policy-details .target-list {
+            margin: 10px 0 8px;
             list-style: none;
-            margin-bottom: 14px;
         }
         .target-list li {
             display: flex;
             align-items: center;
             gap: 8px;
             padding: 5px 0;
-            font-size: 13px;
+            font-size: 12px;
             color: var(--fg-muted);
             font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
         }
         .target-list li svg { width: 14px; height: 14px; color: #34D399; flex-shrink: 0; }
-
-        .info-warning {
-            font-size: 12px;
-            color: #F87171;
-            line-height: 1.5;
-            padding-top: 10px;
-            border-top: 1px solid rgba(255,255,255,0.04);
+        .policy-warning {
+            font-size: 11px;
+            color: #f87171;
+            line-height: 1.4;
+            padding-top: 8px;
+            margin-top: 6px;
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
         }
 
         /* ── Recent Reports ────────────────────────────────────────── */
@@ -632,6 +767,7 @@ HTML_FORM = """
             width: 48px;
             height: 48px;
             border-radius: 50%;
+            overflow: hidden;
             background: var(--accent);
             box-shadow: 0 0 30px var(--accent-glow), 0 0 60px var(--accent-glow);
             display: flex;
@@ -640,10 +776,10 @@ HTML_FORM = """
             z-index: 2;
         }
 
-        .radar-glow svg {
-            width: 24px;
-            height: 24px;
-            color: #fff;
+        .radar-glow img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
             animation: pulse-icon 1.5s ease-in-out infinite alternate;
         }
 
@@ -758,6 +894,173 @@ HTML_FORM = """
             .blob--secondary { width: 350px; height: 500px; }
             .blob--tertiary  { width: 300px; height: 400px; }
         }
+        /* ══════════════════════════════════════════════════════════════
+           HIGH-SPECIFICITY LIGHT THEME OVERRIDES (AT BOTTOM OF CASCADE)
+           ══════════════════════════════════════════════════════════════ */
+        [data-theme="light"] {
+            --bg-deep:          #f8fafc;
+            --bg-base:          #f1f5f9;
+            --bg-elevated:      #ffffff;
+            --surface:          rgba(0,0,0,0.03);
+            --surface-hover:    rgba(0,0,0,0.06);
+            --fg:               #0f172a;
+            --fg-muted:         #64748b;
+            --accent:           #4f46e5;
+            --accent-bright:    #6366f1;
+            --accent-glow:      rgba(79,70,229,0.18);
+            --border:           #e2e8f0;
+            --border-hover:     #cbd5e1;
+        }
+        [data-theme="light"] body {
+            background: #f8fafc !important;
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .bg-system {
+            background: radial-gradient(ellipse 120% 80% at 50% 0%, #e2e8f0 0%, #f1f5f9 45%, #f8fafc 100%) !important;
+        }
+        [data-theme="light"] .blob--primary { background: radial-gradient(circle, rgba(79,70,229,0.10) 0%, transparent 70%) !important; }
+        [data-theme="light"] .blob--secondary { background: radial-gradient(circle, rgba(139,92,246,0.06) 0%, transparent 70%) !important; }
+        [data-theme="light"] .blob--tertiary { background: radial-gradient(circle, rgba(59,130,246,0.05) 0%, transparent 70%) !important; }
+        [data-theme="light"] .bg-grid {
+            background-image: linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px) !important;
+        }
+        [data-theme="light"] .bg-noise { opacity: 0.02 !important; }
+        [data-theme="light"] .hero-title {
+            background: linear-gradient(180deg, #0f172a 0%, #334155 100%) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            color: #0f172a !important;
+        }
+        [data-theme="light"] .hero-sub { color: #64748b !important; }
+        [data-theme="light"] .hero-icon {
+            box-shadow: 0 0 0 1px rgba(79,70,229,0.18), 0 8px 24px rgba(79,70,229,0.10) !important;
+        }
+        [data-theme="light"] .version-badge {
+            background: #eef2ff !important;
+            border-color: #c7d2fe !important;
+            color: #4f46e5 !important;
+        }
+
+        /* Card & Status Header */
+        [data-theme="light"] .card {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            box-shadow: 0 10px 30px -5px rgba(0,0,0,0.06), 0 4px 6px -2px rgba(0,0,0,0.03) !important;
+        }
+        [data-theme="light"] .card::before {
+            background: linear-gradient(90deg, transparent 0%, rgba(79,70,229,0.30) 50%, transparent 100%) !important;
+        }
+        [data-theme="light"] .card-status-bar {
+            border-bottom-color: #e2e8f0 !important;
+        }
+        [data-theme="light"] .status-indicator-pill {
+            background: #ecfdf5 !important;
+            border-color: #a7f3d0 !important;
+            color: #047857 !important;
+        }
+        [data-theme="light"] .meta-chip {
+            background: #f1f5f9 !important;
+            border-color: #e2e8f0 !important;
+            color: #475569 !important;
+        }
+        [data-theme="light"] .meta-chip-mode {
+            background: #eef2ff !important;
+            border-color: #c7d2fe !important;
+            color: #4f46e5 !important;
+        }
+
+        /* Form Labels & Target URL Input */
+        [data-theme="light"] .form-label { color: #0f172a !important; }
+        [data-theme="light"] .label-hint { color: #64748b !important; }
+        [data-theme="light"] .input-icon-glyph { color: #64748b !important; }
+        [data-theme="light"] .input-with-icon:focus-within .input-icon-glyph { color: #4f46e5 !important; }
+        [data-theme="light"] .custom-url-input {
+            background: #ffffff !important;
+            color: #0f172a !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04) inset !important;
+        }
+        [data-theme="light"] .custom-url-input::placeholder { color: #94a3b8 !important; }
+        [data-theme="light"] .custom-url-input:focus {
+            background: #ffffff !important;
+            border-color: #6366f1 !important;
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.18) !important;
+        }
+
+        /* Presets */
+        [data-theme="light"] .presets-label { color: #64748b !important; }
+        [data-theme="light"] .preset-pill {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+            color: #334155 !important;
+        }
+        [data-theme="light"] .preset-pill:hover {
+            background: #eef2ff !important;
+            border-color: #6366f1 !important;
+            color: #4338ca !important;
+        }
+
+        /* Dropzones */
+        [data-theme="light"] .dropzone-box {
+            background: #f8fafc !important;
+            border: 1px dashed #cbd5e1 !important;
+        }
+        [data-theme="light"] .dropzone-box:hover,
+        [data-theme="light"] .dropzone-box.drag-over {
+            background: #f1f5f9 !important;
+            border-color: #6366f1 !important;
+        }
+        [data-theme="light"] .dropzone-box.has-file {
+            background: #ecfdf5 !important;
+            border-style: solid !important;
+            border-color: #10b981 !important;
+        }
+        [data-theme="light"] .dropzone-title { color: #0f172a !important; }
+        [data-theme="light"] .dropzone-desc { color: #64748b !important; }
+        [data-theme="light"] .file-badge {
+            background: #ecfdf5 !important;
+            border: 1px solid #a7f3d0 !important;
+        }
+        [data-theme="light"] .file-badge-name { color: #047857 !important; }
+        [data-theme="light"] .file-badge-remove { color: #64748b !important; }
+        [data-theme="light"] .file-badge-remove:hover { color: #dc2626 !important; }
+
+        /* Authorized Scope Badge */
+        [data-theme="light"] .authorized-policy-badge {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+        }
+        [data-theme="light"] .policy-summary strong { color: #0f172a !important; }
+        [data-theme="light"] .policy-left { color: #475569 !important; }
+        [data-theme="light"] .policy-toggle-btn { color: #4f46e5 !important; }
+        [data-theme="light"] .policy-details { border-top-color: #e2e8f0 !important; }
+        [data-theme="light"] .policy-details .target-list li { color: #475569 !important; }
+        [data-theme="light"] .policy-warning {
+            color: #b91c1c !important;
+            border-top-color: #e2e8f0 !important;
+        }
+
+        /* Recent Reports & History link */
+        [data-theme="light"] .section-title { color: #64748b !important; }
+        [data-theme="light"] .section-line { background: #e2e8f0 !important; }
+        [data-theme="light"] .report-item {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            color: #1e293b !important;
+        }
+        [data-theme="light"] .report-item:hover {
+            background: #f8fafc !important;
+            border-color: #6366f1 !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06) !important;
+        }
+        [data-theme="light"] .report-item-id { color: #0f172a !important; }
+        [data-theme="light"] .scan-status-title { color: #0f172a !important; }
+        [data-theme="light"] .scan-status-target { color: #4f46e5 !important; }
+        [data-theme="light"] .scan-progress-bar { background: #e2e8f0 !important; border-color: #cbd5e1 !important; }
+        [data-theme="light"] .scan-console { background: #f1f5f9 !important; border: 1px solid #e2e8f0 !important; color: #1e293b !important; }
+        [data-theme="light"] .scan-console-text { color: #334155 !important; }
+        [data-theme="light"] .footer-line { background: linear-gradient(90deg, transparent 0%, #e2e8f0 50%, transparent 100%) !important; }
+        [data-theme="light"] .footer-text { color: #64748b !important; }
     </style>
 </head>
 <body>
@@ -767,6 +1070,7 @@ HTML_FORM = """
         <div class="blob blob--primary"></div>
         <div class="blob blob--secondary"></div>
         <div class="blob blob--tertiary"></div>
+        <canvas id="cyberMatrixCanvas" style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;"></canvas>
         <div class="bg-grid"></div>
         <div class="bg-noise"></div>
     </div>
@@ -776,10 +1080,7 @@ HTML_FORM = """
         <!-- Hero -->
         <header class="hero">
             <div class="hero-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2L3 7v6c0 5.25 3.75 10.15 9 11.25C17.25 23.15 21 18.25 21 13V7l-9-5z"/>
-                    <path d="M9 12l2 2 4-4"/>
-                </svg>
+                <img src="{{ url_for('static', filename='logo.jpg') }}" alt="AutoSecAudit Logo">
             </div>
             <h1 class="hero-title">AutoSecAudit</h1>
             <p class="hero-sub">Intelligent Security Auditing Framework</p>
@@ -795,48 +1096,100 @@ HTML_FORM = """
 
         <!-- Scan Form Card -->
         <main class="card">
+            <!-- Header Status Bar -->
+            <div class="card-status-bar">
+                <div class="status-indicator-pill">
+                    <span class="status-pulse-dot"></span>
+                    <span class="status-pill-text">ENGINE READY</span>
+                </div>
+                <div class="card-meta-chips">
+                    <span class="meta-chip">14 PLUGINS</span>
+                    <span class="meta-chip meta-chip-mode">MOCK DEMO</span>
+                </div>
+            </div>
+
             <form id="scanForm" action="/scan" method="POST" enctype="multipart/form-data">
+                <!-- Target URL & Quick Presets -->
                 <div class="form-group">
-                    <label for="target" class="form-label">Target URL</label>
-                    <input
-                        type="text"
-                        id="target"
-                        name="target"
-                        class="form-input"
-                        placeholder="http://localhost:3000"
-                        autocomplete="off"
-                        required
-                    />
+                    <div class="label-row">
+                        <label for="target" class="form-label">Target URL</label>
+                        <span class="label-hint">IPv4, Domain, or Port</span>
+                    </div>
+                    <div class="input-with-icon">
+                        <span class="input-icon-glyph">🌐</span>
+                        <input
+                            type="text"
+                            id="target"
+                            name="target"
+                            class="custom-url-input"
+                            placeholder="http://localhost:3000"
+                            autocomplete="off"
+                            required
+                        />
+                    </div>
+                    <div class="quick-presets-row">
+                        <span class="presets-label">⚡ Quick Fill:</span>
+                        <button type="button" class="preset-pill" onclick="applyPreset('http://localhost:3000')">localhost:3000</button>
+                        <button type="button" class="preset-pill" onclick="applyPreset('http://127.0.0.1:8000')">127.0.0.1:8000</button>
+                        <button type="button" class="preset-pill" onclick="applyPreset('http://demo-target.local:5000')">demo-target.local</button>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="openapi_spec" class="form-label">OpenAPI / Swagger Spec (optional, drag-and-drop file)</label>
-                    <input
-                        type="file"
-                        id="openapi_spec"
-                        name="openapi_spec"
-                        class="form-input"
-                        accept=".json"
-                    />
+                <!-- Side-by-Side Modern Drag-and-Drop Dropzones -->
+                <div class="dropzones-section">
+                    <div class="label-row">
+                        <span class="form-label">Audit Attachments <span style="font-size: 11px; font-weight: normal; color: var(--fg-muted);">(Optional)</span></span>
+                    </div>
+                    <div class="dropzones-grid">
+                        <!-- OpenAPI Spec Dropzone -->
+                        <div class="dropzone-box" id="openapiDropzone" onclick="document.getElementById('openapi_spec').click()">
+                            <input
+                                type="file"
+                                id="openapi_spec"
+                                name="openapi_spec"
+                                class="file-hidden-input"
+                                accept=".json"
+                                onchange="handleFileSelected(this, 'openapiBadge', 'openapiDropzone', 'openapiDropContent', 'openapiFileName')"
+                            />
+                            <div class="dropzone-content" id="openapiDropContent">
+                                <div class="dropzone-icon">📄</div>
+                                <div class="dropzone-title">OpenAPI / Swagger</div>
+                                <div class="dropzone-desc">Click or drop .json</div>
+                            </div>
+                            <div class="file-badge" id="openapiBadge" style="display: none;">
+                                <span class="file-badge-name" id="openapiFileName">spec.json</span>
+                                <button type="button" class="file-badge-remove" title="Remove file" onclick="event.stopPropagation(); clearFile('openapi_spec', 'openapiBadge', 'openapiDropzone', 'openapiDropContent')">✕</button>
+                            </div>
+                        </div>
+
+                        <!-- Previous Report Delta Dropzone -->
+                        <div class="dropzone-box" id="deltaDropzone" onclick="document.getElementById('previous_report').click()">
+                            <input
+                                type="file"
+                                id="previous_report"
+                                name="previous_report"
+                                class="file-hidden-input"
+                                accept=".json"
+                                onchange="handleFileSelected(this, 'deltaBadge', 'deltaDropzone', 'deltaDropContent', 'deltaFileName')"
+                            />
+                            <div class="dropzone-content" id="deltaDropContent">
+                                <div class="dropzone-icon">📊</div>
+                                <div class="dropzone-title">Previous Report</div>
+                                <div class="dropzone-desc">Delta analysis .json</div>
+                            </div>
+                            <div class="file-badge" id="deltaBadge" style="display: none;">
+                                <span class="file-badge-name" id="deltaFileName">report.json</span>
+                                <button type="button" class="file-badge-remove" title="Remove file" onclick="event.stopPropagation(); clearFile('previous_report', 'deltaBadge', 'deltaDropzone', 'deltaDropContent')">✕</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="previous_report" class="form-label">Previous Report (optional, for delta analysis)</label>
-                    <input
-                        type="file"
-                        id="previous_report"
-                        name="previous_report"
-                        class="form-input"
-                        accept=".json"
-                    />
-                </div>
-
-                <button type="submit" class="btn-primary">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="11" cy="11" r="8"/>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                <button type="submit" class="btn-primary btn-launch-scan">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
                     </svg>
-                    Start Security Scan
+                    <span>Launch Security Audit</span>
                 </button>
             </form>
 
@@ -847,9 +1200,7 @@ HTML_FORM = """
                     <div class="radar-pulse"></div>
                     <div class="radar-pulse radar-pulse--delayed"></div>
                     <div class="radar-glow">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                        </svg>
+                        <img src="{{ url_for('static', filename='logo.jpg') }}" alt="AutoSecAudit">
                     </div>
                 </div>
                 <h3 class="scan-status-title">Performing Security Audit</h3>
@@ -865,36 +1216,38 @@ HTML_FORM = """
                 </div>
             </div>
 
-            <!-- Authorized Targets Info Box -->
-            <div id="infoBox" class="info-box">
-                <div class="info-box-header">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                        <path d="M7 11V7a5 5 0 0110 0v4"/>
-                    </svg>
-                    <span class="info-box-title">Authorized Targets Only</span>
+            <!-- Authorized Targets Policy Badge (Collapsible) -->
+            <div id="infoBox" class="authorized-policy-badge">
+                <div class="policy-header" onclick="togglePolicyDetails()">
+                    <div class="policy-left">
+                        <span class="shield-badge-icon">🛡️</span>
+                        <span class="policy-summary"><strong>Authorized Scope:</strong> Localhost, 127.0.0.1, RFC-1918 subnets</span>
+                    </div>
+                    <button type="button" class="policy-toggle-btn" id="policyToggleBtn">Rules ▾</button>
                 </div>
-                <ul class="target-list">
-                    <li>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        localhost / 127.0.0.1
-                    </li>
-                    <li>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        *.local domains
-                    </li>
-                    <li>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        10.x.x.x / 172.16-31.x.x / 192.168.x.x
-                    </li>
-                    <li>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        Explicitly allowed hosts
-                    </li>
-                </ul>
-                <p class="info-warning">
-                    Scanning targets without explicit authorization is illegal and unethical. Only scan systems you own or have written permission to test.
-                </p>
+                <div class="policy-details" id="policyDetails">
+                    <ul class="target-list">
+                        <li>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            localhost / 127.0.0.1
+                        </li>
+                        <li>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            *.local domains & container subnets
+                        </li>
+                        <li>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            10.x.x.x / 172.16-31.x.x / 192.168.x.x
+                        </li>
+                        <li>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            Explicitly authorized test hosts
+                        </li>
+                    </ul>
+                    <p class="policy-warning">
+                        ⚠️ Only scan systems you own or have explicit written authorization to test.
+                    </p>
+                </div>
             </div>
         </main>
 
@@ -1087,6 +1440,231 @@ HTML_FORM = """
                 container.appendChild(retryBtn);
             }
         });
+
+        /* ── Tactical Console UI Handlers ──────────── */
+        function applyPreset(url) {
+            var input = document.getElementById('target');
+            if (!input) return;
+            input.value = url;
+            input.focus();
+            input.classList.add('input-highlight-pulse');
+            setTimeout(function () { input.classList.remove('input-highlight-pulse'); }, 600);
+        }
+
+        function handleFileSelected(input, badgeId, dropzoneId, contentId, nameId) {
+            if (!input.files || !input.files[0]) return;
+            var file = input.files[0];
+            var dropzone = document.getElementById(dropzoneId);
+            var content = document.getElementById(contentId);
+            var badge = document.getElementById(badgeId);
+            var fileNameEl = document.getElementById(nameId);
+
+            if (fileNameEl) fileNameEl.textContent = file.name;
+            if (content) content.style.display = 'none';
+            if (badge) badge.style.display = 'flex';
+            if (dropzone) dropzone.classList.add('has-file');
+        }
+
+        function clearFile(inputId, badgeId, dropzoneId, contentId) {
+            var input = document.getElementById(inputId);
+            var dropzone = document.getElementById(dropzoneId);
+            var content = document.getElementById(contentId);
+            var badge = document.getElementById(badgeId);
+
+            if (input) input.value = '';
+            if (content) content.style.display = 'flex';
+            if (badge) badge.style.display = 'none';
+            if (dropzone) dropzone.classList.remove('has-file');
+        }
+
+        function togglePolicyDetails() {
+            var details = document.getElementById('policyDetails');
+            var btn = document.getElementById('policyToggleBtn');
+            if (!details) return;
+            var isExpanded = details.classList.toggle('expanded');
+            if (btn) btn.textContent = isExpanded ? 'Hide ▴' : 'Rules ▾';
+        }
+
+        // Drag and drop support for dropzones
+        ['openapiDropzone', 'deltaDropzone'].forEach(function (dzId) {
+            var el = document.getElementById(dzId);
+            if (!el) return;
+            var inputId = dzId === 'openapiDropzone' ? 'openapi_spec' : 'previous_report';
+            var badgeId = dzId === 'openapiDropzone' ? 'openapiBadge' : 'deltaBadge';
+            var contentId = dzId === 'openapiDropzone' ? 'openapiDropContent' : 'deltaDropContent';
+            var nameId = dzId === 'openapiDropzone' ? 'openapiFileName' : 'deltaFileName';
+
+            ['dragenter', 'dragover'].forEach(function (eventName) {
+                el.addEventListener(eventName, function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    el.classList.add('drag-over');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(function (eventName) {
+                el.addEventListener(eventName, function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    el.classList.remove('drag-over');
+                }, false);
+            });
+
+            el.addEventListener('drop', function (e) {
+                var dt = e.dataTransfer;
+                var files = dt.files;
+                if (files && files.length) {
+                    var fileInput = document.getElementById(inputId);
+                    if (fileInput) {
+                        fileInput.files = files;
+                        handleFileSelected(fileInput, badgeId, dzId, contentId, nameId);
+                    }
+                }
+            }, false);
+        });
+    </script>
+
+    <!-- ── Interactive Cyber Matrix Spotlight Reveal ────────────── -->
+    <script>
+    (function () {
+        const canvas = document.getElementById('cyberMatrixCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        let width = 0, height = 0;
+        let dpr = window.devicePixelRatio || 1;
+        let columns = [];
+        const fontSize = 13;
+        const columnSpacing = 28;
+
+        // Security payloads & bytecode tokens
+        const symbols = [
+            '0x7F', '0x2A', '41', '55', '54', '4F', '73', '65', '63',
+            'GET', 'POST', '200', '403', 'JWT', 'SQLi', 'DAST', 'CORS',
+            'CSP', 'AUTH', 'PORT:443', 'TLS1.3', 'SHA256', 'CVE', 'NVD',
+            '01', 'FF', '10', '00', 'XSS', 'ROOT', 'PASS', 'NODE', 'λ', '§', 'Δ',
+            '0x00', '0xFF', 'TOKEN', 'BEARER', 'COOKIE', 'REST', 'API', 'STATUS:OK'
+        ];
+
+        // Smooth mouse spotlight coordinates
+        let mouseX = -1000, mouseY = -1000;
+        let targetMouseX = -1000, targetMouseY = -1000;
+        let isHovered = false;
+        let lastTime = 0;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.scale(dpr, dpr);
+
+            const numCols = Math.floor(width / columnSpacing);
+            columns = [];
+            for (let i = 0; i < numCols; i++) {
+                columns.push({
+                    x: i * columnSpacing + columnSpacing / 2,
+                    y: Math.random() * height,
+                    speed: 0.65 + Math.random() * 0.9,
+                    tokens: Array.from({ length: 26 }, () => ({
+                        char: symbols[Math.floor(Math.random() * symbols.length)],
+                        mutationTimer: Math.floor(Math.random() * 60)
+                    }))
+                });
+            }
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        window.addEventListener('mousemove', (e) => {
+            targetMouseX = e.clientX;
+            targetMouseY = e.clientY;
+            isHovered = true;
+        });
+
+        window.addEventListener('mouseleave', () => {
+            isHovered = false;
+        });
+
+        function render(timestamp) {
+            if (!lastTime) lastTime = timestamp;
+            const delta = Math.min((timestamp - lastTime) / 1000, 0.1);
+            lastTime = timestamp;
+
+            // Smooth mouse motion
+            if (isHovered) {
+                mouseX += (targetMouseX - mouseX) * 0.14;
+                mouseY += (targetMouseY - mouseY) * 0.14;
+            } else {
+                mouseX += (-1000 - mouseX) * 0.06;
+                mouseY += (-1000 - mouseY) * 0.06;
+            }
+
+            ctx.clearRect(0, 0, width, height);
+
+            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            const spotlightRadius = 260;
+
+            ctx.font = '10px "JetBrains Mono", "SF Mono", Consolas, monospace';
+            ctx.textAlign = 'center';
+
+            for (let i = 0; i < columns.length; i++) {
+                const col = columns[i];
+                col.y += col.speed * 50 * delta;
+                if (col.y > height + 350) {
+                    col.y = -180;
+                }
+
+                for (let j = 0; j < col.tokens.length; j++) {
+                    const token = col.tokens[j];
+                    const charY = (col.y - j * (fontSize + 7));
+                    if (charY < -30 || charY > height + 30) continue;
+
+                    // Periodic mutation
+                    token.mutationTimer--;
+                    if (token.mutationTimer <= 0) {
+                        token.char = symbols[Math.floor(Math.random() * symbols.length)];
+                        token.mutationTimer = 40 + Math.floor(Math.random() * 90);
+                    }
+
+                    const dist = Math.hypot(col.x - mouseX, charY - mouseY);
+
+                    if (dist < spotlightRadius) {
+                        // Spotlight active zone: luminous, crisp cyber glow
+                        const factor = Math.pow(1 - dist / spotlightRadius, 1.8);
+                        const alpha = 0.08 + factor * 0.85;
+
+                        if (isLight) {
+                            ctx.fillStyle = factor > 0.55 ? `rgba(79, 70, 229, ${alpha})` : `rgba(2, 132, 199, ${alpha * 0.9})`;
+                        } else {
+                            ctx.fillStyle = factor > 0.55 ? `rgba(6, 182, 212, ${alpha})` : `rgba(16, 185, 129, ${alpha * 0.85})`;
+                        }
+
+                        if (factor > 0.5) {
+                            ctx.shadowColor = isLight ? 'rgba(99, 102, 241, 0.45)' : 'rgba(6, 182, 212, 0.6)';
+                            ctx.shadowBlur = 8;
+                        } else {
+                            ctx.shadowBlur = 0;
+                        }
+
+                        ctx.fillText(token.char, col.x, charY);
+                        ctx.shadowBlur = 0;
+                    } else {
+                        // Ambient resting state: ultra-clean & subtle (never overwhelming)
+                        const baseAlpha = isLight ? 0.022 : 0.032;
+                        ctx.fillStyle = isLight ? `rgba(100, 116, 139, ${baseAlpha})` : `rgba(148, 163, 184, ${baseAlpha})`;
+                        ctx.fillText(token.char, col.x, charY);
+                    }
+                }
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    })();
     </script>
 </body>
 </html>
@@ -1103,6 +1681,7 @@ HTML_BLOCKED = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scan Blocked — AutoSecAudit</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
@@ -1751,42 +2330,54 @@ def scan_async():
     if not allowed:
         return jsonify({"error": reason}), 403
 
-    previous_file = request.files.get("previous_report")
     previous_path = None
-    if previous_file and previous_file.filename:
-        import tempfile
-        filename = secure_filename(previous_file.filename)
-        with tempfile.NamedTemporaryFile(delete=False, dir=config.DATA_DIR, prefix=f"temp_prev_{filename}_", suffix=".json") as tmp:
-            previous_file.save(tmp.name)
-            previous_path = tmp.name
-
-    openapi_file = request.files.get("openapi_spec")
     openapi_path = None
-    if openapi_file and openapi_file.filename:
-        import tempfile
-        filename = secure_filename(openapi_file.filename)
-        with tempfile.NamedTemporaryFile(delete=False, dir=config.DATA_DIR, prefix=f"temp_openapi_{filename}_", suffix=".json") as tmp:
-            openapi_file.save(tmp.name)
-            openapi_path = tmp.name
 
-    scan_id = str(uuid.uuid4())[:8]
-    scan_jobs[scan_id] = {
-        "status": "starting",
-        "target": target,
-        "progress_queue": queue.Queue(),
-        "report_name": None,
-        "error": None,
-        "created_at": time.time(),
-    }
+    try:
+        previous_file = request.files.get("previous_report")
+        if previous_file and previous_file.filename:
+            import tempfile
+            filename = secure_filename(previous_file.filename)
+            with tempfile.NamedTemporaryFile(delete=False, dir=config.DATA_DIR, prefix=f"temp_prev_{filename}_", suffix=".json") as tmp:
+                previous_file.save(tmp.name)
+                previous_path = tmp.name
 
-    thread = threading.Thread(
-        target=_run_scan_background,
-        args=(scan_id, target, previous_path, openapi_path),
-        daemon=True,
-    )
-    thread.start()
+        openapi_file = request.files.get("openapi_spec")
+        if openapi_file and openapi_file.filename:
+            import tempfile
+            filename = secure_filename(openapi_file.filename)
+            with tempfile.NamedTemporaryFile(delete=False, dir=config.DATA_DIR, prefix=f"temp_openapi_{filename}_", suffix=".json") as tmp:
+                openapi_file.save(tmp.name)
+                openapi_path = tmp.name
 
-    return jsonify({"scan_id": scan_id})
+        scan_id = str(uuid.uuid4())[:8]
+        scan_jobs[scan_id] = {
+            "status": "starting",
+            "target": target,
+            "progress_queue": queue.Queue(),
+            "report_name": None,
+            "error": None,
+            "created_at": time.time(),
+        }
+
+        thread = threading.Thread(
+            target=_run_scan_background,
+            args=(scan_id, target, previous_path, openapi_path),
+            daemon=True,
+        )
+        thread.start()
+
+        return jsonify({"scan_id": scan_id})
+
+    except Exception as e:
+        logger.error(f"Failed to initialize async scan: {e}", exc_info=True)
+        for tmp in [previous_path, openapi_path]:
+            if tmp and os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+        return jsonify({"error": f"Failed to initialize scan: {str(e)}"}), 500
 
 
 @app.route("/scan/progress/<scan_id>")
@@ -2023,9 +2614,47 @@ HTML_REPORT_NOT_FOUND = """
 """
 
 
+def _resolve_report_data(report_id: str):
+    """Resolve report JSON data and normalized clean ID across multiple naming schemes and timestamp matching."""
+    if not report_id or report_id in ("undefined", "null"):
+        return None, None
+    _validate_report_id(report_id)
+    clean_id = report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "").replace(".pdf", "")
+    
+    candidate_paths = [
+        f"{config.REPORTS_DIR}/scan_{clean_id}.json",
+        f"{config.REPORTS_DIR}/{report_id}.json",
+        f"{config.REPORTS_DIR}/report_{clean_id}.json",
+        f"{config.REPORTS_DIR}/{clean_id}.json",
+    ]
+    for cp in candidate_paths:
+        if os.path.exists(cp):
+            data = load_json(cp)
+            if data:
+                return data, clean_id
+
+    # Fallback: scan all JSON files in REPORTS_DIR matching normalized timestamps or IDs
+    import glob
+    for fpath in sorted(glob.glob(f"{config.REPORTS_DIR}/*.json"), reverse=True):
+        try:
+            data = load_json(fpath)
+            if not data:
+                continue
+            ts = str(data.get("timestamp", ""))
+            norm_ts = ts.replace(" ", "_").replace(":", "").replace("-", "").replace("T", "_")
+            file_stem = Path(fpath).stem.replace("scan_", "").replace("report_", "")
+            if clean_id in norm_ts or norm_ts in clean_id or clean_id == file_stem:
+                return data, file_stem
+        except Exception as e:
+            logger.debug(f"Skipping unreadable candidate report {fpath}: {e}")
+            continue
+
+    return None, clean_id
+
+
 @app.route("/report/<report_id>")
 def view_report(report_id):
-    if not report_id or report_id in ("undefined", "null", "Unknown", "latest"):
+    if not report_id or report_id in ("undefined", "null", "latest"):
         import glob
         reports = sorted(glob.glob(f"{config.REPORTS_DIR}/scan_*.json"), reverse=True)
         if reports:
@@ -2036,19 +2665,7 @@ def view_report(report_id):
     _validate_report_id(report_id)
     clean_id = report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "")
     
-    candidate_paths = [
-        f"{config.REPORTS_DIR}/scan_{clean_id}.json",
-        f"{config.REPORTS_DIR}/{report_id}.json",
-        f"{config.REPORTS_DIR}/report_{clean_id}.json",
-        f"{config.REPORTS_DIR}/{clean_id}.json",
-    ]
-    
-    report_data = None
-    for cp in candidate_paths:
-        if os.path.exists(cp):
-            report_data = load_json(cp)
-            if report_data:
-                break
+    report_data, resolved_id = _resolve_report_data(report_id)
     
     if not report_data:
         # Check if pre-rendered HTML file exists
@@ -2070,7 +2687,7 @@ def view_report(report_id):
     from jinja2 import Environment, select_autoescape
     env = Environment(autoescape=select_autoescape(default=True, default_for_string=True))
     template = env.from_string(template_content)
-    html = template.render(report=report_data)
+    html = template.render(report=report_data, report_id=resolved_id or clean_id)
     
     return html
 
@@ -2079,33 +2696,62 @@ def view_report(report_id):
 def download_report(report_id):
     if not report_id or report_id in ("undefined", "null"):
         abort(404, description="Invalid report ID.")
-    _validate_report_id(report_id)
-    clean_id = report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "")
+    
+    report_data, resolved_id = _resolve_report_data(report_id)
+    if not report_data:
+        abort(404, description="Report not found.")
+        
+    clean_id = resolved_id or report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "")
     json_path = f"{config.REPORTS_DIR}/scan_{clean_id}.json"
+    if not os.path.exists(json_path):
+        json_path = f"{config.REPORTS_DIR}/report_{clean_id}.json"
     if not os.path.exists(json_path):
         json_path = f"{config.REPORTS_DIR}/{report_id}.json"
     if not os.path.exists(json_path):
-        abort(404, description="Report not found.")
-    return send_file(json_path, as_attachment=True, download_name=f"report_{clean_id}.json")
+        save_json(report_data, json_path)
+
+    response = send_file(
+        json_path,
+        as_attachment=True,
+        mimetype="application/json",
+        download_name=f"report_{clean_id}.json"
+    )
+    response.headers["Content-Type"] = "application/json"
+    response.headers["Content-Disposition"] = f'attachment; filename="report_{clean_id}.json"'
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @app.route("/download_pdf/<report_id>")
 def download_pdf_report(report_id):
     if not report_id or report_id in ("undefined", "null"):
         abort(404, description="Invalid report ID.")
-    _validate_report_id(report_id)
-    clean_id = report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "")
-    json_path = f"{config.REPORTS_DIR}/scan_{clean_id}.json"
-    if not os.path.exists(json_path):
-        json_path = f"{config.REPORTS_DIR}/{report_id}.json"
-    report_data = load_json(json_path)
+        
+    report_data, resolved_id = _resolve_report_data(report_id)
     if not report_data:
         abort(404, description="Report not found.")
     
+    clean_id = resolved_id or report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "").replace(".pdf", "")
     pdf_path = f"{config.REPORTS_DIR}/report_{clean_id}.pdf"
-    generator = ReportGenerator()
-    generator.generate_pdf(report_data, pdf_path)
-    return send_file(pdf_path, as_attachment=True, download_name=f"report_{clean_id}.pdf")
+    
+    try:
+        generator = ReportGenerator()
+        generator.generate_pdf(report_data, pdf_path)
+    except Exception as e:
+        logger.error(f"PDF generation failed: {e}", exc_info=True)
+        abort(500, description=f"Failed to generate PDF report: {str(e)}")
+    
+    response = send_file(
+        pdf_path,
+        as_attachment=True,
+        mimetype="application/pdf",
+        download_name=f"report_{clean_id}.pdf"
+    )
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = f'attachment; filename="report_{clean_id}.pdf"'
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 
 if __name__ == "__main__":
