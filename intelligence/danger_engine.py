@@ -129,12 +129,40 @@ def analyze_real_danger(finding: Dict[str, Any]) -> Dict[str, Any]:
         business_impact = "🟡 Medium Risk — Increases vulnerability to session theft."
         estimated_fix_time = "3 minutes (add HttpOnly; Secure; SameSite=Lax to cookie config)"
 
-    elif "csp" in title_lower or "frame" in title_lower or "clickjacking" in title_lower:
-        headline = "Clickjacking & Deceptive Embedding Risk"
-        what_is_broken = "Missing 'Content-Security-Policy' or 'X-Frame-Options' headers."
-        what_attacker_can_do = "A scammer can embed your site inside an invisible iframe on a fake website and trick users into clicking buttons they didn't intend to click."
-        business_impact = "🟡 Medium Risk — Phishing, unauthorized actions, and brand reputation damage."
-        estimated_fix_time = "2 minutes (add security headers middleware)"
+    elif "csrf" in title_lower or "cross-site request forgery" in title_lower:
+        headline = "Cross-Site Request Forgery (CSRF) Vulnerability"
+        what_is_broken = "State-changing web forms or API endpoints do not require unique synchronized CSRF tokens."
+        what_attacker_can_do = "An attacker can create a phishing site that automatically submits unwanted actions (e.g. changing email/password, making payments) using the victim's active login session."
+        business_impact = "🟠 High Risk — Unauthorized user actions performed without user knowledge or consent."
+        estimated_fix_time = "5-15 minutes (add anti-CSRF token middleware & SameSite cookies)"
+
+    elif "redirect" in title_lower:
+        headline = "Open URL Redirection Vulnerability"
+        what_is_broken = "A redirect parameter (e.g. ?next= or ?url=) accepts untrusted external domain names without validation."
+        what_attacker_can_do = "Scammers can send legitimate-looking links from your domain that silently redirect victims to credential-harvesting phishing pages."
+        business_impact = "🟡 Medium Risk — Brand reputation damage and user credential theft via phishing."
+        estimated_fix_time = "5 minutes (validate destination paths against a strict allowlist)"
+
+    elif "bola" in title_lower or "idor" in title_lower or "broken object level" in title_lower:
+        headline = "Broken Object-Level Authorization (IDOR) Flaw"
+        what_is_broken = "API endpoints accept object IDs (e.g. /users/123) without verifying whether the caller owns that record."
+        what_attacker_can_do = "An attacker can change the number in the URL to view, modify, or delete private profile and billing data of every user on the platform."
+        business_impact = "🔴 Critical Risk — Widespread customer data exfiltration and privacy law violations."
+        estimated_fix_time = "10-20 minutes (add user ownership validation checks in service layer)"
+
+    elif "secret" in title_lower or ".env" in title_lower or "sensitive file" in title_lower:
+        headline = "Exposed Secret Keys & Infrastructure Blueprint"
+        what_is_broken = "Sensitive configuration files (e.g. .env, .git, or backup dumps) are publicly downloadable."
+        what_attacker_can_do = "Attackers can download live API keys, database passwords, or private encryption secrets and gain administrative access."
+        business_impact = "🔴 Critical Risk — Complete backend compromise and infrastructure hijacking."
+        estimated_fix_time = "2-5 minutes (deny access in web server and rotate all leaked keys)"
+
+    elif "tls" in title_lower or "ssl" in title_lower or "hsts" in title_lower:
+        headline = "Insecure Cryptographic Transport / Weak TLS"
+        what_is_broken = "Missing HSTS headers or support for deprecated SSL/TLS protocols."
+        what_attacker_can_do = "Network eavesdroppers or public Wi-Fi attackers can intercept or downgrade user traffic to plaintext."
+        business_impact = "🟡 Medium Risk — Network interception and failure to meet compliance standards."
+        estimated_fix_time = "5 minutes (enforce TLS 1.2+ and enable HSTS in Nginx/web server)"
 
     return {
         "category": category,

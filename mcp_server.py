@@ -56,6 +56,12 @@ TOOLS_MANIFEST = [
                     "type": "boolean",
                     "description": "Whether to run in demo/mock mode (fast, simulated findings) or real active network scan mode. Defaults to true.",
                     "default": True
+                },
+                "profile": {
+                    "type": "string",
+                    "enum": ["full", "owasp", "api", "recon"],
+                    "description": "Scan profile: 'full' (all 19 plugins), 'owasp' (OWASP Top 10), 'api' (API & Microservices), 'recon' (Passive Recon). Defaults to 'full'.",
+                    "default": "full"
                 }
             },
             "required": ["target"]
@@ -128,10 +134,11 @@ TOOLS_MANIFEST = [
 def handle_scan(args: Dict[str, Any]) -> Dict[str, Any]:
     target = args.get("target", "http://localhost:3000")
     mock_mode = args.get("mock", True)
+    profile = args.get("profile", "full")
 
-    logger.info(f"Starting MCP scan for target: {target} (mock={mock_mode})")
-    engine = Engine(mock_mode=mock_mode)
-    report = engine.run(target)
+    logger.info(f"Starting MCP scan for target: {target} (mock={mock_mode}, profile={profile})")
+    engine = Engine(mock_mode=mock_mode, profile=profile)
+    report = engine.run(target, profile=profile)
 
     report_dict = report.to_dict()
     findings = report_dict.get("all_findings") or report_dict.get("findings") or []
@@ -141,6 +148,7 @@ def handle_scan(args: Dict[str, Any]) -> Dict[str, Any]:
         "status": "success",
         "target": target,
         "mode": "MOCK DEMO" if mock_mode else "ACTIVE SCAN",
+        "profile": profile,
         "timestamp": report.timestamp,
         "executive_grade": posture["grade"],
         "grade_label": posture["grade_label"],

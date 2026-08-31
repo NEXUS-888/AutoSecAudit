@@ -17,8 +17,9 @@ logger = logging.getLogger(__name__)
 class Engine:
     """Core scanning engine that orchestrates plugin execution."""
 
-    def __init__(self, mock_mode: Optional[bool] = None):
+    def __init__(self, mock_mode: Optional[bool] = None, profile: str = "full"):
         self.mock_mode = mock_mode if mock_mode is not None else config.MOCK_MODE
+        self.profile = profile.lower() if profile else "full"
         self.plugins: List[Any] = []
         self.scan_results: List[ScanResult] = []
         self.target: str = ""
@@ -26,8 +27,15 @@ class Engine:
         self.crawl_result = None  # populated by run_plugins
         self.crawler_data: Dict[str, Any] = {}  # populated by OpenAPI importer
 
-    def load_plugins(self, plugins_dir: Optional[str] = None) -> int:
+    def set_profile(self, profile: str) -> None:
+        """Set active scan profile."""
+        self.profile = profile.lower() if profile else "full"
+        logger.info(f"Engine scan profile set to: {self.profile}")
+
+    def load_plugins(self, plugins_dir: Optional[str] = None, profile: Optional[str] = None) -> int:
         """Dynamically load all plugins from the plugins directory."""
+        if profile:
+            self.profile = profile.lower()
         if plugins_dir is None:
             plugins_dir = config.PLUGINS_DIR
         
@@ -36,6 +44,7 @@ class Engine:
             logger.warning(f"Plugins directory not found: {plugins_dir}")
             return 0
 
+        self.plugins = []
         loaded_count = 0
         for importer, modname, _ in pkgutil.iter_modules([str(plugins_path)]):
             if modname == "base_plugin" or modname.startswith("_") or modname == "mock_plugin":
@@ -56,8 +65,16 @@ class Engine:
             except Exception as e:
                 logger.error(f"Failed to load plugin {modname}: {e}")
 
-        logger.info(f"Loaded {loaded_count} plugin(s)")
-        return loaded_count
+        # Filter by profile if configured
+        profile_config = getattr(config, "SCAN_PROFILES", {}).get(self.profile)
+        if profile_config and profile_config.get("plugins") is not None:
+            allowed = set(profile_config["plugins"])
+            self.plugins = [p for p in self.plugins if p.__class__.__name__ in allowed]
+            logger.info(f"Applied scan profile '{self.profile}': {len(self.plugins)} plugins selected out of {loaded_count}")
+        else:
+            logger.info(f"Loaded {loaded_count} plugin(s) [profile: {self.profile}]")
+            
+        return len(self.plugins)
 
     def _is_scanner_class(self, cls: Any) -> bool:
         """Check if class is a subclass of BaseScanner but not BaseScanner itself."""
@@ -253,12 +270,15 @@ class Engine:
         logger.info(f"Report saved to {file_path}")
         return str(file_path)
 
-    def run(self, target: str) -> Report:
+    def run(self, target: str, profile: Optional[str] = None) -> Report:
         """Convenience method to load plugins, set target, execute scan, and generate report."""
-        self.load_plugins()
+        if profile:
+            self.profile = profile.lower()
+        self.load_plugins(profile=self.profile)
         self.set_target(target)
         self.run_plugins()
         report = self.generate_report()
         self.save_report(report)
         return report
+
 

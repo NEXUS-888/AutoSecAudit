@@ -1135,6 +1135,28 @@ HTML_FORM = """
                     </div>
                 </div>
 
+                <!-- Scan Profile Selector -->
+                <div style="margin-bottom: 20px;">
+                    <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>Attack Profile</span>
+                        <span style="font-size: 11px; color: var(--fg-muted);">19 Attack Simulation Scanners</span>
+                    </label>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 6px;">
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; background: var(--surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                            <input type="radio" name="profile" value="full" checked /> 🌐 Full DAST
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; background: var(--surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                            <input type="radio" name="profile" value="owasp" /> 🛡️ OWASP 10
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; background: var(--surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                            <input type="radio" name="profile" value="api" /> ⚡ API Security
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; background: var(--surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                            <input type="radio" name="profile" value="recon" /> 🔍 Passive Recon
+                        </label>
+                    </div>
+                </div>
+
                 <!-- Side-by-Side Modern Drag-and-Drop Dropzones -->
                 <div class="dropzones-section">
                     <div class="label-row">
@@ -2193,7 +2215,7 @@ def history():
 # ---------------------------------------------------------------------------
 # SSE: Async scan with real-time progress streaming
 # ---------------------------------------------------------------------------
-def _run_scan_background(scan_id: str, target: str, previous_path: str = None, openapi_path: str = None):
+def _run_scan_background(scan_id: str, target: str, previous_path: str = None, openapi_path: str = None, profile: str = "full"):
     """Run a scan in a background thread, pushing progress events to the queue."""
     job = scan_jobs[scan_id]
     q = job["progress_queue"]
@@ -2213,8 +2235,8 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
         job["status"] = "running"
 
         # 1. Initialize
-        emit("init", "Initializing scan engine...", 5)
-        engine = Engine()
+        emit("init", f"Initializing scan engine [{profile.upper()} profile]...", 5)
+        engine = Engine(profile=profile)
         engine.load_plugins()
 
         if not engine.set_target(target):
@@ -2350,10 +2372,13 @@ def scan_async():
                 openapi_file.save(tmp.name)
                 openapi_path = tmp.name
 
+        profile = request.form.get("profile", "full").strip() or "full"
+
         scan_id = str(uuid.uuid4())[:8]
         scan_jobs[scan_id] = {
             "status": "starting",
             "target": target,
+            "profile": profile,
             "progress_queue": queue.Queue(),
             "report_name": None,
             "error": None,
@@ -2362,12 +2387,12 @@ def scan_async():
 
         thread = threading.Thread(
             target=_run_scan_background,
-            args=(scan_id, target, previous_path, openapi_path),
+            args=(scan_id, target, previous_path, openapi_path, profile),
             daemon=True,
         )
         thread.start()
 
-        return jsonify({"scan_id": scan_id})
+        return jsonify({"scan_id": scan_id, "profile": profile})
 
     except Exception as e:
         logger.error(f"Failed to initialize async scan: {e}", exc_info=True)

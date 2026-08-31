@@ -88,6 +88,16 @@ OWASP_REMEDIATIONS = {
         "4. Disable URL redirects where possible.\n"
         "5. Enforce firewall rules to limit outbound server requests."
     ),
+    "API1:2023": (
+        "1. Validate that the authenticated session user has explicit ownership of requested object IDs.\n"
+        "2. Avoid using predictable sequential IDs in API URLs; use UUIDs or signed tokens.\n"
+        "3. Implement centralized authorization filters at the API route and repository layers."
+    ),
+    "API2:2023": (
+        "1. Strictly verify JWT signatures using secure cryptographic algorithms (RS256/ES256).\n"
+        "2. Reject tokens with 'alg: none' and enforce expiration timestamps.\n"
+        "3. Implement rate-limiting and account lockout policies on authentication endpoints."
+    ),
 }
 
 # ---------------------------------------------------------------------------

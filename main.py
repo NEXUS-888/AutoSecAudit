@@ -51,14 +51,14 @@ def prompt_mode_selection(default_mock: bool = True) -> bool:
 
 def run_scan(target: str, previous_report: str = None, output_json: str = None, output_html: str = None,
              fail_on: str = None, webhook: str = None, openapi: str = None, headers: str = None,
-             mock_mode: Optional[bool] = None):
+             mock_mode: Optional[bool] = None, profile: str = "full"):
     
     if mock_mode is not None:
         config.MOCK_MODE = mock_mode
     
     mode_label = "MOCK DEMO" if config.MOCK_MODE else "REAL ACTIVE SCAN"
-    logger.info(f"Starting scan for target: {target} [{mode_label}]")
-    print(f"\n[ENGINE] Target: {target} | Execution Mode: {mode_label}")
+    logger.info(f"Starting scan for target: {target} [{mode_label}] (profile: {profile})")
+    print(f"\n[ENGINE] Target: {target} | Execution Mode: {mode_label} | Profile: {profile.upper()}")
     
     if not validate_target(target):
         logger.error(f"Invalid target: {target}")
@@ -79,9 +79,9 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
                 k, v = h.split(":", 1)
                 header_dict[k.strip()] = v.strip()
 
-    engine = Engine(mock_mode=config.MOCK_MODE)
+    engine = Engine(mock_mode=config.MOCK_MODE, profile=profile)
     loaded = engine.load_plugins()
-    print(f"Loaded {loaded} plugin(s)")
+    print(f"Loaded {loaded} plugin(s) for profile '{profile}'")
     
     if not engine.set_target(target):
         return 1
@@ -266,6 +266,7 @@ def main():
     scan_parser.add_argument("--webhook", help="URL for Slack/Discord webhook alerts")
     scan_parser.add_argument("--openapi", help="Path or URL to OpenAPI/Swagger spec")
     scan_parser.add_argument("--headers", help="Custom HTTP headers (format 'Header1: val1; Header2: val2')")
+    scan_parser.add_argument("--profile", choices=["full", "owasp", "api", "recon"], default="full", help="Select scan profile: full (all), owasp (OWASP Top 10), api (API Security), recon (Passive Recon)")
     scan_mode_group = scan_parser.add_mutually_exclusive_group()
     scan_mode_group.add_argument("--real", action="store_true", help="Force REAL active scanning mode")
     scan_mode_group.add_argument("--mock", action="store_true", help="Force MOCK demo mode")
@@ -276,6 +277,10 @@ def main():
     server_mode_group = server_parser.add_mutually_exclusive_group()
     server_mode_group.add_argument("--real", action="store_true", help="Force REAL active scanning mode")
     server_mode_group.add_argument("--mock", action="store_true", help="Force MOCK demo mode")
+
+    testbed_parser = subparsers.add_parser("testbed", help="Launch the local vulnerable sandbox testbed")
+    testbed_parser.add_argument("--port", type=int, default=8080, help="Port to run testbed on (default: 8080)")
+    testbed_parser.add_argument("--host", default="127.0.0.1", help="Host address (default: 127.0.0.1)")
     
     args = parser.parse_args()
     
@@ -300,10 +305,15 @@ def main():
         config.MOCK_MODE = mock_mode
 
     if args.command == "scan":
-        return run_scan(args.target, args.previous, args.json, args.html, args.fail_on, args.webhook, args.openapi, args.headers, mock_mode=config.MOCK_MODE)
+        profile = getattr(args, "profile", "full")
+        return run_scan(args.target, args.previous, args.json, args.html, args.fail_on, args.webhook, args.openapi, args.headers, mock_mode=config.MOCK_MODE, profile=profile)
 
     elif args.command == "plugins":
         list_plugins()
+        return 0
+    elif args.command == "testbed":
+        from testbed.app import run_testbed
+        run_testbed(host=args.host, port=args.port)
         return 0
     elif args.command == "server":
         from ui.app import app
@@ -321,3 +331,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+

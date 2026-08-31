@@ -207,8 +207,8 @@ def get_fix_recipes(finding: Dict[str, Any]) -> Dict[str, str]:
             },
         }
 
-    # 4. Sensitive Path / Directory Listing Exposure
-    elif "directory listing" in title or "dirbrute" in title or ".git" in title or ".env" in title:
+    # 4. Sensitive Path / Directory Listing / Secret Exposure
+    elif "directory listing" in title or "dirbrute" in title or ".git" in title or ".env" in title or "secret" in title:
         nodejs_code = (
             "// Node.js Express: Disable dotfiles and directory listing\n"
             "const express = require('express');\n\n"
@@ -224,7 +224,7 @@ def get_fix_recipes(finding: Dict[str, Any]) -> Dict[str, str]:
             "from flask import abort\n\n"
             "@app.route('/<path:filename>')\n"
             "def safe_file_serve(filename):\n"
-            "    if filename.startswith('.') or '..' in filename or filename.endswith(('.env', '.git', '.sql', '.bak')):\n"
+            "    if filename.startswith('.') or '..' in filename or filename.endswith(('.env', '.git', '.sql', '.bak', '.pem')):\n"
             "        abort(404)\n"
             "    return send_from_directory('static', filename)"
         )
@@ -235,7 +235,7 @@ def get_fix_recipes(finding: Dict[str, Any]) -> Dict[str, str]:
             "    deny all;\n"
             "    return 404;\n"
             "}\n\n"
-            "location ~* \\.(bak|config|sql|fla|psd|ini|log|sh|env|git)$ {\n"
+            "location ~* \\.(bak|config|sql|fla|psd|ini|log|sh|env|git|key|pem|crt)$ {\n"
             "    deny all;\n"
             "    return 404;\n"
             "}"
@@ -245,6 +245,108 @@ def get_fix_recipes(finding: Dict[str, Any]) -> Dict[str, str]:
             "action": "BLOCK",
             "description": "Block requests attempting to access .git, .env, and backup archives",
             "expression": '(http.request.uri.path contains "/.git" or http.request.uri.path contains "/.env" or http.request.uri.path contains ".sql" or http.request.uri.path contains ".bak")',
+        }
+
+    # 5. CSRF (Cross-Site Request Forgery)
+    elif "csrf" in title or "cross-site request forgery" in title:
+        nodejs_code = (
+            "// Node.js Express: Anti-CSRF Token Protection (csurf / csrf-csrf)\n"
+            "// Install: npm install csurf cookie-parser\n"
+            "const csrf = require('csurf');\n"
+            "const csrfProtection = csrf({ cookie: { httpOnly: true, sameSite: 'lax', secure: true } });\n\n"
+            "app.use(csrfProtection);\n"
+            "// Pass token to HTML views: res.render('form', { csrfToken: req.csrfToken() });"
+        )
+        python_code = (
+            "# Python: Enforce CSRF Protection (Flask-WTF / Django)\n"
+            "# Flask:\n"
+            "from flask_wtf.csrf import CSRFProtect\n"
+            "csrf = CSRFProtect(app)\n\n"
+            "# FastAPI (fastapi-csrf-protect):\n"
+            "# from fastapi_csrf_protect import CsrfProtect\n"
+            "# @CsrfProtect.load_config\n"
+            "# def get_csrf_config(): return CsrfSettings()"
+        )
+        nginx_code = (
+            "# Nginx: Ensure SameSite and Secure cookie policies\n"
+            "proxy_cookie_path / \"/; Secure; HttpOnly; SameSite=Lax\";"
+        )
+        waf_rule = {
+            "rule_name": "AutoSec_Enforce_SameSite_Referer",
+            "action": "BLOCK",
+            "description": "Block cross-site POST submissions missing matching Origin / Referer headers",
+            "expression": '(http.request.method in {"POST", "PUT", "DELETE"} and not http.request.headers["referer"][0] contains "yourdomain.com")',
+        }
+
+    # 6. Open Redirect
+    elif "redirect" in title:
+        nodejs_code = (
+            "// Node.js Express: Safe URL Redirection Allowlist\n"
+            "function safeRedirect(req, res, targetUrl) {\n"
+            "  // Enforce relative path starting with single '/' (reject '//')\n"
+            "  if (targetUrl && targetUrl.startsWith('/') && !targetUrl.startsWith('//')) {\n"
+            "    return res.redirect(targetUrl);\n"
+            "  }\n"
+            "  return res.redirect('/dashboard'); // Fallback to safe internal page\n"
+            "}"
+        )
+        python_code = (
+            "# Python: Safe Redirection Helper\n"
+            "from urllib.parse import urlparse, urljoin\n"
+            "from flask import request, redirect, url_for\n\n"
+            "def is_safe_url(target):\n"
+            "    ref_url = urlparse(request.host_url)\n"
+            "    test_url = urlparse(urljoin(request.host_url, target))\n"
+            "    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc\n\n"
+            "# Usage: return redirect(target if is_safe_url(target) else url_for('index'))"
+        )
+        nginx_code = (
+            "# Nginx: Block external protocol redirects in query parameters\n"
+            "if ($arg_next ~* \"^https?://\") {\n"
+            "    return 400 \"Invalid redirect target\";\n"
+            "}"
+        )
+        waf_rule = {
+            "rule_name": "AutoSec_Block_Open_Redirect_Params",
+            "action": "BLOCK",
+            "description": "Block redirect parameter containing external protocol schemas",
+            "expression": '(http.request.uri.query contains "next=http" or http.request.uri.query contains "redirect=http" or http.request.uri.query contains "url=//")',
+        }
+
+    # 7. BOLA / IDOR (Broken Object Level Authorization)
+    elif "bola" in title or "idor" in title or "broken object" in title:
+        nodejs_code = (
+            "// Node.js Express: Enforce Tenant / User Ownership Boundary\n"
+            "app.get('/api/users/:userId', async (req, res) => {\n"
+            "  const requestedId = req.params.userId;\n"
+            "  // CRITICAL: Ensure authenticated user owns this resource or is admin\n"
+            "  if (req.user.id !== requestedId && !req.user.isAdmin) {\n"
+            "    return res.status(403).json({ error: 'Access Denied: Object-level ownership violated' });\n"
+            "  }\n"
+            "  const user = await db.getUser(requestedId);\n"
+            "  return res.json(user);\n"
+            "});"
+        )
+        python_code = (
+            "# Python FastAPI: Enforce Object Ownership in Dependency / Service\n"
+            "@router.get('/api/users/{user_id}')\n"
+            "async def get_user_profile(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):\n"
+            "    if current_user.id != user_id and not current_user.is_admin:\n"
+            "        raise HTTPException(status_code=403, detail='Access Denied: Unauthorized object access')\n"
+            "    return db.query(User).filter(User.id == user_id).first()"
+        )
+        nginx_code = (
+            "# Nginx: Rate limit sequential identifier probes\n"
+            "limit_req_zone $binary_remote_addr zone=api_bola_limit:10m rate=10r/s;\n"
+            "location ~ /api/users/\\d+ {\n"
+            "    limit_req zone=api_bola_limit burst=5 nodelay;\n"
+            "}"
+        )
+        waf_rule = {
+            "rule_name": "AutoSec_Rate_Limit_ID_Enumeration",
+            "action": "RATE_LIMIT",
+            "description": "Rate limit rapid sequential numeric ID scraping across REST endpoints",
+            "expression": '(http.request.uri.path matches "^/api/.*/[0-9]+$")',
         }
 
     return {

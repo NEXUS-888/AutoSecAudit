@@ -29,3 +29,38 @@ REPORT_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 HTTP_TIMEOUT = int(os.environ.get("AUTOSEC_HTTP_TIMEOUT", "10"))
 SCAN_TIMEOUT = int(os.environ.get("AUTOSEC_SCAN_TIMEOUT", "300"))
 USER_AGENT = "AutoSecAudit/2.0"
+
+# Scan Profiles configuration
+SCAN_PROFILES = {
+    "full": {
+        "name": "Full Spectrum DAST Audit",
+        "description": "Comprehensive security assessment executing all dynamic vulnerability scanners.",
+        "plugins": None
+    },
+    "owasp": {
+        "name": "OWASP Top 10 Suite",
+        "description": "Targeted assessment focusing on injection, auth, SSRF, misconfigurations, and access controls.",
+        "plugins": [
+            "SQLiScanner", "XSSScanner", "CSRFScanner", "SSRFScanner", "AuthScanner",
+            "MisconfigScanner", "CommandInjectionScanner", "PathTraversalScanner",
+            "SSTIScanner", "SecretExposureScanner", "OpenRedirectScanner"
+        ]
+    },
+    "api": {
+        "name": "API & Microservices Suite",
+        "description": "Headless API security audit covering BOLA/IDOR, JWT flaws, rate limiting, and CORS.",
+        "plugins": [
+            "BOLAIdorScanner", "JWTScanner", "CORSScanner", "APIAbuseScanner",
+            "AuthScanner", "SQLiScanner", "XSSScanner"
+        ]
+    },
+    "recon": {
+        "name": "Passive & Non-Intrusive Recon",
+        "description": "External reconnaissance, SSL/TLS validation, directory discovery, and port enumeration.",
+        "plugins": [
+            "SSLTLSScanner", "MisconfigScanner", "DirBruteScanner", "NiktoPlugin",
+            "NmapPlugin", "SecretExposureScanner"
+        ]
+    }
+}
+
