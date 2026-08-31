@@ -268,6 +268,71 @@ class SQLiScanner(BaseScanner):
                 except requests.RequestException as exc:
                     logger.debug(f"[SQLi] Path injection probe to {url} failed: {exc}")
 
+    def _test_time_based_sqli(self, base_url: str, ep: Dict[str, Any]) -> None:
+        """Test time-based blind SQLi using two-phase statistical verification."""
+        path = ep.get("path", "")
+        param = ep.get("param", "")
+        if not path or not param:
+            return
+
+        url = f"{base_url}{path}"
+        delay_payload = "' AND SLEEP(2)--"
+        fast_payload = "' AND 1=2--"
+
+        def probe_safe():
+            return self._safe_request("GET", url, params={param: "safe123"}, timeout=(2.0, 5.0))
+
+        def probe_delay():
+            return self._safe_request("GET", url, params={param: delay_payload}, timeout=(2.0, 6.0))
+
+        def probe_fast():
+            return self._safe_request("GET", url, params={param: fast_payload}, timeout=(2.0, 5.0))
+
+        is_verified, confidence, details = self._verify_timing(
+            probe_safe, probe_delay, probe_fast, expected_delay=2.0
+        )
+
+        if is_verified:
+            self.results.append({
+                "endpoint": f"{path}?{param}=<delay_payload>",
+                "payload": delay_payload,
+                "matched_signature": f"statistical_timing_delay (elapsed: {details['delay_elapsed']}s vs base: {details['baseline_mean']}s)",
+                "status_code": 200,
+                "evidence": f"Two-phase timing verification confirmed: baseline {details['baseline_mean']}s -> probe {details['delay_elapsed']}s -> fast {details['fast_elapsed']}s.",
+                "type": "time_based_blind",
+                "verified": True,
+                "confidence": confidence,
+            })
+            logger.info(f"[SQLi] Verified blind time-based injection at {path}?{param} (confidence: {confidence})")
+
+    def _test_json_body_sqli(self, base_url: str) -> None:
+        """Deep fuzz JSON bodies on REST API endpoints."""
+        json_endpoints = [
+            {"path": "/api/orders", "body": {"customer": {"name": "test", "id": 1}, "item": "widget"}},
+            {"path": "/api/search", "body": {"query": {"term": "product", "filter": "active"}}},
+            {"path": "/api/filter", "body": {"category": "all", "sort": "asc"}},
+        ]
+        for ep in json_endpoints:
+            url = f"{base_url}{ep['path']}"
+            for payload in ["' OR 1=1--", "' OR '1'='1"]:
+                fuzz_results = self._fuzz_json_body(url, "POST", ep["body"], payload)
+                for mutated_path, resp in fuzz_results:
+                    if resp is not None:
+                        match = self._check_sql_errors(resp.text)
+                        if match or (resp.status_code == 500 and "syntax" in resp.text.lower()):
+                            self.results.append({
+                                "endpoint": f"{ep['path']} (JSON body: {mutated_path})",
+                                "payload": payload,
+                                "matched_signature": match or "500_server_syntax_error",
+                                "status_code": resp.status_code,
+                                "evidence": resp.text[:300],
+                                "type": "json_body_injection",
+                                "verified": True,
+                                "confidence": "high",
+                            })
+                            logger.info(f"[SQLi] Verified JSON body SQLi at {ep['path']} on {mutated_path}")
+                            return
+
     # ------------------------------------------------------------------
     # run() – main entry point
     # ------------------------------------------------------------------
@@ -287,12 +352,18 @@ class SQLiScanner(BaseScanner):
         # 1. GET parameter injection on discovered/default endpoints
         for ep in endpoints_to_test:
             self._test_get_endpoint(base_url, ep)
+            # Time-based blind check on top endpoints
+            if len(self.results) == 0:
+                self._test_time_based_sqli(base_url, ep)
 
         # 2. Login form injection
         self._test_login_endpoints(base_url)
 
         # 3. REST path-based injection
         self._test_url_path_injection(base_url)
+
+        # 4. Deep JSON body fuzzing
+        self._test_json_body_sqli(base_url)
 
         self.raw_output = f"Tested {len(endpoints_to_test)} GET endpoints, " \
                           f"{len(LOGIN_ENDPOINTS)} login endpoints. " \

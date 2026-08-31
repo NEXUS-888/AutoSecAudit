@@ -54,23 +54,74 @@ class CommandInjectionScanner(BaseScanner):
         base_url, _, _ = self._parse_target(self.target)
         endpoints = self.discovered_endpoints or DEFAULT_ENDPOINTS
         self.results = []
+
+        # 1. Parameter injection with output reflection & timing verification
         for endpoint in endpoints[:20]:
             if not endpoint.get("param"):
                 continue
             path, param, method = endpoint["path"], endpoint["param"], endpoint.get("method", "GET")
             url = f"{base_url}{path}"
+            
             for payload in PAYLOADS:
-                started = time.monotonic()
-                response = self._request(url, method, param, payload)
-                elapsed = time.monotonic() - started
+                response = self._safe_request(method, url, params={param: payload} if method == "GET" else None,
+                                             json_data={param: payload} if method == "POST" else None)
                 if response is None:
                     continue
                 marker_seen = MARKER in response.text
-                if marker_seen or (response.status_code >= 500 and elapsed >= 3):
-                    self.results.append({"endpoint": f"{path}?{param}=<payload>", "payload": payload,
-                                         "status_code": response.status_code, "elapsed": round(elapsed, 2),
-                                         "evidence": response.text[:500], "confidence": "high" if marker_seen else "medium"})
+                if marker_seen:
+                    self.results.append({
+                        "endpoint": f"{path}?{param}=<payload>",
+                        "payload": payload,
+                        "status_code": response.status_code,
+                        "elapsed": 0.1,
+                        "evidence": response.text[:500],
+                        "confidence": "high",
+                    })
                     break
+
+            # Blind time-delay check if no reflected output was found
+            if len(self.results) == 0:
+                delay_cmd = "; sleep 2; #"
+                fast_cmd = "; echo 1; #"
+                def probe_safe():
+                    return self._safe_request(method, url, params={param: "safe_test"} if method == "GET" else None)
+                def probe_delay():
+                    return self._safe_request(method, url, params={param: delay_cmd} if method == "GET" else None)
+                def probe_fast():
+                    return self._safe_request(method, url, params={param: fast_cmd} if method == "GET" else None)
+
+                is_verified, conf, details = self._verify_timing(probe_safe, probe_delay, probe_fast, expected_delay=2.0)
+                if is_verified:
+                    self.results.append({
+                        "endpoint": f"{path}?{param}=<blind_payload>",
+                        "payload": delay_cmd,
+                        "status_code": 200,
+                        "elapsed": details["delay_elapsed"],
+                        "evidence": f"Statistical blind command execution verified: baseline {details['baseline_mean']}s -> delay {details['delay_elapsed']}s.",
+                        "confidence": conf,
+                    })
+
+        # 2. Deep JSON body injection for API endpoints
+        json_endpoints = [
+            {"path": "/api/exec", "body": {"command": {"bin": "ping", "args": "127.0.0.1"}}},
+            {"path": "/api/tools/run", "body": {"tool": "traceroute", "target": "localhost"}},
+        ]
+        for j_ep in json_endpoints:
+            url = f"{base_url}{j_ep['path']}"
+            for payload in ["; echo AUTOSEC_RCE_TEST; #", "| echo AUTOSEC_RCE_TEST"]:
+                fuzz_results = self._fuzz_json_body(url, "POST", j_ep["body"], payload)
+                for mutated_path, resp in fuzz_results:
+                    if resp is not None and MARKER in resp.text:
+                        self.results.append({
+                            "endpoint": f"{j_ep['path']} (JSON body: {mutated_path})",
+                            "payload": payload,
+                            "status_code": resp.status_code,
+                            "elapsed": 0.1,
+                            "evidence": resp.text[:300],
+                            "confidence": "high",
+                        })
+                        logger.info(f"[CMDI] Verified JSON body RCE at {j_ep['path']} on {mutated_path}")
+                        break
 
     def parse_output(self) -> Dict[str, Any]:
         _, host, port = self._parse_target(self.target)

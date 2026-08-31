@@ -180,7 +180,12 @@ def _extract_query_params(url: str) -> List[str]:
 # API endpoint patterns detected in JavaScript
 # ---------------------------------------------------------------------------
 _API_PATTERN = re.compile(
-    r"""(?:fetch|axios|\.get|\.post|\.put|\.delete|XMLHttpRequest)\s*\(\s*['"`]([/][^'"`\s]{2,})['"`]""",
+    r"""(?:fetch|axios|\.get|\.post|\.put|\.delete|XMLHttpRequest|\.ajax)\s*\(\s*['"`]([/][^'"`\s\?#]{2,})(?:\?([^'"`\s#]+))?['"`]""",
+    re.IGNORECASE,
+)
+
+_REST_PATH_PATTERN = re.compile(
+    r"""['"`](/(?:api|v[0-9]|rest|graphql|auth|users|products|search|admin|order)[/a-zA-Z0-9_\-\.]+)['"`]""",
     re.IGNORECASE,
 )
 
@@ -188,6 +193,41 @@ _HREF_PATTERN = re.compile(
     r"""(?:href|action|src)\s*=\s*['"]([/][^'"]{2,})['"]""",
     re.IGNORECASE,
 )
+
+
+def extract_js_endpoints(text: str, source_path: str = "") -> List[DiscoveredEndpoint]:
+    """
+    Extract API endpoints and parameter names from raw JavaScript code or HTML scripts.
+    """
+    discovered: List[DiscoveredEndpoint] = []
+    seen = set()
+
+    # Match explicit fetch/axios/ajax calls
+    for match in _API_PATTERN.finditer(text):
+        path = match.group(1)
+        query = match.group(2) or ""
+        params = [p.split("=")[0] for p in query.split("&") if p and "=" in p]
+        if path not in seen:
+            seen.add(path)
+            discovered.append(DiscoveredEndpoint(
+                path=path,
+                params=params,
+                endpoint_type="api",
+                source=source_path,
+            ))
+
+    # Match implicit REST API path literals (e.g. '/api/users/list')
+    for match in _REST_PATH_PATTERN.finditer(text):
+        path = match.group(1)
+        if path not in seen and not path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".woff", ".ico")):
+            seen.add(path)
+            discovered.append(DiscoveredEndpoint(
+                path=path,
+                endpoint_type="api",
+                source=source_path,
+            ))
+
+    return discovered
 
 
 # ---------------------------------------------------------------------------
@@ -310,16 +350,17 @@ class WebCrawler:
                 ))
                 urls_to_visit.append(resolved)
 
-        # Look for API endpoints in inline/external JS
-        for match in _API_PATTERN.findall(resp.text):
-            result.endpoints.append(DiscoveredEndpoint(
-                path=match,
-                endpoint_type="api",
-                source=current_path,
-            ))
+        # Look for API endpoints and parameters in inline/external JS
+        js_endpoints = extract_js_endpoints(resp.text, current_path)
+        existing_paths = {ep.path for ep in result.endpoints}
+        for j_ep in js_endpoints:
+            if j_ep.path not in existing_paths:
+                existing_paths.add(j_ep.path)
+                result.endpoints.append(j_ep)
 
         for match in _HREF_PATTERN.findall(resp.text):
-            if match not in [ep.path for ep in result.endpoints]:
+            if match not in existing_paths:
+                existing_paths.add(match)
                 result.endpoints.append(DiscoveredEndpoint(
                     path=match,
                     endpoint_type="link",

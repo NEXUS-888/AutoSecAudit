@@ -1,11 +1,14 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List, Callable, Union
 import logging
 import shutil
 import requests
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import config
+from core.politeness import PolitenessEngine
+from core.timing import TimingVerifier
+from core.fuzzer import generate_json_fuzz_mutations, extract_json_leaf_paths, mutate_json_at_path
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,8 @@ class BaseScanner(ABC):
         self._tool_available: Optional[bool] = None
         self.discovered_endpoints: list = []  # populated by engine from crawler
         self._baseline_cache: Dict[str, Any] = {}
+        self.politeness = PolitenessEngine(min_jitter_ms=0, max_jitter_ms=20)
+        self.timing_verifier = TimingVerifier(baseline_samples=2, min_delay_ratio=0.70)
 
     def set_discovered_endpoints(self, endpoints: list) -> None:
         """Set discovered endpoints from the web crawler."""
@@ -182,4 +187,90 @@ class BaseScanner(ABC):
 
         # No meaningful change — likely false positive
         return False, "low"
+
+    def _safe_request(
+        self,
+        method: str,
+        url: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_data: Optional[Dict[str, Any]] = None,
+        data: Optional[Any] = None,
+        headers: Optional[Dict[str, str]] = None,
+        timeout: Tuple[float, float] = (3.0, 8.0),
+        allow_redirects: bool = True,
+    ) -> Optional[requests.Response]:
+        """
+        Execute an HTTP request with politeness pacing and rate-limit backoff.
+        """
+        self.politeness.pace_request()
+        req_headers = self.politeness.get_polite_headers(headers)
+
+        try:
+            if method.upper() == "GET":
+                resp = requests.get(
+                    url, params=params, headers=req_headers,
+                    timeout=timeout, allow_redirects=allow_redirects, verify=False,
+                )
+            elif method.upper() == "POST":
+                resp = requests.post(
+                    url, params=params, json=json_data, data=data, headers=req_headers,
+                    timeout=timeout, allow_redirects=allow_redirects, verify=False,
+                )
+            elif method.upper() == "PUT":
+                resp = requests.put(
+                    url, params=params, json=json_data, data=data, headers=req_headers,
+                    timeout=timeout, allow_redirects=allow_redirects, verify=False,
+                )
+            elif method.upper() == "DELETE":
+                resp = requests.delete(
+                    url, params=params, json=json_data, headers=req_headers,
+                    timeout=timeout, allow_redirects=allow_redirects, verify=False,
+                )
+            else:
+                resp = requests.request(
+                    method, url, params=params, json=json_data, data=data, headers=req_headers,
+                    timeout=timeout, allow_redirects=allow_redirects, verify=False,
+                )
+
+            self.politeness.handle_response_status(resp.status_code)
+            return resp
+        except requests.RequestException as exc:
+            logger.debug(f"[BaseScanner] Safe request failed for {url}: {exc}")
+            return None
+
+    def _verify_timing(
+        self,
+        probe_fn: Callable[[], Optional[requests.Response]],
+        delay_probe_fn: Callable[[], Optional[requests.Response]],
+        fast_probe_fn: Optional[Callable[[], Optional[requests.Response]]] = None,
+        expected_delay: float = 3.0,
+    ) -> Tuple[bool, str, Dict[str, Any]]:
+        """
+        Execute statistical baseline calibration and two-phase delay verification.
+        """
+        baseline_stats = self.timing_verifier.calibrate_baseline(probe_fn)
+        return self.timing_verifier.verify_delay(
+            baseline_stats, delay_probe_fn, fast_probe_fn, expected_delay
+        )
+
+    def _fuzz_json_body(
+        self,
+        url: str,
+        method: str,
+        base_json: Dict[str, Any],
+        payload: Any,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> List[Tuple[str, Optional[requests.Response]]]:
+        """
+        Fuzz all leaf keys of a JSON request body and return (mutated_path, response) pairs.
+        """
+        mutations = generate_json_fuzz_mutations(base_json, payload)
+        results: List[Tuple[str, Optional[requests.Response]]] = []
+
+        for path, mutated_body in mutations:
+            resp = self._safe_request(method, url, json_data=mutated_body, headers=headers)
+            results.append((path, resp))
+
+        return results
+
 

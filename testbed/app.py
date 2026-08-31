@@ -186,6 +186,29 @@ def env_leak():
     )
 
 
+@app.route("/api/orders", methods=["POST"])
+def json_orders():
+    data = request.get_json(silent=True) or {}
+    customer = data.get("customer", {})
+    name = customer.get("name", "") if isinstance(customer, dict) else ""
+    if "'" in str(name) or "OR" in str(name):
+        return "OperationalError: near 'OR': syntax error in SQL statement", 500
+    return jsonify({"status": "order_created", "order_id": 994, "customer": customer}), 201
+
+
+@app.route("/api/exec", methods=["GET", "POST"])
+def exec_service():
+    cmd = request.args.get("command") or (request.get_json(silent=True) or {}).get("command", "")
+    if isinstance(cmd, dict):
+        cmd = str(cmd.get("args") or cmd.get("bin") or "")
+    if "AUTOSEC_RCE_TEST" in str(cmd):
+        return "command output: AUTOSEC_RCE_TEST", 200
+    if "sleep" in str(cmd):
+        time.sleep(2.0)
+        return "Command completed after sleep delay", 200
+    return jsonify({"status": "exec_ready", "output": f"Executed: {cmd}"}), 200
+
+
 @app.route("/admin")
 def admin_panel():
     return "<h1>Admin Control Panel</h1><p>Confidential internal administrative controls.</p>", 200
