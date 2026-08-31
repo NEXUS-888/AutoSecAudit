@@ -1340,7 +1340,142 @@
             .status-badge::before {
                 box-shadow: none;
             }
+        /* ── Executive Threat Matrix & Dual-View ─────────────────── */
+        .threat-matrix-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: var(--space-md);
+            margin-top: var(--space-lg);
         }
+        .threat-card {
+            padding: var(--space-md) var(--space-lg);
+            border-radius: var(--radius-md);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            transition: all 0.25s var(--ease-out);
+        }
+        .threat-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--border-hover);
+        }
+        .threat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .threat-title {
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--fg);
+        }
+        .threat-status-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 9999px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        .threat-desc {
+            font-size: 12px;
+            color: var(--fg-muted);
+            line-height: 1.5;
+        }
+        .posture-grade-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: var(--space-md) var(--space-lg);
+            background: linear-gradient(135deg, rgba(94,106,210,0.1) 0%, rgba(255,255,255,0.02) 100%);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            margin-top: var(--space-md);
+        }
+        .posture-grade-circle {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: 800;
+            color: #fff;
+            flex-shrink: 0;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+        }
+        .view-mode-toggle {
+            display: inline-flex;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 9999px;
+            padding: 4px;
+            gap: 4px;
+            margin-bottom: var(--space-md);
+        }
+        .view-toggle-btn {
+            padding: 6px 14px;
+            border-radius: 9999px;
+            border: none;
+            background: transparent;
+            color: var(--fg-muted);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .view-toggle-btn.active {
+            background: var(--accent);
+            color: #ffffff;
+            box-shadow: 0 2px 8px var(--accent-glow);
+        }
+        .plain-danger-box {
+            padding: 12px 16px;
+            background: rgba(239, 68, 68, 0.06);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: var(--radius-md);
+            margin-top: 10px;
+        }
+        .code-tab-nav {
+            display: flex;
+            gap: 6px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+        }
+        .code-tab-btn {
+            padding: 4px 10px;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: var(--radius-sm);
+            color: var(--fg-muted);
+            font-size: 12px;
+            font-family: var(--font-mono);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .code-tab-btn.active {
+            background: var(--surface-active);
+            border-color: var(--border);
+            color: var(--fg);
+        }
+        [data-theme="light"] .threat-card { background: #ffffff; border-color: #e2e8f0; }
+        [data-theme="light"] .posture-grade-banner { background: #f8fafc; border-color: #e2e8f0; }
+        [data-theme="light"] .plain-danger-box { background: #fff5f5; border-color: #fecaca; }
+        [data-theme="light"] .view-mode-toggle { background: #f1f5f9; border-color: #cbd5e1; }
+        [data-theme="light"] .view-toggle-btn.active { background: #4f46e5; color: #ffffff; }
     </style>
 </head>
 <body>
@@ -1501,6 +1636,41 @@
                     <span class="dist-legend-item"><span class="dist-legend-dot" style="background: var(--severity-info)"></span> Info {{ report.summary.info | default(0) }}</span>
                 </div>
             </div>
+
+            <!-- Executive Threat Posture Banner -->
+            {% if report.posture %}
+            <div class="posture-grade-banner reveal">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <div class="posture-grade-circle" style="background: {{ report.posture.grade_color }};">
+                        {{ report.posture.grade }}
+                    </div>
+                    <div>
+                        <div style="font-size: 16px; font-weight: 700; color: var(--fg);">Security Posture: {{ report.posture.grade_label }} (Score {{ report.posture.score }}/100)</div>
+                        <div style="font-size: 13px; color: var(--fg-muted); margin-top: 2px;">{{ report.posture.summary }}</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="/api/report/{{ report_id | default('latest') }}/waf-rules" class="btn-download" style="padding: 6px 12px; font-size: 12px; text-decoration: none;">
+                        🛡️ Export WAF Rules
+                    </a>
+                </div>
+            </div>
+
+            <!-- 4-Category Real Danger Threat Matrix -->
+            <div class="threat-matrix-grid reveal-stagger">
+                {% for threat in report.posture.threat_matrix %}
+                <div class="threat-card reveal">
+                    <div class="threat-header">
+                        <span class="threat-title">{{ threat.icon }} {{ threat.title }}</span>
+                        <span class="threat-status-badge" style="background: {{ threat.color }}22; color: {{ threat.color }}; border: 1px solid {{ threat.color }}55;">
+                            {{ threat.status }} ({{ threat.count }})
+                        </span>
+                    </div>
+                    <div class="threat-desc">{{ threat.description }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
 
         <!-- ============================================================
@@ -1662,6 +1832,21 @@
                 Detail View
             </div>
 
+            <!-- Dual-View Toggle Switcher -->
+            <div class="reveal" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: var(--space-md);">
+                <div class="view-mode-toggle">
+                    <button class="view-toggle-btn active" id="btnViewBusiness" onclick="setViewMode('business')">
+                        👔 Business / Threat Lens
+                    </button>
+                    <button class="view-toggle-btn" id="btnViewTech" onclick="setViewMode('technical')">
+                        💻 Technical Deep-Dive
+                    </button>
+                </div>
+                <div style="font-size: 13px; color: var(--fg-muted);">
+                    Click any finding to inspect <strong>1-click code patches</strong> & export <strong>Dev Tickets</strong>
+                </div>
+            </div>
+
             <!-- Filter Bar -->
             <div class="reveal" id="filterBar" style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: var(--space-lg); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; position: sticky; top: 0; z-index: 100; backdrop-filter: blur(20px);">
                 <div style="display: flex; gap: 6px; flex-wrap: wrap;">
@@ -1689,8 +1874,25 @@
                     </div>
                 </div>
 
-                <!-- Tags -->
-                <div class="finding-tags">
+                <!-- Plain-English Real Danger Lens -->
+                {% if finding.danger %}
+                <div class="plain-danger-box view-business-block">
+                    <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; color: #ef4444; margin-bottom: 4px;">
+                        <span>{{ finding.danger.category_icon }}</span>
+                        <span>{{ finding.danger.headline }}</span>
+                    </div>
+                    <div style="font-size: 13px; color: var(--fg); line-height: 1.5;">
+                        {{ finding.danger.what_attacker_can_do }}
+                    </div>
+                    <div style="margin-top: 8px; font-size: 12px; color: var(--fg-muted); display: flex; flex-wrap: wrap; gap: 16px;">
+                        <span><strong>Impact:</strong> {{ finding.danger.business_impact }}</span>
+                        <span><strong>Fix Time:</strong> {{ finding.danger.estimated_fix_time }}</span>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Tags (Technical View) -->
+                <div class="finding-tags view-tech-block">
                     <span class="tag tag--accent">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
                         {{ finding.id }}
@@ -1718,11 +1920,11 @@
                 </div>
 
                 <!-- Description -->
-                <p class="finding-desc">{{ finding.description }}</p>
+                <p class="finding-desc view-tech-block">{{ finding.description }}</p>
 
                 <!-- References -->
                 {% if finding.references %}
-                <div class="finding-refs">
+                <div class="finding-refs view-tech-block">
                     <div class="finding-refs-label">References</div>
                     <ul class="finding-refs-list">
                         {% for ref in finding.references[:5] %}
@@ -1735,11 +1937,14 @@
                 <!-- Remediation -->
                 {% if finding.remediation %}
                 <div class="finding-remediation" style="margin-top: var(--space-md); padding: var(--space-md); background: rgba(34, 197, 94, 0.06); border: 1px solid rgba(34, 197, 94, 0.15); border-radius: var(--radius-md);">
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: var(--space-sm); color: #22c55e; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                        </svg>
-                        How to Fix
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-sm);">
+                        <div style="display: flex; align-items: center; gap: 8px; color: #22c55e; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                            </svg>
+                            Fix Blueprint Available
+                        </div>
+                        <span style="font-size: 12px; color: var(--accent); font-weight: 500;">Click to view code patch →</span>
                     </div>
                     <pre style="white-space: pre-wrap; font-family: var(--font-sans); font-size: 13px; color: var(--fg-muted); line-height: 1.7; margin: 0;">{{ finding.remediation }}</pre>
                 </div>
@@ -1747,7 +1952,7 @@
 
                 <!-- Raw output -->
                 {% if finding.raw_output %}
-                <details class="collapsible">
+                <details class="collapsible view-tech-block">
                     <summary class="collapsible-trigger">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="9 18 15 12 9 6"></polyline>
@@ -1761,9 +1966,9 @@
             {% endfor %}
         </div>
 
-        <!-- Finding Detail Modal -->
+        <!-- Finding Detail Modal with Code Tabs & Dev Ticket Exporter -->
         <div id="findingModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.75); backdrop-filter:blur(8px); overflow-y:auto; animation: modalFadeIn 0.25s ease;">
-            <div id="modalContent" style="max-width:720px; margin:40px auto; background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-lg); padding:0; position:relative; animation: modalSlideIn 0.3s var(--ease-out);">
+            <div id="modalContent" style="max-width:760px; margin:40px auto; background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-lg); padding:0; position:relative; animation: modalSlideIn 0.3s var(--ease-out); box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
                 <!-- Close button -->
                 <button onclick="closeFindingModal()" style="position:absolute; top:16px; right:16px; background:var(--surface); border:1px solid var(--border); border-radius:50%; width:32px; height:32px; cursor:pointer; color:var(--fg-muted); display:flex; align-items:center; justify-content:center; font-size:18px; z-index:10; transition:all 0.2s;" onmouseover="this.style.color='var(--fg)';this.style.borderColor='var(--border-hover)'" onmouseout="this.style.color='var(--fg-muted)';this.style.borderColor='var(--border)'">&times;</button>
 
@@ -1781,23 +1986,57 @@
 
                 <!-- Body -->
                 <div style="padding:20px 24px;">
-                    <div id="modalDesc" style="font-size:14px; line-height:1.8; color:var(--fg-muted); white-space:pre-wrap; margin-bottom:20px;"></div>
+                    <!-- Plain-English Real Danger Box -->
+                    <div id="modalDangerBox" style="padding:14px 18px; background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.25); border-radius:var(--radius-md); margin-bottom:20px;">
+                        <div id="modalDangerHeadline" style="font-size:14px; font-weight:700; color:#ef4444; margin-bottom:6px;"></div>
+                        <div id="modalDangerAttacker" style="font-size:13px; line-height:1.6; color:var(--fg); margin-bottom:8px;"></div>
+                        <div style="display:flex; flex-wrap:wrap; gap:16px; font-size:12px; color:var(--fg-muted); border-top:1px solid rgba(239,68,68,0.15); padding-top:6px;">
+                            <span id="modalDangerImpact"></span>
+                            <span id="modalDangerFixTime"></span>
+                        </div>
+                    </div>
 
+                    <!-- Technical Description -->
+                    <div id="modalDesc" style="font-size:13.5px; line-height:1.7; color:var(--fg-muted); white-space:pre-wrap; margin-bottom:20px;"></div>
+
+                    <!-- Multi-Framework Code Remediation Tabs -->
+                    <div id="modalRemedSection" class="modal-recipes-section" style="margin-bottom:20px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <div style="font-size:13px; font-weight:700; color:#22c55e; display:flex; align-items:center; gap:6px;">
+                                <span>⚡</span> Drop-in Code Patch & WAF Defense
+                            </div>
+                            <div style="display:flex; gap:8px;">
+                                <button onclick="copyCurrentRecipe()" id="btnCopyRecipe" style="padding:4px 10px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--fg); font-size:12px; cursor:pointer;">
+                                    📋 Copy Code
+                                </button>
+                                <button onclick="copyDevTicket()" id="btnCopyTicket" style="padding:4px 10px; background:var(--accent); border:none; border-radius:var(--radius-sm); color:#fff; font-size:12px; cursor:pointer; font-weight:600;">
+                                    📤 Copy Dev Ticket
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Framework Tabs -->
+                        <div class="code-tab-nav">
+                            <button class="code-tab-btn active" id="tabBtnNode" onclick="switchCodeTab('nodejs')">Node.js / Express</button>
+                            <button class="code-tab-btn" id="tabBtnPy" onclick="switchCodeTab('python')">Python (Flask/FastAPI)</button>
+                            <button class="code-tab-btn" id="tabBtnNginx" onclick="switchCodeTab('nginx')">Nginx Hardening</button>
+                            <button class="code-tab-btn" id="tabBtnWaf" onclick="switchCodeTab('waf')">WAF Rule JSON</button>
+                        </div>
+
+                        <!-- Code Block -->
+                        <pre id="modalRecipeCode" style="margin:0; padding:12px; background:var(--bg-deep); border:1px solid var(--border); border-radius:var(--radius-sm); font-family:var(--font-mono); font-size:12px; color:var(--fg); max-height:220px; overflow-y:auto; white-space:pre-wrap; line-height:1.5;"></pre>
+                    </div>
+
+                    <!-- References -->
                     <div id="modalRefsSection" style="display:none; margin-bottom:20px;">
                         <div style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--accent); margin-bottom:8px;">References</div>
                         <ul id="modalRefs" style="list-style:none; display:flex; flex-direction:column; gap:4px;"></ul>
                     </div>
 
-                    <div id="modalRemedSection" style="display:none; padding:16px; background:rgba(34,197,94,0.06); border:1px solid rgba(34,197,94,0.15); border-radius:var(--radius-md); margin-bottom:20px;">
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; color:#22c55e; font-weight:600; font-size:13px; text-transform:uppercase; letter-spacing:0.05em;">
-                            &#x1f6e1; How to Fix
-                        </div>
-                        <pre id="modalRemed" style="white-space:pre-wrap; font-family:var(--font-sans); font-size:13px; color:var(--fg-muted); line-height:1.7; margin:0;"></pre>
-                    </div>
-
+                    <!-- Raw output -->
                     <div id="modalRawSection" style="display:none;">
-                        <div style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--fg-muted); margin-bottom:8px;">Raw Output</div>
-                        <div id="modalRaw" class="raw-output" style="max-height:200px; overflow-y:auto;"></div>
+                        <div style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--fg-muted); margin-bottom:8px;">Raw Scanner Evidence</div>
+                        <div id="modalRaw" class="raw-output" style="max-height:180px; overflow-y:auto;"></div>
                     </div>
                 </div>
 
@@ -1827,11 +2066,29 @@
                     "description": {{ finding.description | tojson }},
                     "references": {{ finding.references | tojson }},
                     "remediation": {{ (finding.remediation or '') | tojson }},
+                    "danger": {{ (finding.danger or {}) | tojson }},
+                    "recipes": {{ (finding.recipes or {}) | tojson }},
+                    "dev_ticket": {{ (finding.dev_ticket or '') | tojson }},
                     "raw_output": {{ (finding.raw_output or '')[:1000] | tojson }}
                 }{{ ',' if not loop.last }}
                 {% endfor %}
             ];
             var currentFindingIndex = 0;
+            var currentRecipeFramework = 'nodejs';
+            var currentViewMode = 'business';
+
+            function setViewMode(mode) {
+                currentViewMode = mode;
+                document.getElementById('btnViewBusiness').classList.toggle('active', mode === 'business');
+                document.getElementById('btnViewTech').classList.toggle('active', mode === 'technical');
+
+                document.querySelectorAll('.view-business-block').forEach(function(el) {
+                    el.style.display = (mode === 'business') ? 'block' : 'none';
+                });
+                document.querySelectorAll('.view-tech-block').forEach(function(el) {
+                    el.style.display = (mode === 'technical') ? 'block' : 'none';
+                });
+            }
 
             function openFindingModal(index) {
                 currentFindingIndex = index;
@@ -1853,7 +2110,17 @@
                 tags += '<span class="tag">' + f.tool_name + '</span>';
                 document.getElementById('modalTags').innerHTML = tags;
 
+                // Real Danger Box
+                var danger = f.danger || {};
+                document.getElementById('modalDangerHeadline').textContent = (danger.category_icon || '🚨') + ' ' + (danger.headline || 'Security Risk Analysis');
+                document.getElementById('modalDangerAttacker').textContent = danger.what_attacker_can_do || f.description;
+                document.getElementById('modalDangerImpact').innerHTML = '<strong>Business Impact:</strong> ' + (danger.business_impact || 'Operational Security Risk');
+                document.getElementById('modalDangerFixTime').innerHTML = '<strong>Estimated Fix:</strong> ' + (danger.estimated_fix_time || '5-15 min');
+
                 document.getElementById('modalDesc').textContent = f.description;
+
+                // Multi-Framework Recipes
+                switchCodeTab(currentRecipeFramework);
 
                 // References
                 var refsSection = document.getElementById('modalRefsSection');
@@ -1863,13 +2130,6 @@
                     f.references.forEach(function(r) { refHtml += '<li><a href="' + r + '" target="_blank" rel="noopener" style="color:var(--accent); font-size:13px; word-break:break-all;">' + r + '</a></li>'; });
                     document.getElementById('modalRefs').innerHTML = refHtml;
                 } else { refsSection.style.display = 'none'; }
-
-                // Remediation
-                var remSection = document.getElementById('modalRemedSection');
-                if (f.remediation) {
-                    remSection.style.display = 'block';
-                    document.getElementById('modalRemed').textContent = f.remediation;
-                } else { remSection.style.display = 'none'; }
 
                 // Raw output
                 var rawSection = document.getElementById('modalRawSection');
@@ -1881,6 +2141,44 @@
                 document.getElementById('modalCounter').textContent = (index + 1) + ' / ' + findingsData.length;
                 document.getElementById('findingModal').style.display = 'block';
                 document.body.style.overflow = 'hidden';
+            }
+
+            function switchCodeTab(framework) {
+                currentRecipeFramework = framework;
+                var tabs = {
+                    'nodejs': 'tabBtnNode',
+                    'python': 'tabBtnPy',
+                    'nginx': 'tabBtnNginx',
+                    'waf': 'tabBtnWaf'
+                };
+                Object.keys(tabs).forEach(function(k) {
+                    var el = document.getElementById(tabs[k]);
+                    if (el) el.classList.toggle('active', k === framework);
+                });
+
+                var f = findingsData[currentFindingIndex];
+                var recipes = f.recipes || {};
+                var code = recipes[framework] || '// No recipe available for ' + framework;
+                document.getElementById('modalRecipeCode').textContent = code;
+            }
+
+            function copyCurrentRecipe() {
+                var code = document.getElementById('modalRecipeCode').textContent;
+                navigator.clipboard.writeText(code).then(function() {
+                    var btn = document.getElementById('btnCopyRecipe');
+                    btn.textContent = '✅ Copied!';
+                    setTimeout(function() { btn.textContent = '📋 Copy Code'; }, 1800);
+                });
+            }
+
+            function copyDevTicket() {
+                var f = findingsData[currentFindingIndex];
+                var ticket = f.dev_ticket || f.title + '\n' + f.description;
+                navigator.clipboard.writeText(ticket).then(function() {
+                    var btn = document.getElementById('btnCopyTicket');
+                    btn.textContent = '✅ Ticket Copied!';
+                    setTimeout(function() { btn.textContent = '📤 Copy Dev Ticket'; }, 1800);
+                });
             }
 
             function closeFindingModal() {
@@ -1896,6 +2194,11 @@
             // Close on Escape or backdrop click
             document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeFindingModal(); });
             document.getElementById('findingModal').addEventListener('click', function(e) { if (e.target === this) closeFindingModal(); });
+
+            // Initialize default view mode
+            document.addEventListener('DOMContentLoaded', function() {
+                setViewMode('business');
+            });
         </script>
         <style>
             @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }

@@ -2754,5 +2754,62 @@ def download_pdf_report(report_id):
     return response
 
 
+@app.route("/api/report/<report_id>/waf-rules")
+def export_waf_rules(report_id):
+    if not report_id or report_id in ("undefined", "null"):
+        abort(404, description="Invalid report ID.")
+        
+    report_data, resolved_id = _resolve_report_data(report_id)
+    if not report_data:
+        abort(404, description="Report not found.")
+        
+    clean_id = resolved_id or report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "").replace(".pdf", "")
+    from intelligence.recipes import get_fix_recipes
+    findings = report_data.get("all_findings") or report_data.get("findings") or []
+    
+    waf_bundle = {
+        "report_id": clean_id,
+        "target": report_data.get("target"),
+        "generated_by": "AutoSecAudit 2.0 WAF Exporter",
+        "cloudflare_rules": [],
+        "nginx_block": "# AutoSecAudit 2.0 Hardening Block\n"
+    }
+    
+    for f in findings:
+        rec = get_fix_recipes(f)
+        try:
+            waf_bundle["cloudflare_rules"].append(json.loads(rec.get("waf", "{}")))
+        except Exception:
+            pass
+        waf_bundle["nginx_block"] += f"\n# Fix for: {f.get('title')}\n" + rec.get("nginx", "") + "\n"
+        
+    response = jsonify(waf_bundle)
+    response.headers["Content-Disposition"] = f'attachment; filename="autosec_waf_{clean_id}.json"'
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@app.route("/api/report/<report_id>/dev-ticket/<finding_id>")
+def export_dev_ticket(report_id, finding_id):
+    report_data, _ = _resolve_report_data(report_id)
+    if not report_data:
+        abort(404, description="Report not found.")
+        
+    from intelligence.recipes import generate_dev_ticket_markdown
+    findings = report_data.get("all_findings") or report_data.get("findings") or []
+    matching = next((f for f in findings if str(f.get("id")) == str(finding_id) or str(f.get("title", "")).lower() == str(finding_id).lower()), None)
+    
+    if not matching and findings:
+        matching = findings[0]
+        
+    if not matching:
+        abort(404, description="Finding not found.")
+        
+    ticket_md = generate_dev_ticket_markdown(matching, target_url=str(report_data.get("target", "")))
+    response = Response(ticket_md, mimetype="text/markdown")
+    response.headers["Content-Disposition"] = f'attachment; filename="dev_ticket_{finding_id}.md"'
+    return response
+
+
 if __name__ == "__main__":
     app.run(debug=config.DEBUG, host="0.0.0.0", port=5000)

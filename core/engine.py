@@ -252,3 +252,13 @@ class Engine:
         save_json(report.to_dict(), str(file_path))
         logger.info(f"Report saved to {file_path}")
         return str(file_path)
+
+    def run(self, target: str) -> Report:
+        """Convenience method to load plugins, set target, execute scan, and generate report."""
+        self.load_plugins()
+        self.set_target(target)
+        self.run_plugins()
+        report = self.generate_report()
+        self.save_report(report)
+        return report
+
