@@ -14,7 +14,7 @@ import config
 import core.auth as auth
 from core.engine import Engine
 from core.models import Report
-from core.utils import load_json, is_target_allowed
+from core.utils import load_json, is_target_allowed, check_target_reachable
 from reports.generator import ReportGenerator
 from intelligence.correlator import Correlator
 from intelligence.enricher import Enricher
@@ -1103,7 +1103,7 @@ HTML_FORM = """
                     <span class="status-pill-text">ENGINE READY</span>
                 </div>
                 <div class="card-meta-chips">
-                    <span class="meta-chip">14 PLUGINS</span>
+                    <span class="meta-chip">19 PLUGINS</span>
                     <span class="meta-chip meta-chip-mode">MOCK DEMO</span>
                 </div>
             </div>
@@ -1205,6 +1205,13 @@ HTML_FORM = """
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <div style="margin-top: 14px; margin-bottom: 6px; display: flex; align-items: center; justify-content: flex-start;">
+                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--fg-muted); cursor: pointer; user-select: none;">
+                        <input type="checkbox" name="skip_reachability" value="true" />
+                        <span>Simulate offline demo (skip target liveness probe)</span>
+                    </label>
                 </div>
 
                 <button type="submit" class="btn-primary btn-launch-scan">
@@ -2215,7 +2222,7 @@ def history():
 # ---------------------------------------------------------------------------
 # SSE: Async scan with real-time progress streaming
 # ---------------------------------------------------------------------------
-def _run_scan_background(scan_id: str, target: str, previous_path: str = None, openapi_path: str = None, profile: str = "full"):
+def _run_scan_background(scan_id: str, target: str, previous_path: str = None, openapi_path: str = None, profile: str = "full", skip_reachability: bool = False):
     """Run a scan in a background thread, pushing progress events to the queue."""
     job = scan_jobs[scan_id]
     q = job["progress_queue"]
@@ -2238,6 +2245,12 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
         emit("init", f"Initializing scan engine [{profile.upper()} profile]...", 5)
         engine = Engine(profile=profile)
         engine.load_plugins()
+
+        if not skip_reachability and not engine.mock_mode:
+            reachable, reach_msg = check_target_reachable(target, timeout=2.5)
+            if not reachable:
+                emit("error", f"Target is offline or unreachable: {reach_msg}", 0)
+                raise ConnectionError(f"Target is offline: {reach_msg}")
 
         if not engine.set_target(target):
             raise ValueError("Invalid target URL")
@@ -2352,6 +2365,15 @@ def scan_async():
     if not allowed:
         return jsonify({"error": reason}), 403
 
+    skip_reachability = request.form.get("skip_reachability", "false").lower() in ("true", "1")
+    if not skip_reachability:
+        reachable, reach_msg = check_target_reachable(target, timeout=2.5)
+        if not reachable:
+            logger.warning(f"Scan rejected - target unreachable: {target} ({reach_msg})")
+            return jsonify({
+                "error": f"Target is offline or unreachable: {reach_msg} Please verify the URL and ensure the service is running before scanning."
+            }), 400
+
     previous_path = None
     openapi_path = None
 
@@ -2387,7 +2409,7 @@ def scan_async():
 
         thread = threading.Thread(
             target=_run_scan_background,
-            args=(scan_id, target, previous_path, openapi_path, profile),
+            args=(scan_id, target, previous_path, openapi_path, profile, skip_reachability),
             daemon=True,
         )
         thread.start()
@@ -2461,6 +2483,13 @@ def scan():
     if not allowed:
         logger.warning(f"Blocked scan attempt on: {target}")
         return render_template_string(HTML_BLOCKED, reason=reason), 403
+
+    skip_reachability = request.form.get("skip_reachability", "false").lower() in ("true", "1")
+    if not skip_reachability:
+        reachable, reach_msg = check_target_reachable(target, timeout=2.5)
+        if not reachable:
+            logger.warning(f"Synchronous scan blocked - target unreachable: {target} ({reach_msg})")
+            return f"Target is offline or unreachable: {reach_msg} Please ensure your application is running before scanning.", 400
     
     import tempfile
 

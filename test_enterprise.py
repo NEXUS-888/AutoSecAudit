@@ -68,6 +68,7 @@ class TestEnterpriseFeatures(unittest.TestCase):
     def test_cicd_gating_fail(self):
         with patch("main.validate_target", return_value=True), \
              patch("main.is_target_allowed", return_value=(True, "")), \
+             patch("main.check_target_reachable", return_value=(True, "Target responded with HTTP 200")), \
              patch("main.Engine") as mock_engine_cls:
             
             mock_engine = MagicMock()

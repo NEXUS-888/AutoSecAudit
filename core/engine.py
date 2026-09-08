@@ -8,7 +8,7 @@ from datetime import datetime
 
 import config
 from core.models import ScanResult, Finding, Report
-from core.utils import validate_target, normalize_target, get_timestamp, save_json
+from core.utils import validate_target, normalize_target, get_timestamp, save_json, check_target_reachable
 from core.crawler import WebCrawler
 
 logger = logging.getLogger(__name__)
@@ -84,13 +84,20 @@ class Engine:
         except ImportError:
             return False
 
-    def set_target(self, target: str) -> bool:
-        """Set and validate the target."""
+    def set_target(self, target: str, check_reachable: bool = False) -> bool:
+        """Set and validate the target. Optionally verify target reachability."""
         if not validate_target(target):
             logger.error(f"Invalid target: {target}")
             return False
         
-        self.target = normalize_target(target)
+        normalized = normalize_target(target)
+        if check_reachable and not self.mock_mode:
+            reachable, reason = check_target_reachable(normalized)
+            if not reachable:
+                logger.error(f"Target unreachable: {normalized} - {reason}")
+                return False
+
+        self.target = normalized
         logger.info(f"Target set: {self.target}")
         return True
 
@@ -270,12 +277,13 @@ class Engine:
         logger.info(f"Report saved to {file_path}")
         return str(file_path)
 
-    def run(self, target: str, profile: Optional[str] = None) -> Report:
+    def run(self, target: str, profile: Optional[str] = None, check_reachable: bool = True) -> Report:
         """Convenience method to load plugins, set target, execute scan, and generate report."""
         if profile:
             self.profile = profile.lower()
         self.load_plugins(profile=self.profile)
-        self.set_target(target)
+        if not self.set_target(target, check_reachable=check_reachable):
+            raise ConnectionError(f"Target '{target}' is invalid or unreachable.")
         self.run_plugins()
         report = self.generate_report()
         self.save_report(report)

@@ -80,6 +80,7 @@ from main import run_scan
 from unittest.mock import patch, MagicMock
 with patch("main.validate_target", return_value=True), \
      patch("main.is_target_allowed", return_value=(True, "")), \
+     patch("main.check_target_reachable", return_value=(True, "Online")), \
      patch("main.Engine") as mock_engine_cls:
     mock_eng = MagicMock()
     mock_eng.load_plugins.return_value = 14

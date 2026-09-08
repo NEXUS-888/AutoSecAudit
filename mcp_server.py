@@ -135,6 +135,17 @@ def handle_scan(args: Dict[str, Any]) -> Dict[str, Any]:
     target = args.get("target", "http://localhost:3000")
     mock_mode = args.get("mock", True)
     profile = args.get("profile", "full")
+    skip_reachability = args.get("skip_reachability", False)
+
+    from core.utils import check_target_reachable
+    if not skip_reachability and not mock_mode:
+        reachable, reach_msg = check_target_reachable(target)
+        if not reachable:
+            return {
+                "status": "error",
+                "error": f"Target is offline or unreachable: {reach_msg} Please ensure the service is running before scanning.",
+                "target": target,
+            }
 
     logger.info(f"Starting MCP scan for target: {target} (mock={mock_mode}, profile={profile})")
     engine = Engine(mock_mode=mock_mode, profile=profile)

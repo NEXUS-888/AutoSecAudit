@@ -164,3 +164,57 @@ def is_target_allowed(target: str) -> tuple:
         f"Scanning third-party websites without written permission is illegal."
     )
 
+
+def check_target_reachable(target: str, timeout: float = 2.5) -> Tuple[bool, str]:
+    """Check if the target host and port are actually listening and reachable.
+
+    Returns:
+        (is_reachable: bool, message: str)
+    """
+    import urllib.parse
+    import socket
+    import requests
+
+    clean = target.strip()
+    if not clean.startswith(("http://", "https://")):
+        clean = f"http://{clean}"
+
+    parsed = urllib.parse.urlparse(clean)
+    hostname = (parsed.hostname or "").lower()
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+
+    if not hostname:
+        return False, "Could not determine hostname from target URL."
+
+    # Fast HTTP probe
+    try:
+        headers = {"User-Agent": getattr(config, "USER_AGENT", "AutoSecAudit/2.0")}
+        resp = requests.head(clean, timeout=timeout, allow_redirects=True, verify=False, headers=headers)
+        if resp.status_code == 405:  # Method Not Allowed for HEAD
+            resp = requests.get(clean, timeout=timeout, allow_redirects=True, verify=False, headers=headers)
+        return True, f"Target responded with HTTP {resp.status_code}"
+    except requests.exceptions.SSLError:
+        return True, "Target is listening (SSL certificate observed)"
+    except requests.exceptions.ConnectionError as e:
+        err_str = str(e)
+        if "Connection refused" in err_str or "10061" in err_str or "WSAECONNREFUSED" in err_str or "timed out" in err_str:
+            return False, f"Connection refused on {hostname}:{port}. No active service is listening."
+        elif "getaddrinfo failed" in err_str or "11001" in err_str or "Name or service not known" in err_str:
+            return False, f"DNS resolution failed for '{hostname}'. Host does not exist."
+        return False, f"Could not connect to {hostname}:{port}: Connection failed."
+    except requests.exceptions.Timeout:
+        return False, f"Connection to {hostname}:{port} timed out after {timeout}s."
+    except Exception as e:
+        # Fallback: Raw TCP socket probe
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            res = sock.connect_ex((hostname, port))
+            sock.close()
+            if res == 0:
+                return True, f"TCP port {port} is open and listening"
+            return False, f"TCP connection to {hostname}:{port} failed (code {res})"
+        except Exception as sock_err:
+            return False, f"Could not reach {hostname}:{port}: {str(e)}"
+
+

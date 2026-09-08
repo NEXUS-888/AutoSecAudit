@@ -9,7 +9,7 @@ from typing import Optional
 import config
 from core.engine import Engine
 from core.models import Report, Finding
-from core.utils import load_json, validate_target, is_target_allowed
+from core.utils import load_json, validate_target, is_target_allowed, check_target_reachable
 from reports.generator import ReportGenerator
 from intelligence.correlator import Correlator
 from intelligence.enricher import Enricher
@@ -51,7 +51,7 @@ def prompt_mode_selection(default_mock: bool = True) -> bool:
 
 def run_scan(target: str, previous_report: str = None, output_json: str = None, output_html: str = None,
              fail_on: str = None, webhook: str = None, openapi: str = None, headers: str = None,
-             mock_mode: Optional[bool] = None, profile: str = "full"):
+             mock_mode: Optional[bool] = None, profile: str = "full", skip_reachability: bool = False):
     
     if mock_mode is not None:
         config.MOCK_MODE = mock_mode
@@ -70,6 +70,19 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
         print(f"\n[BLOCKED] SCAN BLOCKED\n")
         print(reason)
         return 1
+
+    # Pre-flight reachability check
+    if not skip_reachability:
+        print(f"[PRE-FLIGHT] Checking target reachability for {target}...")
+        reachable, reach_msg = check_target_reachable(target)
+        if not reachable:
+            logger.error(f"Target unreachable: {target} ({reach_msg})")
+            print(f"\n[TARGET OFFLINE] Could not connect to target '{target}'.")
+            print(f"Reason: {reach_msg}")
+            print("Please ensure your application server is started and accessible before scanning.")
+            print("(To run an offline simulation in demo mode, pass --skip-reachability-check)\n")
+            return 1
+        print(f"[PRE-FLIGHT] Target online: {reach_msg}")
     
     # Process custom headers
     header_dict = {}
@@ -267,6 +280,7 @@ def main():
     scan_parser.add_argument("--openapi", help="Path or URL to OpenAPI/Swagger spec")
     scan_parser.add_argument("--headers", help="Custom HTTP headers (format 'Header1: val1; Header2: val2')")
     scan_parser.add_argument("--profile", choices=["full", "owasp", "api", "recon"], default="full", help="Select scan profile: full (all), owasp (OWASP Top 10), api (API Security), recon (Passive Recon)")
+    scan_parser.add_argument("--skip-reachability-check", action="store_true", help="Skip pre-flight target reachability check (for offline demo testing)")
     scan_mode_group = scan_parser.add_mutually_exclusive_group()
     scan_mode_group.add_argument("--real", action="store_true", help="Force REAL active scanning mode")
     scan_mode_group.add_argument("--mock", action="store_true", help="Force MOCK demo mode")
@@ -306,7 +320,8 @@ def main():
 
     if args.command == "scan":
         profile = getattr(args, "profile", "full")
-        return run_scan(args.target, args.previous, args.json, args.html, args.fail_on, args.webhook, args.openapi, args.headers, mock_mode=config.MOCK_MODE, profile=profile)
+        skip_reach = getattr(args, "skip_reachability_check", False)
+        return run_scan(args.target, args.previous, args.json, args.html, args.fail_on, args.webhook, args.openapi, args.headers, mock_mode=config.MOCK_MODE, profile=profile, skip_reachability=skip_reach)
 
     elif args.command == "plugins":
         list_plugins()
