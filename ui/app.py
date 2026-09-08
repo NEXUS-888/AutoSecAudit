@@ -15,7 +15,7 @@ import core.auth as auth
 from core.engine import Engine
 from core.models import Report
 from core.utils import load_json, is_target_allowed, check_target_reachable
-from reports.generator import ReportGenerator
+from reports.generator import ReportGenerator, _enrich_report_data
 from intelligence.correlator import Correlator
 from intelligence.enricher import Enricher
 from intelligence.compliance import ComplianceMapper
@@ -2734,6 +2734,8 @@ def view_report(report_id):
                     return f.read()
         return render_template_string(HTML_REPORT_NOT_FOUND, report_id=report_id), 404
     
+    report_data = _enrich_report_data(report_data)
+
     template_path = Path(__file__).parent.parent / "reports" / "templates" / "report.html"
     with open(template_path, "r", encoding="utf-8") as f:
         template_content = f.read()

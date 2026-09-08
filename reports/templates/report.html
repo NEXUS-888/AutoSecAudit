@@ -1340,6 +1340,8 @@
             .status-badge::before {
                 box-shadow: none;
             }
+        }
+
         /* ── Executive Threat Matrix & Dual-View ─────────────────── */
         .threat-matrix-grid {
             display: grid;
@@ -1450,32 +1452,59 @@
         }
         .code-tab-nav {
             display: flex;
-            gap: 6px;
+            gap: 8px;
             border-bottom: 1px solid var(--border);
-            margin-bottom: 12px;
-            padding-bottom: 6px;
+            margin-bottom: 14px;
+            padding-bottom: 8px;
+            overflow-x: auto;
         }
         .code-tab-btn {
-            padding: 4px 10px;
-            background: transparent;
-            border: 1px solid transparent;
+            appearance: none;
+            -webkit-appearance: none;
+            padding: 6px 14px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
             border-radius: var(--radius-sm);
             color: var(--fg-muted);
             font-size: 12px;
             font-family: var(--font-mono);
+            font-weight: 500;
             cursor: pointer;
-            transition: all 0.15s;
+            transition: all 0.15s ease;
+            outline: none;
+            white-space: nowrap;
+        }
+        .code-tab-btn:hover {
+            color: var(--fg);
+            border-color: var(--border-hover);
+            background: var(--surface-hover);
         }
         .code-tab-btn.active {
-            background: var(--surface-active);
-            border-color: var(--border);
-            color: var(--fg);
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #ffffff;
+            font-weight: 600;
+            box-shadow: 0 2px 8px var(--accent-glow);
         }
         [data-theme="light"] .threat-card { background: #ffffff; border-color: #e2e8f0; }
         [data-theme="light"] .posture-grade-banner { background: #f8fafc; border-color: #e2e8f0; }
         [data-theme="light"] .plain-danger-box { background: #fff5f5; border-color: #fecaca; }
         [data-theme="light"] .view-mode-toggle { background: #f1f5f9; border-color: #cbd5e1; }
         [data-theme="light"] .view-toggle-btn.active { background: #4f46e5; color: #ffffff; }
+        [data-theme="light"] .code-tab-btn {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #475569;
+        }
+        [data-theme="light"] .code-tab-btn:hover {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+        [data-theme="light"] .code-tab-btn.active {
+            background: #4f46e5;
+            border-color: #4f46e5;
+            color: #ffffff;
+        }
     </style>
 </head>
 <body>
@@ -1608,7 +1637,7 @@
             </div>
 
             <!-- Distribution bar -->
-            {% set total = report.summary.total if report.summary.total > 0 else 1 %}
+            {% set total = (report.summary.total if (report.summary.total is defined and report.summary.total > 0) else (report.all_findings | length if (report.all_findings | length) > 0 else 1)) %}
             <div class="dist-bar-wrap reveal">
                 <div class="dist-bar-label">Severity Distribution</div>
                 <div class="dist-bar">
@@ -2053,23 +2082,23 @@
             var findingsData = [
                 {% for finding in report.all_findings %}
                 {
-                    "title": {{ finding.title | tojson }},
-                    "severity": {{ finding.severity | tojson }},
+                    "title": {{ (finding.title or '') | tojson }},
+                    "severity": {{ (finding.severity or 'INFO') | tojson }},
                     "confidence": {{ (finding.confidence or 'medium') | tojson }},
-                    "id": {{ finding.id | tojson }},
-                    "host": {{ finding.host | tojson }},
-                    "port": {{ finding.port | tojson }},
+                    "id": {{ (finding.id or '') | tojson }},
+                    "host": {{ (finding.host or '') | tojson }},
+                    "port": {{ (finding.port or '') | tojson }},
                     "tool_name": {{ (finding.tool_name or 'N/A') | tojson }},
                     "owasp_tag": {{ (finding.owasp_tag or '') | tojson }},
                     "cve_id": {{ (finding.cve_id or '') | tojson }},
                     "cvss_score": {{ (finding.cvss_score or '') | tojson }},
-                    "description": {{ finding.description | tojson }},
-                    "references": {{ finding.references | tojson }},
+                    "description": {{ (finding.description or '') | tojson }},
+                    "references": {{ (finding.references or []) | tojson }},
                     "remediation": {{ (finding.remediation or '') | tojson }},
                     "danger": {{ (finding.danger or {}) | tojson }},
                     "recipes": {{ (finding.recipes or {}) | tojson }},
                     "dev_ticket": {{ (finding.dev_ticket or '') | tojson }},
-                    "raw_output": {{ (finding.raw_output or '')[:1000] | tojson }}
+                    "raw_output": {{ ((finding.raw_output or '')[:1000]) | tojson }}
                 }{{ ',' if not loop.last }}
                 {% endfor %}
             ];
@@ -2157,8 +2186,15 @@
                 });
 
                 var f = findingsData[currentFindingIndex];
-                var recipes = f.recipes || {};
-                var code = recipes[framework] || '// No recipe available for ' + framework;
+                var recipes = (f && f.recipes) || {};
+                var code = recipes[framework];
+                if (!code) {
+                    if (f && f.remediation) {
+                        code = '// Recommended Remediation:\n' + f.remediation;
+                    } else {
+                        code = '// No specific recipe available for ' + framework;
+                    }
+                }
                 document.getElementById('modalRecipeCode').textContent = code;
             }
 
