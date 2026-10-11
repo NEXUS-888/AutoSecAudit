@@ -1,6 +1,9 @@
 import re
 import json
 import logging
+import socket
+import ipaddress
+import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from datetime import datetime
@@ -13,19 +16,72 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _is_valid_hostname(hostname: str) -> bool:
+    """Check if hostname is a valid IP literal or valid DNS hostname label(s)."""
+    if not hostname or len(hostname) > 253:
+        return False
+    try:
+        ipaddress.ip_address(hostname)
+        return True
+    except ValueError:
+        pass
+    labels = hostname.split(".")
+    for label in labels:
+        if not label or len(label) > 63:
+            return False
+        if not re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$", label):
+            return False
+    return True
+
+
 def validate_target(target: str) -> bool:
-    """Validate target is a valid URL or IP address."""
-    ip_pattern = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
-    url_pattern = r"^(?:https?://)?(?:[\w-]+\.)+[\w-]+(?::\d+)?(?:/.*)?$"
-    localhost_pattern = r"^(?:https?://)?(?:localhost|127\.0\.0\.1)(?::\d+)?(?:/.*)?$"
-    
-    if re.match(ip_pattern, target):
-        return True
-    if re.match(url_pattern, target):
-        return True
-    if re.match(localhost_pattern, target):
-        return True
-    return False
+    """Validate target is a valid URL or host/IP.
+
+    Accepts http/https URLs or bare host/IP with optional port/path.
+    Scheme must be http or https (if none, http is assumed).
+    Hostname must be present and valid.
+    Port, if specified, must be between 1 and 65535.
+    IPv6 literals (e.g. [::1]) are supported.
+    """
+    if not target or not isinstance(target, str):
+        return False
+    clean = target.strip()
+    if not clean:
+        return False
+
+    if "://" in clean:
+        scheme, _ = clean.split("://", 1)
+        if scheme.lower() not in ("http", "https"):
+            return False
+        to_parse = clean
+    else:
+        to_parse = f"http://{clean}"
+
+    try:
+        parsed = urllib.parse.urlsplit(to_parse)
+    except Exception:
+        return False
+
+    if parsed.scheme.lower() not in ("http", "https"):
+        return False
+
+    try:
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        # e.g. Port out of range 0-65535
+        return False
+
+    if not hostname:
+        return False
+
+    if not _is_valid_hostname(hostname):
+        return False
+
+    if port is not None and not (1 <= port <= 65535):
+        return False
+
+    return True
 
 
 def normalize_target(target: str) -> str:
@@ -90,79 +146,74 @@ def format_severity(severity: str) -> str:
 # Target restriction — only allow scanning of authorized targets
 # ---------------------------------------------------------------------------
 
-# Domains explicitly allowed for security testing (intentionally vulnerable apps)
-ALLOWED_DOMAINS = {
-    "localhost",
-    "127.0.0.1",
-    "0.0.0.0",
-    "juice-shop",
-    "dvwa",
-    "metasploitable",
-    "hackthebox",
-    "tryhackme",
-    "vulnhub",
-    "pentesterlab",
-    "webgoat",
-    "bwapp",
-}
 
-# Private IP ranges (RFC 1918)
-PRIVATE_IP_PREFIXES = (
-    "10.",
-    "172.16.", "172.17.", "172.18.", "172.19.",
-    "172.20.", "172.21.", "172.22.", "172.23.",
-    "172.24.", "172.25.", "172.26.", "172.27.",
-    "172.28.", "172.29.", "172.30.", "172.31.",
-    "192.168.",
-)
-
-
-def is_target_allowed(target: str) -> tuple:
+def is_target_allowed(target: str) -> Tuple[bool, str]:
     """Check if the target is allowed for scanning.
+
+    Only targets where every resolved IP is a private (RFC 1918 / RFC 4193)
+    or loopback address (IPv4 and IPv6) are permitted.
 
     Returns:
         (allowed: bool, reason: str)
     """
-    import urllib.parse
+    if not target or not isinstance(target, str):
+        return False, "Target is empty or invalid."
 
-    # Normalize
     clean = target.strip()
-    if not clean.startswith(("http://", "https://")):
-        clean = f"http://{clean}"
+    if "://" in clean:
+        to_parse = clean
+    else:
+        to_parse = f"http://{clean}"
 
-    parsed = urllib.parse.urlparse(clean)
-    hostname = (parsed.hostname or "").lower()
+    try:
+        parsed = urllib.parse.urlsplit(to_parse)
+        hostname = parsed.hostname
+    except Exception as e:
+        return False, f"Could not parse hostname from target: {e}"
 
     if not hostname:
         return False, "Could not parse hostname from target."
 
-    # 1. Check if hostname is in the allowed list
-    if hostname in ALLOWED_DOMAINS:
-        return True, "Allowed target."
+    # 1. IP literal check
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback:
+            return True, f"IP address '{hostname}' is allowed (private/loopback)."
+        return False, (
+            f"Scanning public IP '{hostname}' is not allowed. "
+            f"AutoSecAudit only permits private networks and loopback targets."
+        )
+    except ValueError:
+        pass
 
-    # 2. Check if hostname ends with an allowed domain (e.g. juice-shop.local)
-    for allowed in ALLOWED_DOMAINS:
-        if hostname.endswith(f".{allowed}") or hostname.endswith(f"-{allowed}"):
-            return True, "Allowed target."
+    # 2. Hostname resolution
+    try:
+        addrinfo = socket.getaddrinfo(hostname, None)
+    except (socket.gaierror, socket.herror) as e:
+        return False, f"Cannot resolve hostname '{hostname}': {e}"
+    except Exception as e:
+        return False, f"Resolution error for '{hostname}': {e}"
 
-    # 3. Check private IP ranges
-    if hostname.startswith(PRIVATE_IP_PREFIXES):
-        return True, "Private network target."
+    if not addrinfo:
+        return False, f"Hostname '{hostname}' did not resolve to any addresses."
 
-    # 4. Check loopback
-    if hostname.startswith("127.") or hostname == "::1":
-        return True, "Loopback address."
+    resolved_ips = []
+    for res in addrinfo:
+        ip_str = res[4][0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            resolved_ips.append(ip)
+        except ValueError:
+            return False, f"Invalid resolved IP address: {ip_str}"
 
-    # 5. Everything else is blocked
-    return False, (
-        f"Scanning '{hostname}' is not allowed. "
-        f"AutoSecAudit only permits scanning of:\n"
-        f"  • localhost / 127.0.0.1\n"
-        f"  • Private network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)\n"
-        f"  • Known practice targets (Juice Shop, DVWA, WebGoat, etc.)\n"
-        f"\n"
-        f"Scanning third-party websites without written permission is illegal."
-    )
+    for ip in resolved_ips:
+        if not (ip.is_private or ip.is_loopback):
+            return False, (
+                f"Hostname '{hostname}' resolves to public IP {ip}. "
+                f"AutoSecAudit only permits private networks and loopback targets."
+            )
+
+    return True, f"Hostname '{hostname}' resolves to allowed private/loopback addresses."
 
 
 def check_target_reachable(target: str, timeout: float = 2.5) -> Tuple[bool, str]:

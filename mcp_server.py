@@ -137,7 +137,15 @@ def handle_scan(args: Dict[str, Any]) -> Dict[str, Any]:
     profile = args.get("profile", "full")
     skip_reachability = args.get("skip_reachability", False)
 
-    from core.utils import check_target_reachable
+    from core.utils import check_target_reachable, is_target_allowed
+    allowed, allow_msg = is_target_allowed(target)
+    if not allowed:
+        return {
+            "status": "error",
+            "error": f"Target not allowed: {allow_msg}",
+            "target": target,
+        }
+
     if not skip_reachability and not mock_mode:
         reachable, reach_msg = check_target_reachable(target)
         if not reachable:

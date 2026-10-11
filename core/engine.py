@@ -8,7 +8,14 @@ from datetime import datetime
 
 import config
 from core.models import ScanResult, Finding, Report
-from core.utils import validate_target, normalize_target, get_timestamp, save_json, check_target_reachable
+from core.utils import (
+    validate_target,
+    normalize_target,
+    get_timestamp,
+    save_json,
+    check_target_reachable,
+    is_target_allowed,
+)
 from core.crawler import WebCrawler
 
 logger = logging.getLogger(__name__)
@@ -105,6 +112,11 @@ class Engine:
         """Set and validate the target. Optionally verify target reachability."""
         if not validate_target(target):
             logger.error(f"Invalid target: {target}")
+            return False
+
+        allowed, reason = is_target_allowed(target)
+        if not allowed:
+            logger.error(f"Target not allowed: {target} - {reason}")
             return False
         
         normalized = normalize_target(target)

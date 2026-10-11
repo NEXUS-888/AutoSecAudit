@@ -24,7 +24,7 @@ from intelligence.compliance import ComplianceMapper
 class TestFullPipeline(unittest.TestCase):
     """Test the complete scan-to-report pipeline in mock mode."""
 
-    TARGET = "http://testsite.example.com:3000"
+    TARGET = "http://localhost:3000"
 
     def setUp(self):
         self.engine = Engine(mock_mode=True)
@@ -57,7 +57,7 @@ class TestFullPipeline(unittest.TestCase):
         report = self.engine.generate_report()
 
         self.assertIsInstance(report, Report)
-        self.assertEqual(report.target, f"http://testsite.example.com:3000")
+        self.assertEqual(report.target, self.TARGET)
         self.assertGreater(len(report.all_findings), 0)
         self.assertIn("total", report.summary)
         self.assertEqual(report.summary["total"], len(report.all_findings))
