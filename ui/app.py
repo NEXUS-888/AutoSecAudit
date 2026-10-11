@@ -160,24 +160,133 @@ def _safe_next_url(target: Optional[str]) -> str:
     return target
 
 # ---------------------------------------------------------------------------
-# SSE Scan Progress: in-memory job store
+# SSE Scan Progress: in-memory job store & bounded executor
 # ---------------------------------------------------------------------------
-scan_jobs = {}  # {scan_id: {"status", "target", "progress_queue", "report_name", "error"}}
+import concurrent.futures
+
+scan_jobs = {}  # {scan_id: {"status", "target", "profile", "events", "condition", "progress_queue", "report_name", "error", "created_at"}}
 scan_jobs_lock = threading.Lock()
 
-SCAN_JOB_TTL_SECONDS = 3600  # 1 hour
+SCAN_JOB_TTL_SECONDS = int(os.environ.get("AUTOSEC_SCAN_JOB_TTL", "3600"))
+
+
+def _get_max_concurrent_scans() -> int:
+    val = app.config.get("AUTOSEC_MAX_CONCURRENT_SCANS")
+    if val is not None:
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            pass
+    env_val = os.environ.get("AUTOSEC_MAX_CONCURRENT_SCANS")
+    if env_val is not None:
+        try:
+            return int(env_val)
+        except (ValueError, TypeError):
+            pass
+    return 2
+
+
+class BoundedScanExecutor:
+    """Bounded executor enforcing AUTOSEC_MAX_CONCURRENT_SCANS limit."""
+
+    @property
+    def max_workers(self) -> int:
+        return _get_max_concurrent_scans()
+
+    def _is_job_active(self, job: dict) -> bool:
+        if job.get("status") in ("starting", "running"):
+            t = job.get("thread")
+            if t is None or getattr(t, "ident", None) is None or t.is_alive():
+                return True
+        return False
+
+    def active_count(self) -> int:
+        with scan_jobs_lock:
+            return sum(1 for j in scan_jobs.values() if self._is_job_active(j))
+
+    def can_accept(self) -> bool:
+        return self.active_count() < self.max_workers
+
+    def try_reserve(self, scan_id: str, job_dict: dict) -> tuple:
+        """Atomically check capacity and register job if capacity is available.
+        Returns (accepted, active_count, max_workers).
+        """
+        with scan_jobs_lock:
+            count = sum(1 for j in scan_jobs.values() if self._is_job_active(j))
+            limit = self.max_workers
+            if count >= limit:
+                return False, count, limit
+            scan_jobs[scan_id] = job_dict
+            return True, count + 1, limit
+
+    def submit(self, job_dict: dict, fn, *args, **kwargs) -> threading.Thread:
+        t = threading.Thread(target=fn, args=args, kwargs=kwargs, daemon=True)
+        t.start()
+        job_dict["thread"] = t
+        return t
+
+
+_scan_executor = BoundedScanExecutor()
+
+
+def _emit_job_event(job: dict, stage: str, message: str, progress: int = 0, detail: str = "", status: str = None):
+    """Append event to the job's append-only event list and notify all waiting SSE subscribers."""
+    rep_name = detail if stage == "done" else (job.get("report_name") if job else None)
+    cond = job.get("condition")
+    if cond is None:
+        if status and job is not None:
+            job["status"] = status
+        return
+    with cond:
+        if status:
+            job["status"] = status
+        events = job.setdefault("events", [])
+        event_id = len(events) + 1
+        event = {
+            "id": event_id,
+            "stage": stage,
+            "message": message,
+            "progress": progress,
+            "percent": progress,
+            "detail": detail,
+            "report_name": rep_name,
+        }
+        events.append(event)
+        cond.notify_all()
+
 
 def _cleanup_stale_jobs():
-    """Remove scan jobs older than TTL to prevent memory leaks."""
+    """Remove any jobs older than TTL; jobs running longer than 2 x SCAN_TIMEOUT are marked error."""
     now = time.time()
+    scan_timeout = getattr(config, "SCAN_TIMEOUT", 300)
+    max_run_time = 2 * scan_timeout
+    ttl = app.config.get("AUTOSEC_SCAN_JOB_TTL", SCAN_JOB_TTL_SECONDS)
+
     with scan_jobs_lock:
-        stale = [sid for sid, job in list(scan_jobs.items())
-                 if job.get("created_at", 0) < now - SCAN_JOB_TTL_SECONDS
-                 and job.get("status") in ("done", "error")]
-        for sid in stale:
+        to_delete = []
+        for sid, job in list(scan_jobs.items()):
+            created = job.get("created_at", 0)
+            status = job.get("status")
+
+            # 1. Stuck jobs running longer than 2 x SCAN_TIMEOUT are marked error
+            if status in ("starting", "running") and (now - created) > max_run_time:
+                job["error"] = f"Scan timed out after {int(now - created)}s (exceeded 2x SCAN_TIMEOUT)"
+                _emit_job_event(
+                    job,
+                    "error",
+                    f"Scan timed out (exceeded {max_run_time}s)",
+                    progress=0,
+                    status="error"
+                )
+
+            # 2. TTL cleanup: remove any job older than TTL
+            if (now - created) > ttl:
+                to_delete.append(sid)
+
+        for sid in to_delete:
             del scan_jobs[sid]
-    if stale:
-        logger.info(f"Cleaned up {len(stale)} stale scan job(s)")
+    if to_delete:
+        logger.info(f"Cleaned up {len(to_delete)} stale scan job(s)")
 
 
 # ---------------------------------------------------------------------------
@@ -1238,7 +1347,7 @@ HTML_FORM = """
                 </div>
             </div>
 
-            <form id="scanForm" action="/scan" method="POST" enctype="multipart/form-data">
+            <form id="scanForm" action="/scan/async" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <!-- Execution Mode Selector (Demo vs Real Active Scan) -->
                 <div style="margin-bottom: 20px;">
@@ -2477,24 +2586,20 @@ def history():
 # SSE: Async scan with real-time progress streaming
 # ---------------------------------------------------------------------------
 def _run_scan_background(scan_id: str, target: str, previous_path: str = None, openapi_path: str = None, profile: str = "full", skip_reachability: bool = False, login_user: str = None, login_pass: str = None, login_url: str = None, is_demo: bool = True):
-    """Run a scan in a background thread, pushing progress events to the queue."""
+    """Run a scan in a background thread, pushing progress events to subscribers."""
     with scan_jobs_lock:
         job = scan_jobs.get(scan_id)
     if not job:
         logger.warning(f"Scan job {scan_id} not found in store, aborting background scan")
         return
-    q = job["progress_queue"]
 
-    def emit(stage, message, progress=0, detail=""):
-        rep_name = detail if stage == "done" else (job.get("report_name") if job else None)
-        q.put({
-            "stage": stage,
-            "message": message,
-            "progress": progress,
-            "percent": progress,
-            "detail": detail,
-            "report_name": rep_name
-        })
+    def emit(stage, message, progress=0, detail="", status=None):
+        if job.get("status") == "error" and status != "error":
+            return
+        _emit_job_event(job, stage, message, progress, detail, status=status)
+
+    def check_cancelled():
+        return job.get("status") == "error"
 
     try:
         job["status"] = "running"
@@ -2509,7 +2614,7 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
         if not is_demo and not skip_reachability:
             reachable, reach_msg = check_target_reachable(target, timeout=2.5)
             if not reachable:
-                emit("error", f"Target is offline or unreachable: {reach_msg}", 0)
+                emit("error", f"Target is offline or unreachable: {reach_msg}", 0, status="error")
                 raise ConnectionError(f"Target is offline: {reach_msg}")
 
         if not engine.set_target(target):
@@ -2532,12 +2637,20 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
             engine.set_previous_report(previous_path)
             emit("init", "Previous report loaded for delta comparison", 12)
 
+        if check_cancelled():
+            logger.warning(f"Scan {scan_id} cancelled or timed out before crawl; halting.")
+            return
+
         # 2. Crawling (happens inside run_plugins, but we show progress)
         emit("crawling", "Crawling target for endpoints...", 15)
 
         # 3. Run plugins
         emit("scanning", "Starting plugin execution...", 20)
         engine.run_plugins()
+
+        if check_cancelled():
+            logger.warning(f"Scan {scan_id} cancelled or timed out after plugins; halting.")
+            return
 
         # If automated auth was attempted, emit status
         if engine.auth_result:
@@ -2559,6 +2672,9 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
         # 4. Generate report
         emit("processing", "Generating report...", 60)
         report = engine.generate_report()
+
+        if check_cancelled():
+            return
 
         # 5. Delta analysis
         if previous_path and engine.previous_report:
@@ -2597,6 +2713,9 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
 
         report.summary = engine._generate_summary(report.all_findings)
 
+        if check_cancelled():
+            return
+
         # 7. Save
         emit("saving", "Saving report...", 90)
         json_path = engine.save_report(report)
@@ -2607,15 +2726,16 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
 
         report_name = Path(json_path).stem.replace("scan_", "")
         job["report_name"] = report_name
-        job["status"] = "done"
-        emit("done", f"Scan complete — {len(report.all_findings)} findings", 100, report_name)
+        emit("done", f"Scan complete — {len(report.all_findings)} findings", 100, report_name, status="done")
 
     except Exception as e:
         logger.error(f"Async scan failed: {e}")
-        job["status"] = "error"
         job["error"] = str(e)
-        emit("error", f"Scan failed: {str(e)}", 0)
+        emit("error", f"Scan failed: {str(e)}", 0, status="error")
     finally:
+        if job.get("status") in ("starting", "running"):
+            job["error"] = "Scan terminated unexpectedly"
+            emit("error", "Scan terminated unexpectedly", 0, status="error")
         for tmp_path in [previous_path, openapi_path]:
             if tmp_path and os.path.exists(tmp_path):
                 try:
@@ -2658,6 +2778,28 @@ def scan_async():
                 "error": f"Target is offline or unreachable: {reach_msg} Real Active Scan requires the target server to be running."
             }), 400
 
+    profile = request.form.get("profile", "full").strip() or "full"
+    scan_id = str(uuid.uuid4())[:8]
+    cond = threading.Condition()
+    job_dict = {
+        "status": "starting",
+        "target": target,
+        "profile": profile,
+        "events": [],
+        "condition": cond,
+        "report_name": None,
+        "error": None,
+        "created_at": time.time(),
+        "thread": None,
+    }
+
+    # Atomically check capacity and reserve the slot
+    reserved, active, limit = _scan_executor.try_reserve(scan_id, job_dict)
+    if not reserved:
+        return jsonify({
+            "error": f"Concurrent scan limit reached ({active}/{limit}). Please wait for active scans to complete."
+        }), 429
+
     previous_path = None
     openapi_path = None
 
@@ -2678,34 +2820,23 @@ def scan_async():
                 openapi_file.save(tmp.name)
                 openapi_path = tmp.name
 
-        profile = request.form.get("profile", "full").strip() or "full"
         login_user = request.form.get("login_user", "").strip() or None
         login_pass = request.form.get("login_pass", "").strip() or None
         login_url = request.form.get("login_url", "").strip() or None
 
-        scan_id = str(uuid.uuid4())[:8]
-        with scan_jobs_lock:
-            scan_jobs[scan_id] = {
-                "status": "starting",
-                "target": target,
-                "profile": profile,
-                "progress_queue": queue.Queue(),
-                "report_name": None,
-                "error": None,
-                "created_at": time.time(),
-            }
-
-        thread = threading.Thread(
-            target=_run_scan_background,
-            args=(scan_id, target, previous_path, openapi_path, profile, skip_reachability, login_user, login_pass, login_url, is_demo),
-            daemon=True,
+        _scan_executor.submit(
+            scan_jobs[scan_id],
+            _run_scan_background,
+            scan_id, target, previous_path, openapi_path, profile,
+            skip_reachability, login_user, login_pass, login_url, is_demo
         )
-        thread.start()
 
         return jsonify({"scan_id": scan_id, "profile": profile, "mode": "demo" if is_demo else "real"})
 
     except Exception as e:
         logger.error(f"Failed to initialize async scan: {e}", exc_info=True)
+        with scan_jobs_lock:
+            scan_jobs.pop(scan_id, None)
         for tmp in [previous_path, openapi_path]:
             if tmp and os.path.exists(tmp):
                 try:
@@ -2724,20 +2855,58 @@ def scan_progress(scan_id):
     if not job:
         return "Scan not found", 404
 
+    last_event_id_hdr = request.headers.get("Last-Event-ID") or request.args.get("last_event_id")
+    start_id = 0
+    if last_event_id_hdr:
+        try:
+            start_id = int(last_event_id_hdr)
+        except (ValueError, TypeError):
+            start_id = 0
+
     def event_stream():
-        q = job["progress_queue"]
+        cond = job.get("condition")
+        if cond is None:
+            events = job.get("events", [])
+            for event in events:
+                if event.get("id", 0) > start_id:
+                    ev_id = event.get("id", 1)
+                    data = json.dumps(event)
+                    yield f"id: {ev_id}\ndata: {data}\n\n"
+            return
+
+        cursor = 0
+        with cond:
+            events = job.get("events", [])
+            while cursor < len(events) and events[cursor].get("id", 0) <= start_id:
+                cursor += 1
+
         while True:
-            try:
-                event = q.get(timeout=30)
-                data = json.dumps(event)
-                yield f"data: {data}\n\n"
-                if event.get("stage") in ("done", "error"):
+            events_to_send = []
+            is_done = False
+            with cond:
+                events = job.get("events", [])
+                while cursor < len(events):
+                    ev = events[cursor]
+                    cursor += 1
+                    events_to_send.append(ev)
+                    if ev.get("stage") in ("done", "error"):
+                        is_done = True
+                        break
+
+                if not events_to_send:
+                    notified = cond.wait(timeout=15)
+                    if not notified:
+                        events_to_send = None
+
+            if events_to_send:
+                for event in events_to_send:
+                    ev_id = event.get("id", cursor)
+                    data = json.dumps(event)
+                    yield f"id: {ev_id}\ndata: {data}\n\n"
+                if is_done:
                     break
-            except queue.Empty:
-                # Send keepalive
-                yield f": keepalive\n\n"
-                if job["status"] in ("done", "error"):
-                    break
+            elif events_to_send is None:
+                yield ": keepalive\n\n"
 
     return Response(
         event_stream(),
@@ -2765,122 +2934,7 @@ def scan_status(scan_id):
     })
 
 
-@app.route("/scan", methods=["POST"])
-@login_required
-def scan():
-    target = request.form.get("target", "").strip()
-    if not target:
-        return "Target is required", 400
-    
-    allowed, reason = is_target_allowed(target)
-    if not allowed:
-        logger.warning(f"Blocked scan attempt on: {target}")
-        return render_template_string(HTML_BLOCKED, reason=reason), 403
 
-    # Differentiate Demo Mode vs Real Mode
-    form_mode = request.form.get("mode", "").strip().lower()
-    mock_param = request.form.get("mock_mode", "").strip().lower()
-    skip_reachability = request.form.get("skip_reachability", "false").lower() in ("true", "1")
-
-    if form_mode == "demo" or mock_param in ("true", "1"):
-        is_demo = True
-    elif form_mode == "real" or mock_param in ("false", "0"):
-        is_demo = False
-    else:
-        is_demo = False
-
-    # Target presence check ONLY in Real Mode; completely bypassed in Demo Mode!
-    if not is_demo and not skip_reachability:
-        reachable, reach_msg = check_target_reachable(target, timeout=2.5)
-        if not reachable:
-            logger.warning(f"Synchronous scan blocked - target unreachable in real mode: {target} ({reach_msg})")
-            return f"Target is offline or unreachable: {reach_msg} Real Active Scan requires the target server to be running.", 400
-    
-    import tempfile
-
-    openapi_file = request.files.get("openapi_spec")
-    openapi_path = None
-    if openapi_file and openapi_file.filename:
-        filename = secure_filename(openapi_file.filename)
-        with tempfile.NamedTemporaryFile(delete=False, dir=config.DATA_DIR, prefix=f"temp_openapi_{filename}_", suffix=".json") as tmp:
-            openapi_file.save(tmp.name)
-            openapi_path = tmp.name
-
-    previous_file = request.files.get("previous_report")
-    previous_path = None
-    if previous_file and previous_file.filename:
-        filename = secure_filename(previous_file.filename)
-        with tempfile.NamedTemporaryFile(delete=False, dir=config.DATA_DIR, prefix=f"temp_prev_{filename}_", suffix=".json") as tmp:
-            previous_file.save(tmp.name)
-            previous_path = tmp.name
-    
-    try:
-        engine = Engine(mock_mode=is_demo)
-        engine.load_plugins()
-        
-        if not engine.set_target(target):
-            return "Invalid target", 400
-        
-        if openapi_path:
-            from core.openapi import OpenAPIImporter
-            importer = OpenAPIImporter(openapi_path)
-            if importer.load_spec():
-                engine.crawler_data["injectable_endpoints"] = importer.get_endpoints()
-
-        if previous_path:
-            engine.set_previous_report(previous_path)
-        
-        engine.run_plugins()
-        report = engine.generate_report()
-        
-        if previous_path and engine.previous_report:
-            from intelligence.delta import DeltaAnalyzer
-            previous_data = load_json(previous_path)
-            if previous_data:
-                from core.models import Finding
-                import dataclasses
-                _valid_fields = {fld.name for fld in dataclasses.fields(Finding)}
-                prev_findings = [Finding(**{k: v for k, v in f.items() if k in _valid_fields}) for f in previous_data.get("all_findings", [])]
-                prev_report = Report(
-                    target=previous_data.get("target", ""),
-                    timestamp=previous_data.get("timestamp", ""),
-                    all_findings=prev_findings
-                )
-                delta = DeltaAnalyzer().compare(report, prev_report)
-                report.delta = delta
-        
-        correlator = Correlator()
-        report.all_findings = correlator.link_related(report.all_findings)
-        
-        enricher = Enricher()
-        report.all_findings = enricher.enrich(report.all_findings)
-        
-        mapper = ComplianceMapper()
-        report.all_findings = mapper.map_findings(report.all_findings)
-        
-        # Remediation advice
-        from intelligence.remediation import enrich_with_remediation
-        report.all_findings = enrich_with_remediation(report.all_findings)
-        
-        report.summary = engine._generate_summary(report.all_findings)
-        
-        json_path = engine.save_report(report)
-        
-        generator = ReportGenerator()
-        html_path = generator.generate_report(report)
-        
-        report_name = Path(json_path).stem.replace("scan_", "")
-        
-        return redirect(url_for("view_report", report_id=report_name))
-    finally:
-        # Clean up temporary uploaded files
-        for tmp in [previous_path, openapi_path]:
-            if tmp and os.path.exists(tmp):
-                try:
-                    os.remove(tmp)
-                    logger.debug(f"Cleaned up temp file: {tmp}")
-                except OSError:
-                    logger.warning(f"Failed to clean up temp file: {tmp}")
 
 
 
