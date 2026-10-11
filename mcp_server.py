@@ -13,6 +13,7 @@ import sys
 import os
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -62,6 +63,11 @@ TOOLS_MANIFEST = [
                     "enum": ["full", "owasp", "api", "recon"],
                     "description": "Scan profile: 'full' (all 19 plugins), 'owasp' (OWASP Top 10), 'api' (API & Microservices), 'recon' (Passive Recon). Defaults to 'full'.",
                     "default": "full"
+                },
+                "skip_reachability": {
+                    "type": "boolean",
+                    "description": "Whether to bypass target reachability checks. Defaults to false.",
+                    "default": False
                 }
             },
             "required": ["target"]
@@ -120,6 +126,11 @@ TOOLS_MANIFEST = [
                     "type": "string",
                     "enum": ["sqli", "cors", "headers", "auth", "dirbrute"],
                     "description": "The vulnerability type to verify."
+                },
+                "mock": {
+                    "type": "boolean",
+                    "description": "Whether to run in mock mode. Defaults to false.",
+                    "default": False
                 }
             },
             "required": ["target", "vulnerability_type"]
@@ -156,8 +167,16 @@ def handle_scan(args: Dict[str, Any]) -> Dict[str, Any]:
             }
 
     logger.info(f"Starting MCP scan for target: {target} (mock={mock_mode}, profile={profile})")
-    engine = Engine(mock_mode=mock_mode, profile=profile)
-    report = engine.run(target, profile=profile)
+    try:
+        engine = Engine(mock_mode=mock_mode, profile=profile)
+        report = engine.run(target, profile=profile, check_reachable=(not skip_reachability and not mock_mode))
+    except (ConnectionError, ValueError) as e:
+        logger.error(f"Scan failed for target {target}: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "target": target,
+        }
 
     report_dict = report.to_dict()
     findings = report_dict.get("all_findings") or report_dict.get("findings") or []
@@ -190,11 +209,15 @@ def handle_get_findings(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"error": "No scan reports found. Run autosec_scan first."}
 
     target_file = None
-    if report_id:
+    if report_id is not None:
+        if not isinstance(report_id, str) or not re.fullmatch(r"[\w-]+", report_id):
+            return {"error": "Invalid report_id format."}
         clean_id = report_id.replace("scan_", "").replace(".json", "")
         candidate = reports_dir / f"scan_{clean_id}.json"
         if candidate.exists():
             target_file = candidate
+        else:
+            return {"error": f"Report '{report_id}' not found."}
 
     if not target_file:
         all_reports = sorted(reports_dir.glob("scan_*.json"), key=os.path.getmtime, reverse=True)
@@ -205,7 +228,7 @@ def handle_get_findings(args: Dict[str, Any]) -> Dict[str, Any]:
     with open(target_file, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    raw_findings = data.get("findings", [])
+    raw_findings = data.get("all_findings") or data.get("findings") or []
     posture = calculate_security_posture(raw_findings)
 
     enriched_findings = []
@@ -214,10 +237,15 @@ def handle_get_findings(args: Dict[str, Any]) -> Dict[str, Any]:
         recipes = get_fix_recipes(f)
 
         item = {
+            "id": f.get("id"),
             "title": f.get("title"),
             "severity": f.get("severity"),
-            "url": f.get("url") or f.get("endpoint"),
-            "parameter": f.get("parameter"),
+            "description": f.get("description"),
+            "host": f.get("host"),
+            "port": f.get("port"),
+            "confidence": f.get("confidence", "medium"),
+            "raw_output": f.get("raw_output"),
+            "cwe_id": f.get("cwe_id") or f.get("cwe"),
         }
 
         if view in ("business", "both"):
@@ -231,10 +259,13 @@ def handle_get_findings(args: Dict[str, Any]) -> Dict[str, Any]:
 
         if view in ("technical", "both"):
             item["technical_details"] = {
+                "id": f.get("id"),
                 "tool": f.get("tool_name"),
                 "owasp": f.get("owasp_tag"),
-                "cwe": f.get("cwe"),
-                "evidence": f.get("evidence"),
+                "cwe_id": f.get("cwe_id") or f.get("cwe"),
+                "confidence": f.get("confidence", "medium"),
+                "description": f.get("description"),
+                "raw_output": f.get("raw_output"),
                 "remediation_advice": f.get("remediation"),
             }
             item["code_fix_recipes"] = recipes
@@ -278,24 +309,147 @@ def handle_get_fix_recipe(args: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+VULN_TYPE_TO_PLUGINS: Dict[str, List[str]] = {
+    "sqli": ["SQLiScanner"],
+    "cors": ["CORSScanner"],
+    "headers": ["MisconfigScanner", "SSLTLSScanner"],
+    "auth": ["AuthScanner", "JWTScanner"],
+    "dirbrute": ["DirBruteScanner"],
+}
+
+VULN_TYPE_TO_TOOLS: Dict[str, set] = {
+    "sqli": {"sqliscanner", "sqli_scanner", "sqli"},
+    "cors": {"corsscanner", "cors_scanner", "cors"},
+    "headers": {"misconfigscanner", "misconfig_scanner", "ssltlsscanner", "ssl_tls_scanner", "headers"},
+    "auth": {"authscanner", "auth_scanner", "jwtscanner", "jwt_scanner", "auth"},
+    "dirbrute": {"dirbrutescanner", "dir_brute_scanner", "dirbrute", "dirbuster"},
+}
+
+
 def handle_verify_fix(args: Dict[str, Any]) -> Dict[str, Any]:
     target = args.get("target", "http://localhost:3000")
     vuln_type = (args.get("vulnerability_type") or "").lower()
+    mock_mode = args.get("mock", False)
 
-    # Re-run mini verification
-    engine = Engine(mock_mode=True)
-    report = engine.run(target)
-    findings = report.to_dict().get("findings", [])
+    from core.utils import check_target_reachable, is_target_allowed
 
-    matching = [f for f in findings if vuln_type in (f.get("title") or "").lower()]
+    # 1. Validate vulnerability_type against mapped types
+    if not vuln_type or vuln_type not in VULN_TYPE_TO_PLUGINS:
+        return {
+            "target": target,
+            "vulnerability_type": vuln_type,
+            "verified": False,
+            "status": "ERROR",
+            "error": f"Unknown or unsupported vulnerability_type '{vuln_type}'. Allowed types: {list(VULN_TYPE_TO_PLUGINS.keys())}",
+            "remaining_findings_count": 0,
+            "message": f"Unsupported vulnerability_type '{vuln_type}'.",
+        }
+
+    # 2. Target scope check
+    allowed, allow_msg = is_target_allowed(target)
+    if not allowed:
+        return {
+            "target": target,
+            "vulnerability_type": vuln_type,
+            "verified": False,
+            "status": "ERROR",
+            "error": f"Target not allowed: {allow_msg}",
+            "remaining_findings_count": 0,
+            "message": f"Target '{target}' is not allowed for scanning.",
+        }
+
+    # 3. Target reachability check
+    if not mock_mode:
+        reachable, reach_msg = check_target_reachable(target)
+        if not reachable:
+            return {
+                "target": target,
+                "vulnerability_type": vuln_type,
+                "verified": False,
+                "status": "ERROR",
+                "error": f"Target unreachable: {reach_msg}",
+                "remaining_findings_count": 0,
+                "message": f"Target '{target}' is offline or unreachable: {reach_msg}",
+            }
+
+    # 4. Filter plugins for vulnerability_type and execute via stable API directly
+    target_plugin_classes = VULN_TYPE_TO_PLUGINS[vuln_type]
+    target_tools = VULN_TYPE_TO_TOOLS.get(vuln_type, {vuln_type})
+
+    try:
+        engine = Engine(mock_mode=mock_mode)
+        engine.load_plugins()
+        engine.plugins = [p for p in engine.plugins if p.__class__.__name__ in target_plugin_classes]
+
+        if not engine.set_target(target, check_reachable=(not mock_mode)):
+            return {
+                "target": target,
+                "vulnerability_type": vuln_type,
+                "verified": False,
+                "status": "ERROR",
+                "error": f"Failed to set target '{target}'.",
+                "remaining_findings_count": 0,
+                "message": f"Target '{target}' is invalid or could not be set.",
+            }
+
+        scan_results = engine.run_plugins()
+        report = engine.generate_report()
+    except Exception as e:
+        logger.error(f"Error during verify_fix scan: {e}")
+        return {
+            "target": target,
+            "vulnerability_type": vuln_type,
+            "verified": False,
+            "status": "ERROR",
+            "error": str(e),
+            "remaining_findings_count": 0,
+            "message": f"Verification failed with error: {e}",
+        }
+
+    # 5. Check plugin execution errors
+    if not scan_results or len(engine.plugins) == 0:
+        return {
+            "target": target,
+            "vulnerability_type": vuln_type,
+            "verified": False,
+            "status": "ERROR",
+            "error": f"No plugins executed for vulnerability type '{vuln_type}'.",
+            "remaining_findings_count": 0,
+            "message": f"No plugins executed for '{vuln_type}'.",
+        }
+
+    for sr in scan_results:
+        if sr.status != "success":
+            return {
+                "target": target,
+                "vulnerability_type": vuln_type,
+                "verified": False,
+                "status": "ERROR",
+                "error": f"Plugin {sr.tool_name} returned status '{sr.status}': {sr.error}",
+                "remaining_findings_count": 0,
+                "message": f"Plugin execution error: {sr.error or sr.status}",
+            }
+
+    # 6. Match remaining findings by plugin/tool, not title substring
+    report_dict = report.to_dict()
+    all_findings = report_dict.get("all_findings") or report_dict.get("findings") or []
+
+    matching = []
+    for f in all_findings:
+        tool_name = (f.get("tool_name") or "").lower().replace("-", "_")
+        if any(t in tool_name for t in target_tools) or f.get("tool_name") in target_plugin_classes:
+            matching.append(f)
+
+    is_resolved = len(matching) == 0
 
     return {
         "target": target,
         "vulnerability_type": vuln_type,
-        "verified": True,
-        "status": "RESOLVED" if len(matching) == 0 else "STILL_VULNERABLE",
+        "verified": is_resolved,
+        "status": "RESOLVED" if is_resolved else "STILL_VULNERABLE",
         "remaining_findings_count": len(matching),
-        "message": f"Verification completed for '{vuln_type}'. Status: {'RESOLVED' if len(matching) == 0 else 'ACTIVE FINDINGS REMAIN'}."
+        "message": f"Verification completed for '{vuln_type}'. Status: {'RESOLVED' if is_resolved else 'ACTIVE FINDINGS REMAIN'}.",
+        "findings": matching,
     }
 
 

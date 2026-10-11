@@ -92,7 +92,7 @@ class TestMCPServer(unittest.TestCase):
             "params": {
                 "name": "autosec_verify_fix",
                 "arguments": {
-                    "target": "http://localhost:3000",
+                    "target": "http://127.0.0.1:59998",
                     "vulnerability_type": "cors"
                 }
             }
@@ -101,8 +101,9 @@ class TestMCPServer(unittest.TestCase):
         self.assertIsNotNone(res)
         text_content = res["result"]["content"][0]["text"]
         data = json.loads(text_content)
-        self.assertTrue(data["verified"])
-        self.assertIn("status", data)
+        # Target localhost:3000 is offline; AUD-08 requires verified=False and status="ERROR"
+        self.assertFalse(data["verified"])
+        self.assertEqual(data["status"], "ERROR")
 
 
 if __name__ == "__main__":

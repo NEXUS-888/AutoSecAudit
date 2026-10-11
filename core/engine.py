@@ -121,7 +121,8 @@ class Engine:
         
         normalized = normalize_target(target)
         if check_reachable and not self.mock_mode:
-            reachable, reason = check_target_reachable(normalized)
+            import core.utils as _utils
+            reachable, reason = _utils.check_target_reachable(normalized)
             if not reachable:
                 logger.error(f"Target unreachable: {normalized} - {reason}")
                 return False
