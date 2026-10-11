@@ -10,6 +10,18 @@ from ui.app import app
 class TestTargetReachability(unittest.TestCase):
     """Test suite for target liveness / reachability validation."""
 
+    def setUp(self):
+        import core.auth as auth
+        self.admin = auth.get_user_by_username("admin")
+        if not self.admin:
+            auth.init_user_db()
+            self.admin = auth.get_user_by_username("admin")
+
+    def _auth_client(self, client):
+        with client.session_transaction() as sess:
+            sess["user_id"] = self.admin["id"]
+        return client
+
     def test_offline_port_detected_as_unreachable(self):
         """Verify that an offline local port is detected as unreachable."""
         reachable, msg = check_target_reachable("http://127.0.0.1:59123", timeout=1.0)
@@ -66,6 +78,7 @@ class TestTargetReachability(unittest.TestCase):
         """Verify that the Web UI /scan/async endpoint rejects offline targets with HTTP 400."""
         with patch("ui.app.check_target_reachable", return_value=(False, "Connection refused on localhost:3000. No active service")):
             with app.test_client() as client:
+                self._auth_client(client)
                 response = client.post("/scan/async", data={"target": "http://localhost:3000"})
                 self.assertEqual(response.status_code, 400)
                 data = response.get_json()
@@ -75,6 +88,7 @@ class TestTargetReachability(unittest.TestCase):
         """Verify that the Web UI /scan/async endpoint permits offline demo when requested."""
         with patch("ui.app.check_target_reachable") as mock_check:
             with app.test_client() as client:
+                self._auth_client(client)
                 response = client.post("/scan/async", data={
                     "target": "http://localhost:3000",
                     "skip_reachability": "true"
@@ -109,6 +123,7 @@ class TestTargetReachability(unittest.TestCase):
         """Verify that the Web UI /scan/async endpoint with mode='demo' bypasses reachability check."""
         with patch("ui.app.check_target_reachable") as mock_check:
             with app.test_client() as client:
+                self._auth_client(client)
                 response = client.post("/scan/async", data={
                     "target": "http://localhost:3000",
                     "mode": "demo"
@@ -123,6 +138,7 @@ class TestTargetReachability(unittest.TestCase):
         """Verify that the Web UI /scan/async endpoint with mode='real' enforces reachability and blocks offline targets."""
         with patch("ui.app.check_target_reachable", return_value=(False, "Connection refused on localhost:3000")):
             with app.test_client() as client:
+                self._auth_client(client)
                 response = client.post("/scan/async", data={
                     "target": "http://localhost:3000",
                     "mode": "real"
@@ -130,6 +146,7 @@ class TestTargetReachability(unittest.TestCase):
                 self.assertEqual(response.status_code, 400)
                 data = response.get_json()
                 self.assertIn("Target is offline or unreachable", data["error"])
+                self.assertIn("Real Active Scan requires the target server to be running", data["error"])
                 self.assertIn("Real Active Scan requires the target server to be running", data["error"])
 
     def test_engine_set_target_refuses_offline_in_real_mode(self):

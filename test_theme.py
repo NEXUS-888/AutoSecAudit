@@ -29,6 +29,14 @@ with app.test_client() as client:
     print("[PASS] Theme persists via localStorage")
 
 # Test 4: History page also has theme toggle
+    import core.auth as auth
+    admin = auth.get_user_by_username("admin")
+    if not admin:
+        auth.init_user_db()
+        admin = auth.get_user_by_username("admin")
+    with client.session_transaction() as sess:
+        sess["user_id"] = admin["id"]
+
     resp = client.get("/history")
     html = resp.data.decode("utf-8")
     assert "themeToggle" in html or "toggleTheme" in html, "History page should have theme toggle"
@@ -86,6 +94,13 @@ with open(sample_json_path, "w", encoding="utf-8") as f:
     json.dump(sample_report, f)
 
 with app.test_client() as client:
+    admin = auth.get_user_by_username("admin")
+    if not admin:
+        auth.init_user_db()
+        admin = auth.get_user_by_username("admin")
+    with client.session_transaction() as sess:
+        sess["user_id"] = admin["id"]
+
     resp = client.get("/download_pdf/test_theme_sample")
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     assert "application/pdf" in resp.headers.get("Content-Type", ""), "MIME type must be application/pdf"

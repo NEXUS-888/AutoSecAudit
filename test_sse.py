@@ -77,7 +77,21 @@ assert job["report_name"] is not None, "report_name should be set"
 print(f"[PASS] Scan complete — report: {job['report_name']}")
 
 # Test 7: Flask test client can hit the endpoints
+import core.auth as auth
+
 with app.test_client() as client:
+    # Test unauthenticated /scan/status endpoint returns 401
+    unauth = client.get(f"/scan/status/{scan_id}")
+    assert unauth.status_code == 401, f"Expected 401 for unauthenticated request, got {unauth.status_code}"
+    print("[PASS] Unauthenticated /scan/status returns 401")
+
+    admin = auth.get_user_by_username("admin")
+    if not admin:
+        auth.init_user_db()
+        admin = auth.get_user_by_username("admin")
+    with client.session_transaction() as sess:
+        sess["user_id"] = admin["id"]
+
     # Test /scan/status endpoint
     resp = client.get(f"/scan/status/{scan_id}")
     assert resp.status_code == 200

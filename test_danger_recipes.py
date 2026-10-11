@@ -163,6 +163,14 @@ class TestDangerEngineAndRecipes(unittest.TestCase):
 
         try:
             client = app.test_client()
+            import core.auth as auth
+            admin = auth.get_user_by_username("admin")
+            if not admin:
+                auth.init_user_db()
+                admin = auth.get_user_by_username("admin")
+            with client.session_transaction() as sess:
+                sess["user_id"] = admin["id"]
+
             resp = client.get(f"/report/{mock_id}")
             self.assertEqual(resp.status_code, 200)
             html = resp.data.decode("utf-8")

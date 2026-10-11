@@ -6,6 +6,7 @@ import uuid
 import queue
 import time
 from flask import Flask, render_template_string, render_template, request, redirect, url_for, send_file, abort, Response, jsonify, session
+from functools import wraps
 from pathlib import Path
 from werkzeug.utils import secure_filename
 import json
@@ -2131,6 +2132,28 @@ def get_current_user():
     return None
 
 
+def login_required(f):
+    """Enforce user authentication. HTML routes redirect to /login?next=...; JSON/SSE routes return 401."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not get_current_user():
+            is_json_or_sse = (
+                request.is_json
+                or request.path.startswith("/api/")
+                or request.path.startswith("/scan/")
+                or request.headers.get("Accept") == "text/event-stream"
+                or "application/json" in request.headers.get("Accept", "")
+                or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            )
+            if is_json_or_sse:
+                return jsonify({"error": "Authentication required", "status": "unauthorized"}), 401
+
+            next_url = request.full_path if request.query_string else request.path
+            return redirect(url_for("login", next=next_url))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 @app.route("/")
 @app.route("/landing")
 def index():
@@ -2141,14 +2164,10 @@ def index():
 
 @app.route("/dashboard")
 @app.route("/scanner")
+@login_required
 def dashboard():
     """Active security scanning console and target configuration."""
     current_user = get_current_user()
-    if not current_user:
-        next_target = request.args.get("target")
-        next_url = f"/dashboard?target={next_target}" if next_target else "/dashboard"
-        return redirect(url_for("login", next=next_url))
-
     reports_dir = Path(config.REPORTS_DIR)
     if reports_dir.exists():
         reports = [f.stem.replace("scan_", "") for f in reports_dir.glob("scan_*.json")]
@@ -2195,6 +2214,15 @@ def login():
 def register():
     """User registration endpoint supporting HTML form and AJAX JSON requests."""
     next_url = request.args.get("next") or request.form.get("next") or url_for("dashboard")
+    allow_reg = os.environ.get("AUTOSEC_ALLOW_REGISTRATION", "").lower() == "true"
+    if not allow_reg:
+        msg = "Registration is disabled."
+        if request.is_json:
+            return jsonify({"success": False, "message": msg}), 403
+        if request.method == "POST":
+            return render_template("auth.html", mode="register", error=msg, next=next_url), 403
+        return render_template("auth.html", mode="register", error=msg, next=next_url), 403
+
     if request.method == "POST":
         if request.is_json:
             data = request.get_json() or {}
@@ -2209,7 +2237,7 @@ def register():
             password = request.form.get("password", "")
             full_name = request.form.get("full_name", "")
 
-        ok, msg, user = auth.create_user(username, email, password, full_name=full_name)
+        ok, msg, user = auth.create_user(username, email, password, full_name=full_name, role="developer")
         if ok and user:
             session["user_id"] = user["id"]
             session["username"] = user["username"]
@@ -2244,6 +2272,7 @@ def auth_status():
 
 
 @app.route("/history")
+@login_required
 def history():
     """Scan history dashboard with charts and trends."""
     from jinja2 import Environment, FileSystemLoader
@@ -2450,6 +2479,7 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
 
 
 @app.route("/scan/async", methods=["POST"])
+@login_required
 def scan_async():
     """Start a scan in the background, return a scan_id for SSE streaming."""
     _cleanup_stale_jobs()
@@ -2540,6 +2570,7 @@ def scan_async():
 
 
 @app.route("/scan/progress/<scan_id>")
+@login_required
 def scan_progress(scan_id):
     """SSE endpoint — streams scan progress events."""
     with scan_jobs_lock:
@@ -2573,6 +2604,7 @@ def scan_progress(scan_id):
 
 
 @app.route("/scan/status/<scan_id>")
+@login_required
 def scan_status(scan_id):
     """JSON status endpoint — polling fallback."""
     with scan_jobs_lock:
@@ -2588,6 +2620,7 @@ def scan_status(scan_id):
 
 
 @app.route("/scan", methods=["POST"])
+@login_required
 def scan():
     target = request.form.get("target", "").strip()
     if not target:
@@ -2833,6 +2866,7 @@ def _resolve_report_data(report_id: str):
 
 
 @app.route("/report/<report_id>")
+@login_required
 def view_report(report_id):
     if not report_id or report_id in ("undefined", "null", "latest"):
         import glob
@@ -2875,6 +2909,7 @@ def view_report(report_id):
 
 
 @app.route("/download/<report_id>")
+@login_required
 def download_report(report_id):
     if not report_id or report_id in ("undefined", "null"):
         abort(404, description="Invalid report ID.")
@@ -2905,6 +2940,7 @@ def download_report(report_id):
 
 
 @app.route("/download_pdf/<report_id>")
+@login_required
 def download_pdf_report(report_id):
     if not report_id or report_id in ("undefined", "null"):
         abort(404, description="Invalid report ID.")
@@ -2937,6 +2973,7 @@ def download_pdf_report(report_id):
 
 
 @app.route("/api/report/<report_id>/waf-rules")
+@login_required
 def export_waf_rules(report_id):
     if not report_id or report_id in ("undefined", "null"):
         abort(404, description="Invalid report ID.")
@@ -2978,6 +3015,7 @@ def export_waf_rules(report_id):
 
 
 @app.route("/api/report/<report_id>/dev-ticket/<finding_id>")
+@login_required
 def export_dev_ticket(report_id, finding_id):
     report_data, _ = _resolve_report_data(report_id)
     if not report_data:

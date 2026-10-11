@@ -12,8 +12,22 @@ rules = [rule.rule for rule in app.url_map.iter_rules()]
 assert "/history" in rules, f"/history route not found in {rules}"
 print("[PASS] /history route registered")
 
-# Test 2: History page renders with data
+# Test 2: Unauthenticated /history redirects to login; authenticated renders with data
+import core.auth as auth
+
 with app.test_client() as client:
+    unauth_resp = client.get("/history")
+    assert unauth_resp.status_code == 302, f"Expected 302 redirect for unauthenticated access, got {unauth_resp.status_code}"
+    assert "/login" in unauth_resp.headers.get("Location", "")
+    print("[PASS] Unauthenticated /history redirected to /login")
+
+    admin = auth.get_user_by_username("admin")
+    if not admin:
+        auth.init_user_db()
+        admin = auth.get_user_by_username("admin")
+    with client.session_transaction() as sess:
+        sess["user_id"] = admin["id"]
+
     resp = client.get("/history")
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     html = resp.data.decode("utf-8")

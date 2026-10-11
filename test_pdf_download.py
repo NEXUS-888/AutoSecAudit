@@ -68,7 +68,20 @@ assert data2 is not None, "Should resolve via timestamp match"
 print("[PASS] Report resolution resolves via normalized timestamp fallback")
 
 # 3. Test /download_pdf/<report_id> route and safe download headers
+import core.auth as auth
+
 with app.test_client() as client:
+    unauth = client.get("/download_pdf/test_unit_sample")
+    assert unauth.status_code == 302, f"Unauthenticated request must redirect to login, got {unauth.status_code}"
+    assert "/login" in unauth.headers.get("Location", "")
+
+    admin = auth.get_user_by_username("admin")
+    if not admin:
+        auth.init_user_db()
+        admin = auth.get_user_by_username("admin")
+    with client.session_transaction() as sess:
+        sess["user_id"] = admin["id"]
+
     resp = client.get("/download_pdf/test_unit_sample")
     assert resp.status_code == 200, f"Expected 200 but got {resp.status_code}"
     assert "application/pdf" in resp.headers.get("Content-Type", ""), "Content-Type must be application/pdf"
@@ -80,6 +93,17 @@ with app.test_client() as client:
 
 # 4. Test /download/<report_id> route for JSON
 with app.test_client() as client:
+    unauth = client.get("/download/test_unit_sample")
+    assert unauth.status_code == 302, f"Unauthenticated request must redirect to login, got {unauth.status_code}"
+    assert "/login" in unauth.headers.get("Location", "")
+
+    admin = auth.get_user_by_username("admin")
+    if not admin:
+        auth.init_user_db()
+        admin = auth.get_user_by_username("admin")
+    with client.session_transaction() as sess:
+        sess["user_id"] = admin["id"]
+
     resp = client.get("/download/test_unit_sample")
     assert resp.status_code == 200, f"Expected 200 but got {resp.status_code}"
     assert "application/json" in resp.headers.get("Content-Type", ""), "Content-Type must be application/json"

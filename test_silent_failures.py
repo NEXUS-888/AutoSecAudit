@@ -88,6 +88,14 @@ class TestSilentFailures(unittest.TestCase):
     def test_scan_async_handles_invalid_input(self):
         """Verify scan_async returns structured JSON errors instead of unhandled 500 HTML."""
         with app.test_client() as client:
+            import core.auth as auth
+            admin = auth.get_user_by_username("admin")
+            if not admin:
+                auth.init_user_db()
+                admin = auth.get_user_by_username("admin")
+            with client.session_transaction() as sess:
+                sess["user_id"] = admin["id"]
+
             resp = client.post("/scan/async", data={})
             self.assertEqual(resp.status_code, 400)
             data = resp.get_json()
