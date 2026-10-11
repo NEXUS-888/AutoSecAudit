@@ -23,11 +23,7 @@ env/
 
 # Project specific
 data/
-*.json
-*.html
-!config.json.example
-!reports/templates/report.html
-!ui/templates/*.html
+graphify-out/
 
 # OS
 .DS_Store
