@@ -215,6 +215,6 @@ def check_target_reachable(target: str, timeout: float = 2.5) -> Tuple[bool, str
                 return True, f"TCP port {port} is open and listening"
             return False, f"TCP connection to {hostname}:{port} failed (code {res})"
         except Exception as sock_err:
-            return False, f"Could not reach {hostname}:{port}: {str(e)}"
+            return False, f"Could not reach {hostname}:{port}: {sock_err}"
 
 

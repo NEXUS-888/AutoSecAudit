@@ -33,30 +33,30 @@ ax.axis('off')
 ax.add_patch(FancyBboxPatch((1, 4), 22, 92, boxstyle="round,pad=0.1,rounding_size=1.0", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1.1, zorder=2))
 ax.add_patch(Rectangle((1, 78), 22, 18, facecolor="#1E293B", edgecolor="none", zorder=3))
 ax.text(12, 87, "1. Surface Discovery", ha="center", va="center", color="#FFFFFF", fontsize=8.2, fontweight="bold", zorder=4)
-ax.text(12, 60, "BFS Web Crawler\n• Form / Link Ingestion\n• Query Parameter Parser\n• Max Depth Bounded ($D_{max}$)", ha="center", va="center", color="#334155", fontsize=6.8, zorder=4)
-ax.text(12, 26, "OpenAPI / Swagger\n• v2.0 / v3.0 Parser\n• Endpoint Schema Seeding\n• HTTP Verb Registration", ha="center", va="center", color="#334155", fontsize=6.8, zorder=4)
+ax.text(12, 60, "Recursive Crawler & JS Regex\n• Form / Link Ingestion\n• Inline JS Route Extraction\n• OpenAPI JSON Parser", ha="center", va="center", color="#334155", fontsize=6.6, zorder=4)
+ax.text(12, 24, "Scope Guardrail & Liveness\n• Private / Loopback / Practice Hosts\n• Pre-Flight HTTP Probe\n• Auto-Authenticator", ha="center", va="center", color="#334155", fontsize=6.6, zorder=4)
 
 # Stage 2: Concurrent Multi-Scanner Engine
 ax.add_patch(FancyBboxPatch((25.5, 4), 23.5, 92, boxstyle="round,pad=0.1,rounding_size=1.0", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1.1, zorder=2))
 ax.add_patch(Rectangle((25.5, 78), 23.5, 18, facecolor="#0F766E", edgecolor="none", zorder=3))
-ax.text(37.25, 87, "2. Scanner Engine (14)", ha="center", va="center", color="#FFFFFF", fontsize=8.2, fontweight="bold", zorder=4)
-ax.text(37.25, 68, "Recon: Nmap, Nikto, DirBrute\nWeb: SQLi, XSS, CORS, Misconfig", ha="center", va="center", color="#0F766E", fontsize=6.7, fontweight="bold", zorder=4)
-ax.text(37.25, 44, "API/Auth: APIAbuse, Auth, JWT\nExploit: CmdInj, SSRF, PathTrav", ha="center", va="center", color="#0F766E", fontsize=6.7, fontweight="bold", zorder=4)
-ax.text(37.25, 18, "ThreadPool ($k=8$ Workers)\nDifferential Baseline Cache", ha="center", va="center", color="#047857", fontsize=6.7, zorder=4)
+ax.text(37.25, 87, "2. Scanner Engine (19)", ha="center", va="center", color="#FFFFFF", fontsize=8.2, fontweight="bold", zorder=4)
+ax.text(37.25, 68, "Web: SQLi, XSS, CSRF, Redirect\nAPI: BOLA/IDOR, Auth, JWT, CORS", ha="center", va="center", color="#0F766E", fontsize=6.5, fontweight="bold", zorder=4)
+ax.text(37.25, 46, "Exploit: CmdInj, SSRF, LFI, SSTI\nRecon: Nmap, Nikto, TLS, Secrets", ha="center", va="center", color="#0F766E", fontsize=6.5, fontweight="bold", zorder=4)
+ax.text(37.25, 18, "ThreadPool ($k$ configurable), Profiles\nTiming & Baseline Checks\nPoliteness Backoff & JSON Fuzz", ha="center", va="center", color="#047857", fontsize=6.3, zorder=4)
 
 # Stage 3: Post-Processing Intelligence Layer
 ax.add_patch(FancyBboxPatch((51.5, 4), 22.5, 92, boxstyle="round,pad=0.1,rounding_size=1.0", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1.1, zorder=2))
 ax.add_patch(Rectangle((51.5, 78), 22.5, 18, facecolor="#1D4ED8", edgecolor="none", zorder=3))
 ax.text(62.75, 87, "3. Intelligence Layer", ha="center", va="center", color="#FFFFFF", fontsize=8.2, fontweight="bold", zorder=4)
-ax.text(62.75, 62, "Compound Deduplication\n• Key: host+port+URI+CWE\n• Multi-alert merging (-39.5%)", ha="center", va="center", color="#1E3A8A", fontsize=6.7, zorder=4)
-ax.text(62.75, 28, "Enrichment & Compliance\n• NIST NVD & CIRCL CVEs\n• OWASP '21, CWE, PCI-DSS", ha="center", va="center", color="#1E3A8A", fontsize=6.7, zorder=4)
+ax.text(62.75, 64, "Cross-Referencing\n• Link by host + port\n• CVSS via NVD/CIRCL (CVE-tagged)\n• Keyword compliance mapping", ha="center", va="center", color="#1E3A8A", fontsize=6.5, zorder=4)
+ax.text(62.75, 24, "Danger Engine & Fix Recipes\n• OWASP '21, CWE, PCI DSS v4.0\n• Plain-English Danger Grade\n• Static Multi-Framework Recipes", ha="center", va="center", color="#1E3A8A", fontsize=6.5, zorder=4)
 
-# Stage 4: Delivery, CI/CD Policy Gating & Real-Time Monitoring
+# Stage 4: Delivery, Policy Gating & AI MCP
 ax.add_patch(FancyBboxPatch((76.5, 4), 22.5, 92, boxstyle="round,pad=0.1,rounding_size=1.0", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1.1, zorder=2))
 ax.add_patch(Rectangle((76.5, 78), 22.5, 18, facecolor="#475569", edgecolor="none", zorder=3))
-ax.text(87.75, 87, "4. Policy & Delivery", ha="center", va="center", color="#FFFFFF", fontsize=8.2, fontweight="bold", zorder=4)
-ax.text(87.75, 62, "CI/CD Policy Gating\n• Native exit code (--fail-on)\n• Set-Theoretic Delta Diffing", ha="center", va="center", color="#334155", fontsize=6.7, zorder=4)
-ax.text(87.75, 28, "Multi-Channel Reporting\n• Real-Time SSE Dashboard\n• PDF / HTML & Webhooks", ha="center", va="center", color="#334155", fontsize=6.7, zorder=4)
+ax.text(87.75, 87, "4. Delivery & AI MCP", ha="center", va="center", color="#FFFFFF", fontsize=8.2, fontweight="bold", zorder=4)
+ax.text(87.75, 64, "CI/CD Gating\n• Exit code (--fail-on)\n• ID-Based Delta Comparison", ha="center", va="center", color="#334155", fontsize=6.6, zorder=4)
+ax.text(87.75, 24, "MCP Server & Reports\n• MCP stdio tools (4)\n• SSE Dashboard\n• ReportLab PDF", ha="center", va="center", color="#334155", fontsize=6.5, zorder=4)
 
 # Horizontal arrows
 arrow_props = dict(facecolor='#334155', edgecolor='#334155', width=1.1, headwidth=4.5, shrink=0.01)
@@ -88,7 +88,7 @@ ax1.grid(True, linestyle=':', alpha=0.5)
 
 # Subtle guide line at k=8
 ax1.axvline(x=8, color='#94A3B8', linestyle='--', linewidth=0.9, zorder=2)
-ax1.text(8.3, 130, 'Optimal $k=8$\n64.8 s ($2.84\\times$)', fontsize=7.5, color='#1E3A8A', fontweight='bold',
+ax1.text(8.3, 130, 'Best observed $k=8$\n64.8 s ($2.84\\times$)', fontsize=7.5, color='#1E3A8A', fontweight='bold',
          bbox=dict(boxstyle='round,pad=0.2', facecolor='#F1F5F9', edgecolor='#94A3B8', linewidth=0.6))
 
 ax2 = ax1.twinx()
@@ -108,7 +108,7 @@ plt.close()
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# Figure 3: Alert Noise Reduction (Matching Table III Exactly)
+# Figure 3: Alert volume, raw vs consolidated (matches Table IV)
 # ---------------------------------------------------------------------------
 categories = ['Injection\n(A03)', 'XSS\n(A03)', 'Misconfig\n(A05)', 'Access\n(A01)', 'API/Tokens\n(A07)']
 raw_alerts = [14, 19, 26, 9, 8]
@@ -119,7 +119,7 @@ width = 0.36
 
 fig, ax = plt.subplots(figsize=(5.0, 2.9))
 rects1 = ax.bar(x - width/2, raw_alerts, width, label='Raw Alerts (76)', color='#64748B', edgecolor='#334155', linewidth=0.7)
-rects2 = ax.bar(x + width/2, correlated, width, label='Correlated (47)', color='#1D4ED8', edgecolor='#1E3A8A', linewidth=0.7)
+rects2 = ax.bar(x + width/2, correlated, width, label='Consolidated (47)', color='#1D4ED8', edgecolor='#1E3A8A', linewidth=0.7)
 
 ax.set_ylabel('Finding Count', fontweight='bold')
 ax.set_xticks(x)
@@ -157,7 +157,7 @@ bar2 = ax.bar(builds, new_issues, bottom=unchanged, label=r'New ($\Delta_{\mathr
 bar3 = ax.bar(builds, fixed_issues, label=r'Resolved ($\Delta_{\mathrm{FIXED}}$)', color='#059669', edgecolor='#065F46', linewidth=0.7, alpha=0.9)
 
 ax.set_ylabel('Vulnerability Count', fontweight='bold')
-ax.set_ylim(0, 58)
+ax.set_ylim(0, 72)
 ax.legend(loc='upper right', framealpha=0.9)
 ax.grid(axis='y', linestyle=':', alpha=0.5)
 

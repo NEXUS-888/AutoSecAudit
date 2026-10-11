@@ -1,5 +1,6 @@
 import requests
 import re
+import json
 import logging
 import time
 import urllib.parse
@@ -92,16 +93,25 @@ class AuthScanner(BaseScanner):
                         verify=False,
                     )
 
+                    # Reject SPA catch-all false positives
+                    if self.is_soft_404(resp):
+                        continue
+
                     # Heuristic: successful login often returns 200/302 with
                     # a token, session cookie, or a welcome indicator.
                     is_success = False
                     body = resp.text.lower()
+                    content_type = resp.headers.get("Content-Type", "").lower()
 
-                    if resp.status_code == 200 and any(
-                        kw in body
-                        for kw in ["token", "authentication", "success", "welcome", "dashboard"]
-                    ):
-                        is_success = True
+                    if resp.status_code == 200:
+                        # If server returns HTML on POST without setting a session cookie, it's not a successful API login
+                        if ("html" in content_type or "<!doctype" in body[:150] or "<html" in body[:150]) and not resp.cookies:
+                            pass
+                        elif any(
+                            kw in body
+                            for kw in ["token", "authentication", "success", "welcome", "dashboard"]
+                        ):
+                            is_success = True
                     elif resp.status_code in (301, 302) and "login" not in (
                         resp.headers.get("Location", "").lower()
                     ):
@@ -143,15 +153,35 @@ class AuthScanner(BaseScanner):
                 )
 
                 if resp.status_code == 200:
-                    body = resp.text.lower()
-                    # Check if the response looks like it contains user/object data
-                    if any(
-                        kw in body
-                        for kw in [
-                            "email", "username", "user", "id", "name",
-                            "password", "address", "role",
-                        ]
-                    ):
+                    # 1. Reject SPA soft-404 responses
+                    if self.is_soft_404(resp):
+                        continue
+
+                    # 2. Reject HTML responses — API resource records return JSON/XML
+                    content_type = resp.headers.get("Content-Type", "").lower()
+                    if "html" in content_type or "<!doctype" in resp.text[:150].lower() or "<html" in resp.text[:150].lower():
+                        continue
+
+                    # 3. Require valid JSON with real user/object fields as dictionary keys
+                    try:
+                        data = resp.json()
+                    except (ValueError, json.JSONDecodeError):
+                        continue
+
+                    user_keys = {
+                        "email", "username", "first_name", "last_name",
+                        "user_id", "password_hash", "role", "balance", "address"
+                    }
+                    has_user_data = False
+
+                    if isinstance(data, dict):
+                        if any(k in data for k in user_keys) or any(k in data.get("data", {}) for k in user_keys):
+                            has_user_data = True
+                    elif isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+                        if any(k in data[0] for k in user_keys):
+                            has_user_data = True
+
+                    if has_user_data:
                         self.results.append(
                             {
                                 "id": f"AUTH-IDOR-{len(self.results)+1:03d}",
@@ -241,6 +271,8 @@ class AuthScanner(BaseScanner):
                 )
 
                 if resp.status_code == 200:
+                    if self.is_soft_404(resp):
+                        continue
                     body = resp.text.lower()
                     if any(
                         kw in body
@@ -332,6 +364,32 @@ class AuthScanner(BaseScanner):
         host, port = self._extract_host_port(base_url)
         login_url = f"{base_url}/rest/user/login"
         payload = {"email": "rate_limit_test@autosec.test", "password": "wrong"}
+
+        # Step 1: Pre-probe once to verify this is a valid/active auth endpoint
+        try:
+            pre_check = requests.post(
+                login_url,
+                json=payload,
+                headers=self.HEADERS,
+                timeout=self.REQUEST_TIMEOUT,
+                verify=False,
+            )
+            # If endpoint doesn't exist (404/405), returns HTML/SPA or soft-404, do not test rate limiting
+            if pre_check.status_code in (404, 405):
+                logger.debug(f"[AuthScanner] Login endpoint {login_url} not found (HTTP {pre_check.status_code}). Skipping rate limit test.")
+                return
+
+            pre_content_type = pre_check.headers.get("Content-Type", "").lower()
+            if "html" in pre_content_type or "<!doctype" in pre_check.text[:150].lower() or "<html" in pre_check.text[:150].lower():
+                logger.debug(f"[AuthScanner] Login endpoint {login_url} returned HTML/SPA. Skipping rate limit test.")
+                return
+
+            if self.is_soft_404(pre_check):
+                logger.debug(f"[AuthScanner] Login endpoint {login_url} is an SPA soft-404. Skipping rate limit test.")
+                return
+        except requests.RequestException as exc:
+            logger.debug(f"[AuthScanner] Pre-check to {login_url} failed: {exc}")
+            return
 
         success_count = 0
         total_attempts = 10

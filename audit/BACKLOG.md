@@ -1,0 +1,417 @@
+# AutoSecAudit — Audit Fix Backlog
+
+Source: Claude Code audit, 2026-10-11. This file is the **contract** between the fixer
+(Antigravity) and the verifier (Claude Code).
+
+## Rules of the loop
+
+- Work is done **one batch at a time** (2–3 issues). The current batch lives in `audit/STATE.md`.
+- The fixer implements each issue's **Required fix** and satisfies **every Acceptance criterion**.
+  If the fixer believes a required approach is wrong, it still must not silently deviate: it
+  writes the objection under "Deviations" in its handoff and the verifier decides.
+- The fixer must **not edit**: this file, `audit/STATE.md` (except the `status:` line),
+  `audit/reviews/`, `.claude/`. The fixer does **not commit**.
+- Existing tests may not be deleted, skipped, or weakened. New behavior gets new tests
+  (write the failing test first). Every acceptance criterion must be covered by a test.
+- Only touch files needed for the current batch. Unrelated refactors are rejected.
+
+### Stable API contract (the verifier's checks call these — keep them stable)
+
+`core.utils.is_target_allowed / validate_target` · `core.engine.Engine(mock_mode=…).set_target / run_plugins / _dict_to_findings` ·
+`mcp_server.handle_scan / handle_get_findings / handle_verify_fix` · `core.auth.create_user / verify_user / init_user_db / DB_PATH` ·
+`ui.app.app / _run_scan_background` · `core.authenticator.AutoAuthenticator(base_url, username, password, login_url=None).authenticate()` ·
+`core.crawler.WebCrawler(mock_mode=False).crawl(url)` · `plugins.base_plugin.BaseScanner._safe_request` ·
+`core.timing.TimingVerifier.verify_delay` · `intelligence.delta.DeltaAnalyzer.compare` · `intelligence.correlator.Correlator.link_related` ·
+`intelligence.danger_engine.calculate_security_posture / classify_threat_category` · `intelligence.compliance.ComplianceMapper.map_findings` ·
+`core.dev_detector.detect_dev_environment` · `intelligence.enricher.Enricher.enrich`.
+If an issue genuinely requires changing one of these, say so in the handoff.
+
+---
+
+## B01 — Foundation (runs on supported Pythons, deps correct)
+
+### AUD-01 · `Tuple` NameError on Python < 3.14
+- **Files:** `core/utils.py` (~line 5, 168), `.github/workflows/ci.yml`
+- **Problem:** `check_target_reachable(...) -> Tuple[bool, str]` but `Tuple` is not imported. 3.14 evaluates annotations lazily so it works locally; CI and Docker run 3.10, where *every* entry point crashes on import.
+- **Required fix:** import `Tuple` from `typing`. Add a CI matrix running the suite on `3.10` and `3.12` (keep 3.10 as minimum). Scan the rest of the codebase for other annotation names that are used but not imported.
+- **Acceptance:** `py -3.11 -c "import core.utils"` succeeds; CI workflow has a `python-version` matrix containing `"3.10"` and `"3.12"`.
+
+### AUD-02 · `requirements.txt` incomplete
+- **Files:** `requirements.txt`
+- **Problem:** `reportlab` (PDF export) is missing, so PDF download fails in Docker. `urllib3` is used directly but only installed transitively.
+- **Required fix:** add `reportlab` and `urllib3` with minimum versions. Keep `pyyaml` (it will be used by AUD-31).
+- **Acceptance:** `requirements.txt` lists `reportlab` and `urllib3`; `pip install -r requirements.txt` in a clean venv succeeds.
+
+### AUD-03 · `.gitignore` ignores every `*.json`
+- **Files:** `.gitignore`
+- **Problem:** global `*.json` / `*.html` rules hide fixtures, specs and audit files.
+- **Required fix:** remove the global `*.json` and `*.html` rules; scope ignores to generated output (`data/`, which already covers reports).
+- **Acceptance:** `git check-ignore audit/fixture.json` → not ignored; `git check-ignore data/reports/x.json` → ignored.
+
+---
+
+## B02 — Target scope enforcement
+
+### AUD-04 · Allowlist matches hostname strings, not IPs
+- **Files:** `core/utils.py` `is_target_allowed` (~lines 120–165)
+- **Problem:** `hostname.startswith(("10.", "192.168.", ...))` lets `10.example.com`, `192.168.attacker.net`, `127.evil.org` through. Name-suffix matching (`-dvwa`, `.localhost`) is also string-based.
+- **Required fix:** parse the hostname; if it is an IP literal use `ipaddress`; otherwise resolve with `socket.getaddrinfo`. Allow **only if every resolved address** is `is_private` or `is_loopback` (IPv4 and IPv6). Unresolvable → reject with a clear reason. Drop the name-based allowlist (docker/VPN practice targets resolve to private IPs and pass naturally).
+- **Acceptance:** `10.example.com`, `192.168.attacker.net`, `127.evil.org`, `8.8.8.8`, `example.com` → not allowed. `localhost`, `127.0.0.1`, `192.168.1.5`, `10.0.0.2`, `http://[::1]:8080` → allowed. Unit tests cover all of these.
+
+### AUD-05 · Allowlist enforced only at some entry points
+- **Files:** `core/engine.py` `set_target`, `mcp_server.py` `handle_scan`
+- **Problem:** the CLI and UI call `is_target_allowed`; MCP and direct `Engine` use never do.
+- **Required fix:** enforce `is_target_allowed` inside `Engine.set_target` (a single choke point, also in mock mode). Entry points may keep their early check for nicer UX.
+- **Acceptance:** `Engine(mock_mode=True).set_target("http://10.example.com")` → `False`; `set_target("http://127.0.0.1:8080")` → `True`.
+
+### AUD-06 · `validate_target` rejects single-label hosts
+- **Files:** `core/utils.py` `validate_target`
+- **Problem:** the regex requires a dot, so `http://juice-shop:3000` and `http://dvwa` (the docker-compose targets) are invalid.
+- **Required fix:** replace the regexes with `urllib.parse` validation: scheme `http`/`https` (or none → assume http), hostname present, port (if any) 1–65535, IPv6 literals supported.
+- **Acceptance:** valid: `http://juice-shop:3000`, `dvwa`, `localhost:8080`, `10.0.0.2`, `http://[::1]:80`. Invalid: `""`, `http://`, `ftp://x`, `http://host:99999`, `not a url`.
+
+---
+
+## B03 — MCP server correctness
+
+### AUD-07 · `autosec_get_findings` reads the wrong key
+- **Files:** `mcp_server.py` `handle_get_findings` (~line 200)
+- **Problem:** reads `data["findings"]`, but reports store `all_findings` → always 0 findings, grade A+. It also reads fields that `Finding` doesn't have (`url`, `parameter`, `cwe`, `evidence`).
+- **Required fix:** read `all_findings` (fall back to `findings` for old files). Map to real `Finding` fields (`cwe_id`, `raw_output`, `confidence`, `id`, `description`). Validate `report_id` against `^[\w-]+$`.
+- **Acceptance:** for a report with N findings, `findings_count == N`, and the grade is computed from them. A test covers this.
+
+### AUD-08 · `autosec_verify_fix` always reports RESOLVED
+- **Files:** `mcp_server.py` `handle_verify_fix` (~lines 273–291)
+- **Problem:** hardcoded `mock_mode=True`, wrong key, `"verified": True` unconditionally, and title-substring matching (`"sqli"` never matches "SQL Injection").
+- **Required fix:** run in real mode (accept an optional `mock` argument, default `False`). Run only the plugins relevant to `vulnerability_type` via an explicit `type → plugin class names` map. Match remaining findings by plugin/tool, not title substring. Check target scope and reachability first. If the scan errors or the target is unreachable, return `status: "ERROR"` with `verified: false` — never `RESOLVED`.
+- **Acceptance:** an unreachable local target (closed port) → status is not `RESOLVED`. With a stubbed scan returning an SQLi finding, `vulnerability_type="sqli"` → `STILL_VULNERABLE`. Tests cover both.
+
+### AUD-09 · `autosec_scan` returns success for disallowed targets
+- **Files:** `mcp_server.py` `handle_scan`
+- **Problem:** no scope check; an undocumented `skip_reachability` argument; errors surface as raw exceptions.
+- **Required fix:** call `is_target_allowed` first and return `{"status": "error", "error": reason}`. Either add `skip_reachability` to the tool `inputSchema` or remove it. Catch `ConnectionError`/`ValueError` from the engine and return a structured error.
+- **Acceptance:** `handle_scan({"target": "http://10.example.com", "mock": True})["status"] == "error"`.
+
+---
+
+## B04 — Dashboard access control
+
+### AUD-10 · Most routes require no login
+- **Files:** `ui/app.py`
+- **Problem:** only `/dashboard` checks the session. `/scan`, `/scan/async`, `/scan/progress/*`, `/scan/status/*`, `/report/*`, `/download*`, `/api/report/*` and `/history` are open.
+- **Required fix:** add a `login_required` decorator. Apply it to every route except `/`, `/landing`, `/login`, `/register`, `/logout`, `/api/auth/status` and static files. HTML routes redirect to `/login?next=…`; JSON/SSE routes return 401.
+- **Acceptance:** unauthenticated `GET /history`, `GET /report/latest`, `GET /download/x`, `GET /api/report/x/waf-rules` and `POST /scan/async` never return 200.
+
+### AUD-11 · Hardcoded default admin password
+- **Files:** `core/auth.py` `init_user_db` (~lines 48–66)
+- **Problem:** seeds `admin / AutoSec@2026` and logs the password.
+- **Required fix:** if no users exist, create `admin` with the password from env `AUTOSEC_ADMIN_PASSWORD`; if that is unset, generate `secrets.token_urlsafe(16)` and print it **once to stderr** (never to the log). Never log passwords.
+- **Acceptance:** on a fresh DB with the env var unset, `verify_user("admin", "AutoSec@2026")` fails. No password appears in log output.
+
+### AUD-12 · Open self-registration + SQLite connection leak
+- **Files:** `core/auth.py`, `ui/app.py` `/register`
+- **Problem:** anyone can register, so the login wall means nothing. Separately, `with sqlite3.connect()` commits but never closes the connection.
+- **Required fix:** registration disabled unless `AUTOSEC_ALLOW_REGISTRATION=true`; when enabled, role is always `developer`. Wrap connections with `contextlib.closing` (or close explicitly) in every function.
+- **Acceptance:** with the env var unset, `POST /register` does not create a user. A test confirms connections are closed (e.g. the DB file can be deleted right after the call on Windows).
+
+---
+
+## B05 — Dashboard web hardening
+
+### AUD-13 · No CSRF protection
+- **Files:** `ui/app.py`, templates/JS that POST, `requirements.txt`
+- **Required fix:** CSRF protection on all state-changing POSTs (`/login`, `/register`, `/scan`, `/scan/async`). Flask-WTF `CSRFProtect` is preferred; the front-end sends the token (hidden field / `X-CSRFToken` header). It must be disableable in tests via `app.config["WTF_CSRF_ENABLED"] = False`.
+- **Acceptance:** with CSRF enabled, `POST /login` without a token → 400. The existing UI flows still work (tests updated to disable CSRF or send the token).
+
+### AUD-14 · Open redirect through `next`
+- **Files:** `ui/app.py` `/login`, `/register`
+- **Required fix:** accept `next` only if it is a relative path starting with a single `/` (reject `//`, `/\`, schemes, and backslashes); otherwise fall back to `/dashboard`.
+- **Acceptance:** a successful login with `next=https://evil.example`, `//evil.example` or `/\evil.example` redirects to a local path.
+
+### AUD-15 · Unsafe server defaults
+- **Files:** `main.py`, `ui/app.py`, `config.py`
+- **Problem:** binds `0.0.0.0`; `SECRET_KEY` is regenerated on every restart; no login throttling.
+- **Required fix:** default host `127.0.0.1`, overridable with `AUTOSEC_HOST` (log a warning when it isn't loopback). When `AUTOSEC_SECRET_KEY` is unset, generate a key once and persist it to `data/.secret_key`. Throttle login: at most 5 failures per IP per 5 minutes (in-memory), then 429.
+- **Acceptance:** no literal `host="0.0.0.0"` in the code; two fresh processes see the same `config.SECRET_KEY`; the 6th bad login within 5 minutes → 429.
+
+---
+
+## B06 — Dashboard bugs
+
+### AUD-16 · `save_json` NameError in JSON download
+- **Files:** `ui/app.py` `download_report` (~line 2893)
+- **Required fix:** don't write files during a GET. Serve the resolved report data directly (`Response(json.dumps(...), mimetype="application/json")` with the download headers). This also removes the need for `save_json`.
+- **Acceptance:** downloading a report found via any naming scheme returns 200 JSON; the route writes no files.
+
+### AUD-17 · "Skip reachability" silently switches to demo mode
+- **Files:** `ui/app.py` `/scan/async`, `/scan` (`is_demo = ... or skip_reachability`)
+- **Required fix:** `skip_reachability` only skips the pre-flight check; the mode comes from `mode`/`mock_mode` alone.
+- **Acceptance:** `POST /scan/async` with `mode=real&skip_reachability=true` → response `mode == "real"`.
+
+### AUD-18 · Report lookup returns the wrong report
+- **Files:** `ui/app.py` `_resolve_report_data`, `export_dev_ticket`
+- **Problem:** the fallback matches with `clean_id in timestamp` (so `"2"` matches anything with a 2, and an empty timestamp matches everything) and loads every report on every request. An unknown finding ID in `dev-ticket` returns `findings[0]`.
+- **Required fix:** exact matches only (the known filename patterns); delete the substring fallback. `dev-ticket` returns 404 for an unknown finding.
+- **Acceptance:** with only `scan_20990101_000001.json` present, `GET /report/2` → 404; `GET /api/report/<id>/dev-ticket/NOPE` → 404.
+
+---
+
+## B07 — Scan job management
+
+### AUD-19 · Unbounded concurrent scans; stuck jobs never cleaned
+- **Files:** `ui/app.py`
+- **Required fix:** a bounded executor (`AUTOSEC_MAX_CONCURRENT_SCANS`, default 2). Return 429 when full. TTL cleanup removes any job older than TTL; jobs `running` longer than `2 × SCAN_TIMEOUT` are marked `error`.
+- **Acceptance:** with the cap at 1 and one job running, a second `POST /scan/async` → 429. Covered by a test.
+
+### AUD-20 · SSE clients steal each other's events
+- **Files:** `ui/app.py` `scan_progress`, `_run_scan_background`
+- **Problem:** events go into one `queue.Queue`, so two tabs on the same scan each see only part of the stream.
+- **Required fix:** keep an append-only event list per job plus a `threading.Condition`. Each SSE client keeps its own cursor (and honors `Last-Event-ID`), and events carry an `id:`.
+- **Acceptance:** a test with two concurrent subscribers to one job shows both receive the `done` event. `test_sse.py` becomes a real `unittest.TestCase` with no module-level side effects (today it runs a scan at import time with a 30 s deadline and fails intermittently).
+
+### AUD-21 · Synchronous `/scan` duplicates the pipeline in the request thread
+- **Files:** `ui/app.py` `/scan`
+- **Required fix:** remove the synchronous scan route. If any template still posts to it, point the template at the async flow (or make `/scan` create an async job and redirect to a progress page). Update its tests.
+- **Acceptance:** no full scan runs inside a request handler.
+
+---
+
+## B08 — Auto-login & crawler safety
+
+### AUD-22 · Auto-login reports success on failed logins
+- **Files:** `core/authenticator.py` `_evaluate_auth_response` (~lines 374–452)
+- **Problem:** cookies set by the login page **GET** count as a session, so "any cookie + 200" is treated as success. Failure strings are only checked on 400/401/403. Juice Shop's `{"authentication": {"token": ...}}` isn't recognised.
+- **Required fix:**
+  - Snapshot the cookie jar before the POST; only cookies **new or changed by the login response** count.
+  - Check failure indicators regardless of status code.
+  - Extract tokens from nested shapes, including `authentication.token`.
+  - Add a post-login verification step: request a verify URL (default: the target root) with the new credentials and require it to differ from the pre-login result (e.g. 401/redirect-to-login before → 200 after, or a logout link / username now present). A response token alone is enough only if a request with the token succeeds where the anonymous one did not.
+- **Acceptance:** a server whose GET sets a cookie and whose POST returns `200 "Invalid email or password"` → `success == False`. A Juice-Shop-shaped server (token in `authentication.token`, root returns 401 without the token and 200 with it) → `success == True`, with the token captured.
+
+### AUD-23 · Credential spraying across 14 paths → account lockout
+- **Files:** `core/authenticator.py`
+- **Required fix:** submit credentials only to an endpoint that looks like a login (a form with a password field, or a JSON endpoint answering 400/401/422 to an empty POST). Hard-cap total credential submissions at 6 per `authenticate()` call; stop at the first endpoint that clearly rejects the credentials.
+- **Acceptance:** against a server where every path returns 200 HTML without a form, at most 6 credential POSTs are sent.
+
+### AUD-24 · Crawler follows logout/destructive links and leaves scope on redirect
+- **Files:** `core/crawler.py`
+- **Required fix:** a configurable deny pattern (default: `logout|log-out|signout|sign-out|logoff|delete|remove|destroy`) applied to links and form actions before any request. After each response, discard it if `resp.url` left the origin (scheme + host + port).
+- **Acceptance:** for a page linking `/logout` and `/delete?id=1`, neither is ever requested.
+
+---
+
+## B09 — Shared HTTP client
+
+### AUD-25 · No shared, scope-aware HTTP layer
+- **Files:** new `core/http_client.py`, `plugins/base_plugin.py`, `core/engine.py`, `core/politeness.py`
+- **Problem:** about 40 direct `requests.*` calls; no auth, no scope check on redirects, a separate rate limiter per plugin, and a random rotating User-Agent that adds noise to response comparisons.
+- **Required fix:** `ScanHttpClient`, owned by the `Engine` and injected into plugins:
+  - one `requests.Session` carrying auth headers and cookies;
+  - a stable User-Agent `AutoSecAudit/2.0` (remove UA rotation);
+  - a thread-safe global rate limiter shared by all plugins;
+  - default timeouts;
+  - redirects followed manually, with a scope check (same origin + `is_target_allowed`) on **every hop**.
+  
+  `BaseScanner._safe_request` and `_get_baseline` delegate to it.
+- **Acceptance:** a redirect to an out-of-scope host is not followed (test with a local server). The UA is constant across requests. The `_safe_request` signature is unchanged.
+
+### AUD-26 · 429/503 responses are fed into detection logic
+- **Files:** `core/politeness.py`, `core/http_client.py`
+- **Problem:** the client sleeps on a 429 and then returns the 429 response, which baseline comparison treats as a high-confidence change. `max_retries_on_429` is never used.
+- **Required fix:** retry with exponential backoff up to `max_retries`, honoring `Retry-After`. If still throttled, return `None` (and count it for the report). Never return a 429/503 to plugin logic.
+- **Acceptance:** a server returning 429 once then 200 → `_safe_request` returns the 200. An always-429 server → `None`.
+
+---
+
+## B10 — Plugin migration
+
+### AUD-27 · Plugins bypass auth/scope/politeness
+- **Files:** all `plugins/*_plugin.py`
+- **Required fix:** replace every direct `requests.get/post/...` and `requests.Session()` in plugins with the shared client (`self._safe_request` or `self.http`). Do not change detection logic in this batch.
+- **Acceptance:** `grep -rnE "requests\.(get|post|put|delete|head|options|request|Session)\(" plugins/` matches nothing outside `base_plugin.py`. A test confirms a plugin request carries the `Authorization` header passed via `set_auth`. All existing plugin tests pass.
+
+### AUD-28 · Duplicated helpers in plugins
+- **Files:** plugins defining `_parse_url` / `_parse_target`
+- **Required fix:** remove the per-plugin copies and use `BaseScanner._parse_target`.
+- **Acceptance:** only `base_plugin.py` defines `_parse_target`/`_parse_url`.
+
+---
+
+## B11 — Engine correctness
+
+### AUD-29 · `SCAN_TIMEOUT` never applies
+- **Files:** `core/engine.py` `run_plugins` (~lines 200–250)
+- **Problem:** `future.result(timeout=...)` inside `as_completed` is a no-op, so one hung plugin blocks the whole scan.
+- **Required fix:** use `concurrent.futures.wait(..., timeout=SCAN_TIMEOUT)` for the whole plugin phase. Record unfinished plugins as `status="timeout"`, call `shutdown(wait=False, cancel_futures=True)`, and give the HTTP client a deadline so lingering threads stop making requests.
+- **Acceptance:** with `SCAN_TIMEOUT=2` and a plugin that sleeps 6 s, `run_plugins` returns within about 4 s and that plugin's result has `status == "timeout"`.
+
+### AUD-30 · Finding fields dropped on conversion
+- **Files:** `core/engine.py` `_dict_to_findings`
+- **Required fix:** build `Finding` from all dict keys that are dataclass fields (`dataclasses.fields`), with defaults for `host` and `confidence`.
+- **Acceptance:** `cwe_id` and `pci_dss` survive the conversion.
+
+### AUD-31 · OpenAPI import is wired to nothing
+- **Files:** `core/openapi.py`, `core/engine.py`, `main.py`, `ui/app.py`
+- **Problem:** `engine.crawler_data` is written and never read, and the endpoint format doesn't match what plugins expect.
+- **Required fix:** `OpenAPIImporter.get_endpoints()` returns plugin-shaped `{path, param, method}` entries (query params + OpenAPI 3 `requestBody` top-level JSON properties + Swagger `formData`/`body` params; resolve local `$ref`; honor `basePath`/`servers[0]`). Support YAML specs. Add `Engine.add_endpoints()`, which merges imported endpoints with crawler endpoints (dedupe on method+path+param). Remove `crawler_data`.
+- **Acceptance:** a test with a small OpenAPI 3 spec (one GET with a query param, one POST with a body) shows plugins receiving those endpoints.
+
+---
+
+## B12 — False-positive control
+
+### AUD-32 · Baseline comparison is too weak
+- **Files:** `plugins/base_plugin.py` `_get_baseline`, `_verify_against_baseline`
+- **Problem:** a single sample; "length changed > 20 %" counts as verified; baselines are fetched without auth while probes are authenticated; reflected input changes the length by itself.
+- **Required fix:**
+  - At least 2 baseline samples (through the shared client, so with auth).
+  - Record natural variance (status stability and length spread).
+  - Add a control request with a benign random value.
+  - Treat a change as significant only if it exceeds the observed variance and differs from the control.
+  - Discount the length of the submitted value when it is reflected.
+  - Use a similarity ratio (e.g. `difflib.SequenceMatcher` on a bounded prefix) rather than raw length alone.
+- **Acceptance:** unit tests show that a response varying naturally by ±30 % (dynamic token) is not verified, that pure reflection of the input is not verified, and that a 200→500 change is verified.
+
+### AUD-33 · Timing verification isn't statistical
+- **Files:** `core/timing.py`, `core/engine.py`
+- **Problem:** `std_dev` is computed but unused; when the control probe is also slow it still returns `(True, "medium")`; timing runs while other plugins load the target.
+- **Required fix:**
+  - Threshold = `mean + max(k·std_dev, ratio·expected)`.
+  - If the control probe is also slow → **not verified**.
+  - Require the delay to reproduce on a second delay probe.
+  - The engine runs timing-based checks in a serialized phase after the parallel phase (e.g. plugins register timing checks, or an engine-level lock that pauses other traffic).
+- **Acceptance:** unit tests with fake probe functions: slow control → `False`; jittery baseline raises the threshold; a reproduced delay with a fast control → `True`.
+
+---
+
+## B13 — Finding identity
+
+### AUD-34 · Findings lack structured identity
+- **Files:** `core/models.py`, all plugins' `parse_output`
+- **Required fix:** add `vuln_type` (string from a documented enum in `core/models.py`), `endpoint`, `param`, `method`, `evidence` and `fingerprint` to `Finding`. Compute `fingerprint` = sha256 of `tool|vuln_type|method|endpoint|param`, falling back to `tool|title` when the structured fields are absent. Every plugin populates `vuln_type` and `endpoint`/`param` where applicable. Old report JSON still loads.
+- **Acceptance:** `Finding` has these fields; every plugin's mock output sets `vuln_type`; loading an old report works.
+
+### AUD-35 · Delta compares per-scan counters
+- **Files:** `intelligence/delta.py`
+- **Problem:** IDs like `SQLI-001` are list positions, so different findings at different endpoints look "unchanged".
+- **Required fix:** compare by `fingerprint`, computing it for old reports on load.
+- **Acceptance:** two findings with the same `id` but different titles/endpoints → 1 new, 1 fixed, 0 unchanged.
+
+### AUD-36 · Correlator links everything; no dedupe
+- **Files:** `intelligence/correlator.py`
+- **Problem:** every finding in a single-target scan shares host:port, so all of them are "related". Running it twice appends the references twice.
+- **Required fix:** `link_related` deduplicates by fingerprint (merging evidence/references) and groups by `(endpoint, param)`. It must be idempotent.
+- **Acceptance:** two identical findings → one; running `link_related` twice yields the same references as running it once.
+
+---
+
+## B14 — Classification & grading
+
+### AUD-37 · Four keyword classifiers disagree and overwrite plugin data
+- **Files:** `intelligence/compliance.py`, `intelligence/danger_engine.py`, `intelligence/remediation.py`, `intelligence/recipes.py`
+- **Problem:** first-match substring matching gives wrong results: "Login **Bypass**" → A01; `"env"` matches "Dev **Env**ironment"; `"auth"` matches "OAuth". `ComplianceMapper` overwrites the plugin's own OWASP tag, and remediation parses `"Type:"` out of free text.
+- **Required fix:** one `vuln_type → {owasp, cwe, pci, danger_category, remediation_key, recipe_key}` table, used by all four modules. Keyword matching survives only as a fallback when `vuln_type` is missing, with word-boundary regexes. Never overwrite a plugin-provided `owasp_tag`/`cwe_id`.
+- **Acceptance:** an SQLi login-bypass finding tagged `A03:2021` stays A03. A header finding marked "[Dev Environment Artifact]" is not `customer_data_theft`. A title containing "OAuth" is not classified by the `"auth"` keyword alone.
+
+### AUD-38 · Grade ignores confidence
+- **Files:** `intelligence/danger_engine.py` `calculate_security_posture`
+- **Required fix:** weight by confidence (high 1.0 / medium 0.6 / low 0.25) over findings deduplicated by fingerprint. A finding forces an automatic F only if it is Critical **and** at least medium confidence.
+- **Acceptance:** a single low-confidence Critical → not F; a single high-confidence Critical → F.
+
+### AUD-39 · Dev-environment detection is based on free text
+- **Files:** `core/dev_detector.py`
+- **Problem:** the word "turbopack" anywhere in the page downgrades every header/CORS finding to Info, so a false match lets the CI gate pass.
+- **Required fix:** use only structural signals (`<script src>` containing `/@vite/client`, `/@react-refresh`, `/_next/static/webpack/`, `__webpack_hmr`; the `Server` header). When downgrading, keep the original value in `original_severity`; `--fail-on` evaluates `original_severity` unless `--treat-dev-artifacts-as-info` is passed.
+- **Acceptance:** `<p>We moved to turbopack</p>` → `None`; `<script type="module" src="/@vite/client">` → `"Vite Dev Server"`.
+
+---
+
+## B15 — One pipeline
+
+### AUD-40 · The scan pipeline is implemented four times
+- **Files:** new `core/pipeline.py`; `main.py`, `ui/app.py`, `mcp_server.py`
+- **Problem:** CLI, async UI, sync UI and MCP each run a different subset of delta / correlate / enrich / compliance / remediation steps.
+- **Required fix:** `run_scan_pipeline(request) -> (Report, paths)` performs: scope check → load plugins → set target → auth → OpenAPI → plugins → report → delta → correlate → enrich → compliance → remediation → summary → save JSON+HTML. It takes an optional progress callback (used by SSE). All three entry points call it.
+- **Acceptance:** `Correlator(` is instantiated in exactly one non-test module. An MCP scan result's findings include `cwe_id`.
+
+### AUD-41 · CLI defects
+- **Files:** `main.py`
+- **Required fix:** honor `--html`. Keep `--real`/`--mock` only on the subcommands (remove the global duplicates, which get overridden). Read the password from `AUTOSEC_LOGIN_PASS` or prompt with `getpass` when `--login-user` is given without `--login-pass` (keep `--login-pass` but warn that it is visible in the process list). Fix the stale menu text (plugin/test counts computed, not hardcoded).
+- **Acceptance:** `main.py scan ... --mock --html out.html` writes `out.html`.
+
+### AUD-42 · Report ID collisions / mismatch
+- **Files:** `core/engine.py` `save_report`, `reports/generator.py` `generate_report`
+- **Problem:** JSON and HTML each take their own second-resolution timestamp, so names can differ and concurrent scans can overwrite each other.
+- **Required fix:** one `report_id = <YYYYmmdd_HHMMSS>_<6 hex>` generated once per scan and used for JSON, HTML and PDF.
+- **Acceptance:** JSON and HTML of a scan share the same `report_id`; two scans in the same second get different IDs.
+
+---
+
+## B16 — Discovery quality
+
+### AUD-43 · Crawler is a DFS that never reads JS bundles
+- **Files:** `core/crawler.py`
+- **Required fix:**
+  - BFS with a queue (depth/page limits kept).
+  - Same-origin check on scheme + host + port.
+  - Fetch same-origin `<script src>` files (size cap, e.g. 2 MB, max 10 files) and run `extract_js_endpoints` on them.
+  - Record the HTTP method implied by `.post(`/`.put(`/`.delete(` calls.
+- **Acceptance:** a root page with `<script src="/app.js">`, where `app.js` contains `fetch('/api/items?id=1')`, yields `/api/items` with param `id`.
+
+### AUD-44 · SPA soft-404 detection
+- **Files:** `core/spa_detector.py`, `plugins/base_plugin.py`, `core/engine.py`
+- **Problem:** a single probe; any page with the same `<title>` counts as a soft-404 (so server-rendered sites lose real findings); calibration doesn't follow redirects but plugins do; every plugin calibrates separately.
+- **Required fix:** calibrate once in the engine and share the result. Use 2–3 random probes (one with a file extension) and the same redirect policy as the plugins. Title equality only counts together with length/similarity tolerance.
+- **Acceptance:** a site with a shared title whose real page differs by more than 30 % in content is not flagged as a soft-404.
+
+### AUD-45 · Enricher hits the network in mock mode
+- **Files:** `intelligence/enricher.py`
+- **Required fix:** no network calls in mock mode. Add a disk cache with TTL (`data/cve_cache.json`) and optional `NVD_API_KEY` support.
+- **Acceptance:** with mock mode on, enriching a finding that has a `cve_id` makes zero HTTP calls.
+
+---
+
+## B17 — Test & runtime hygiene
+
+### AUD-46 · Tests write into the real `data/` directory
+- **Files:** `config.py`, `run_tests.py`, `core/auth.py`
+- **Problem:** 418 report files have built up in `data/reports`; `core/auth` creates the DB on import.
+- **Required fix:** `DATA_DIR`/`REPORTS_DIR` are overridable via `AUTOSEC_DATA_DIR`; `run_tests.py` points it at a temp directory; the DB is initialized lazily (first use or app factory), not on import.
+- **Acceptance:** running the full suite leaves the file count of `data/reports` unchanged.
+
+### AUD-47 · Library modules configure logging
+- **Files:** `core/utils.py`, `ui/app.py`, others calling `logging.basicConfig`
+- **Required fix:** only entry points (`main.py`, `mcp_server.py`) configure logging. In MCP mode nothing except protocol messages is written to stdout.
+- **Acceptance:** no `logging.basicConfig` call in `core/`, `plugins/`, `intelligence/`, `reports/` or `ui/`.
+
+---
+
+## B18 — Detection accuracy (from a real scan of `testbed/app.py`, 2026-10-11)
+
+Ground truth: the testbed's planted vulnerabilities (see comments in `testbed/app.py`).
+The 2026-10-11 real full-profile scan produced 39 findings, about 25 of them unique true positives.
+
+### AUD-48 · Reflection reported as command execution (4 Critical false positives)
+- **Files:** `plugins/command_injection_plugin.py`
+- **Problem:** `/search`, `/fetch`, `/template` and `/view` were reported as Critical, high-confidence OS command injection. These endpoints only *reflect* input, so the marker text comes back unchanged and is mistaken for command output.
+- **Required fix:** report execution only when the response contains evidence that the reflected input alone cannot produce: compare against a control request whose reflection would be identical but which cannot execute anything. A marker that also appears in the control is reflection, not execution. Keep the timing path behind AUD-33's verifier.
+- **Acceptance:** against the testbed, `/api/exec` is still reported and `/search`, `/fetch`, `/template` and `/view` are not. A unit test with a server that echoes its input yields no command-injection finding.
+
+### AUD-49 · Content-type-blind detections and a missed login injection
+- **Files:** `plugins/xss_plugin.py`, `plugins/ssrf_plugin.py`, `plugins/sqli_plugin.py`
+- **Problem:** reflected XSS is reported on `/fetch`, which returns `application/json` (not rendered as HTML). SSRF is reported on `/view` (a file-path endpoint). The testbed's planted login injection on `/login` (a form-encoded POST) is **missed**, because login testing only sends JSON bodies.
+- **Required fix:** XSS reflection counts only for HTML-rendered responses (`text/html` or no explicit non-HTML type). SSRF requires evidence tied to the fetched URL, not mere reflection of the parameter. Login testing also submits form-encoded bodies, using the form fields the crawler discovered.
+- **Acceptance:** against the testbed, there is no XSS finding on `/fetch` and no SSRF finding on `/view`, and `/login` is reported. Unit tests cover the JSON-response and form-login cases.
+
+### AUD-50 · Same issue reported several times across plugins
+- **Files:** `intelligence/correlator.py`, `core/models.py`
+- **Problem:** `/.env` is reported 3× (3 plugins), `/admin` 2×, `/api/exec` 2×, IDOR 2× (one per user ID), and three security headers by two plugins with **different severities** (Low vs Medium).
+- **Required fix:** after AUD-34/36, add a canonical key `vuln_type|method|normalized_endpoint|param` (numeric path segments normalized to `{id}`) that ignores which tool reported the finding. Merge findings that share it: keep the highest-confidence evidence, list every reporting tool, and use one severity per `vuln_type` from the AUD-37 table.
+- **Acceptance:** a real testbed scan reports `/.env`, `/admin`, `/api/exec`, the IDOR, and each missing header exactly once. A unit test covers cross-tool merging.
+
+---
+
+## Deferred (not in the loop — do after B18)
+- Move the ~2,000 lines of inline HTML in `ui/app.py` into `ui/templates/`.
+- Replace per-plugin `_get_mock_output` with a recorded-fixture replay layer.
+- Move scan jobs to a proper worker/task queue behind a WSGI server.

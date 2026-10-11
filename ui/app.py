@@ -35,17 +35,19 @@ app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 # SSE Scan Progress: in-memory job store
 # ---------------------------------------------------------------------------
 scan_jobs = {}  # {scan_id: {"status", "target", "progress_queue", "report_name", "error"}}
+scan_jobs_lock = threading.Lock()
 
 SCAN_JOB_TTL_SECONDS = 3600  # 1 hour
 
 def _cleanup_stale_jobs():
     """Remove scan jobs older than TTL to prevent memory leaks."""
     now = time.time()
-    stale = [sid for sid, job in scan_jobs.items()
-             if job.get("created_at", 0) < now - SCAN_JOB_TTL_SECONDS
-             and job.get("status") in ("done", "error")]
-    for sid in stale:
-        del scan_jobs[sid]
+    with scan_jobs_lock:
+        stale = [sid for sid, job in list(scan_jobs.items())
+                 if job.get("created_at", 0) < now - SCAN_JOB_TTL_SECONDS
+                 and job.get("status") in ("done", "error")]
+        for sid in stale:
+            del scan_jobs[sid]
     if stale:
         logger.info(f"Cleaned up {len(stale)} stale scan job(s)")
 
@@ -1104,11 +1106,45 @@ HTML_FORM = """
                 </div>
                 <div class="card-meta-chips">
                     <span class="meta-chip">19 PLUGINS</span>
-                    <span class="meta-chip meta-chip-mode">MOCK DEMO</span>
+                    <span id="modeChip" class="meta-chip meta-chip-mode">{% if is_demo %}DEMO SIMULATION{% else %}REAL ACTIVE SCAN{% endif %}</span>
                 </div>
             </div>
 
             <form id="scanForm" action="/scan" method="POST" enctype="multipart/form-data">
+                <!-- Execution Mode Selector (Demo vs Real Active Scan) -->
+                <div style="margin-bottom: 20px;">
+                    <div class="label-row" style="margin-bottom: 6px;">
+                        <span class="form-label">Scan Execution Mode</span>
+                        <span class="label-hint">Differentiates Offline Demo vs Live Network Probing</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;">
+                        <label id="modeOptionDemo" style="display: flex; flex-direction: column; gap: 4px; cursor: pointer; background: var(--surface); padding: 12px 14px; border-radius: 8px; border: 1.5px solid {% if is_demo %}var(--accent){% else %}var(--border){% endif %}; transition: all 0.2s ease;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; color: var(--fg);">
+                                    <input type="radio" name="mode" value="demo" id="radioDemo" {% if is_demo %}checked{% endif %} onchange="updateModeUI()" />
+                                    <span>🧪 Demo Mode (Simulation)</span>
+                                </div>
+                                <span style="font-size: 10px; font-weight: 600; background: rgba(99, 102, 241, 0.15); color: #818cf8; padding: 2px 7px; border-radius: 4px;">NO LIVE SERVER NEEDED</span>
+                            </div>
+                            <span style="font-size: 11px; color: var(--fg-muted); padding-left: 24px; line-height: 1.4;">
+                                Safe offline demo using simulated telemetry. Target website reachability is <strong>never checked</strong> — works with any target URL.
+                            </span>
+                        </label>
+                        <label id="modeOptionReal" style="display: flex; flex-direction: column; gap: 4px; cursor: pointer; background: var(--surface); padding: 12px 14px; border-radius: 8px; border: 1.5px solid {% if not is_demo %}var(--accent){% else %}var(--border){% endif %}; transition: all 0.2s ease;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; color: var(--fg);">
+                                    <input type="radio" name="mode" value="real" id="radioReal" {% if not is_demo %}checked{% endif %} onchange="updateModeUI()" />
+                                    <span>⚡ Real Active Scan</span>
+                                </div>
+                                <span style="font-size: 10px; font-weight: 600; background: rgba(239, 68, 68, 0.15); color: #f87171; padding: 2px 7px; border-radius: 4px;">ONLINE TARGET REQUIRED</span>
+                            </div>
+                            <span style="font-size: 11px; color: var(--fg-muted); padding-left: 24px; line-height: 1.4;">
+                                Live vulnerability probing and attack payloads. Verifies target is active and reachable before scanning.
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
                 <!-- Target URL & Quick Presets -->
                 <div class="form-group">
                     <div class="label-row">
@@ -1205,6 +1241,30 @@ HTML_FORM = """
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- Automated Login Accordion (Optional) -->
+                <div style="margin-top: 16px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); overflow: hidden;">
+                    <details style="padding: 10px 14px; cursor: pointer;">
+                        <summary style="font-size: 12px; font-weight: 600; color: var(--fg); display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <span>🔐 Authenticated Deep Scan (Auto-Login)</span>
+                            <span style="font-size: 11px; font-weight: normal; color: var(--fg-muted); margin-left: auto;">Optional</span>
+                        </summary>
+                        <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; cursor: default;">
+                            <div>
+                                <label style="display: block; font-size: 11px; color: var(--fg-muted); margin-bottom: 4px;">Username or Email</label>
+                                <input type="text" name="login_user" placeholder="e.g. admin or testuser" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 12px;" />
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 11px; color: var(--fg-muted); margin-bottom: 4px;">Password</label>
+                                <input type="password" name="login_pass" placeholder="••••••••••••" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 12px;" />
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label style="display: block; font-size: 11px; color: var(--fg-muted); margin-bottom: 4px;">Login URL Path (Optional, auto-detects /login if empty)</label>
+                                <input type="text" name="login_url" placeholder="/login or /api/auth/login" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 12px;" />
+                            </div>
+                        </div>
+                    </details>
                 </div>
 
                 <div style="margin-top: 14px; margin-bottom: 6px; display: flex; align-items: center; justify-content: flex-start;">
@@ -1349,6 +1409,25 @@ HTML_FORM = """
                 updateThemeIcon(saved);
             }
         })();
+
+        function updateModeUI() {
+            var demoRadio = document.getElementById('radioDemo');
+            var isDemo = demoRadio ? demoRadio.checked : true;
+            var demoCard = document.getElementById('modeOptionDemo');
+            var realCard = document.getElementById('modeOptionReal');
+            var modeChip = document.getElementById('modeChip');
+            if (demoCard && realCard) {
+                if (isDemo) {
+                    demoCard.style.borderColor = 'var(--accent)';
+                    realCard.style.borderColor = 'var(--border)';
+                    if (modeChip) modeChip.textContent = 'DEMO SIMULATION';
+                } else {
+                    demoCard.style.borderColor = 'var(--border)';
+                    realCard.style.borderColor = 'var(--accent)';
+                    if (modeChip) modeChip.textContent = 'REAL ACTIVE SCAN';
+                }
+            }
+        }
     </script>
     <script>
         document.getElementById('scanForm').addEventListener('submit', function (e) {
@@ -2077,7 +2156,7 @@ def dashboard():
         reports = reports[:5]
     else:
         reports = []
-    return render_template_string(HTML_FORM, recent_reports=reports, user=current_user)
+    return render_template_string(HTML_FORM, recent_reports=reports, user=current_user, is_demo=config.MOCK_MODE)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -2222,9 +2301,13 @@ def history():
 # ---------------------------------------------------------------------------
 # SSE: Async scan with real-time progress streaming
 # ---------------------------------------------------------------------------
-def _run_scan_background(scan_id: str, target: str, previous_path: str = None, openapi_path: str = None, profile: str = "full", skip_reachability: bool = False):
+def _run_scan_background(scan_id: str, target: str, previous_path: str = None, openapi_path: str = None, profile: str = "full", skip_reachability: bool = False, login_user: str = None, login_pass: str = None, login_url: str = None, is_demo: bool = True):
     """Run a scan in a background thread, pushing progress events to the queue."""
-    job = scan_jobs[scan_id]
+    with scan_jobs_lock:
+        job = scan_jobs.get(scan_id)
+    if not job:
+        logger.warning(f"Scan job {scan_id} not found in store, aborting background scan")
+        return
     q = job["progress_queue"]
 
     def emit(stage, message, progress=0, detail=""):
@@ -2242,11 +2325,13 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
         job["status"] = "running"
 
         # 1. Initialize
-        emit("init", f"Initializing scan engine [{profile.upper()} profile]...", 5)
-        engine = Engine(profile=profile)
+        mode_label = "DEMO SIMULATION" if is_demo else "REAL ACTIVE SCAN"
+        emit("init", f"Initializing {mode_label} engine [{profile.upper()} profile]...", 5)
+        engine = Engine(mock_mode=is_demo, profile=profile)
         engine.load_plugins()
 
-        if not skip_reachability and not engine.mock_mode:
+        # Target presence check ONLY in Real Mode (completely bypassed in Demo Mode)
+        if not is_demo and not skip_reachability:
             reachable, reach_msg = check_target_reachable(target, timeout=2.5)
             if not reachable:
                 emit("error", f"Target is offline or unreachable: {reach_msg}", 0)
@@ -2255,6 +2340,10 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
         if not engine.set_target(target):
             raise ValueError("Invalid target URL")
         emit("init", f"Target: {target} — {len(engine.plugins)} plugins loaded", 10)
+
+        if login_user and login_pass:
+            engine.set_auth_credentials(login_user, login_pass, login_url=login_url)
+            emit("auth", f"Attempting automated login to {target} as {login_user}...", 12)
 
         if openapi_path:
             from core.openapi import OpenAPIImporter
@@ -2274,6 +2363,13 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
         # 3. Run plugins
         emit("scanning", "Starting plugin execution...", 20)
         engine.run_plugins()
+
+        # If automated auth was attempted, emit status
+        if engine.auth_result:
+            if engine.auth_result.success:
+                emit("auth", f"Authenticated! Captured session ({len(engine.auth_result.cookies)} cookies).", 25)
+            else:
+                emit("auth", f"Auth note: {engine.auth_result.message}. Scanned public surface.", 25)
 
         # Report crawler results
         if engine.crawl_result:
@@ -2365,13 +2461,25 @@ def scan_async():
     if not allowed:
         return jsonify({"error": reason}), 403
 
+    # Differentiate Demo Mode vs Real Mode
+    form_mode = request.form.get("mode", "").strip().lower()
+    mock_param = request.form.get("mock_mode", "").strip().lower()
     skip_reachability = request.form.get("skip_reachability", "false").lower() in ("true", "1")
-    if not skip_reachability:
+
+    if form_mode == "demo" or mock_param in ("true", "1") or skip_reachability:
+        is_demo = True
+    elif form_mode == "real" or mock_param in ("false", "0"):
+        is_demo = False
+    else:
+        is_demo = False  # Omitted mode parameter defaults to Real Mode validation
+
+    # Target presence check ONLY in Real Mode; completely bypassed in Demo Mode!
+    if not is_demo and not skip_reachability:
         reachable, reach_msg = check_target_reachable(target, timeout=2.5)
         if not reachable:
-            logger.warning(f"Scan rejected - target unreachable: {target} ({reach_msg})")
+            logger.warning(f"Scan rejected - target unreachable in real mode: {target} ({reach_msg})")
             return jsonify({
-                "error": f"Target is offline or unreachable: {reach_msg} Please verify the URL and ensure the service is running before scanning."
+                "error": f"Target is offline or unreachable: {reach_msg} Real Active Scan requires the target server to be running."
             }), 400
 
     previous_path = None
@@ -2395,26 +2503,30 @@ def scan_async():
                 openapi_path = tmp.name
 
         profile = request.form.get("profile", "full").strip() or "full"
+        login_user = request.form.get("login_user", "").strip() or None
+        login_pass = request.form.get("login_pass", "").strip() or None
+        login_url = request.form.get("login_url", "").strip() or None
 
         scan_id = str(uuid.uuid4())[:8]
-        scan_jobs[scan_id] = {
-            "status": "starting",
-            "target": target,
-            "profile": profile,
-            "progress_queue": queue.Queue(),
-            "report_name": None,
-            "error": None,
-            "created_at": time.time(),
-        }
+        with scan_jobs_lock:
+            scan_jobs[scan_id] = {
+                "status": "starting",
+                "target": target,
+                "profile": profile,
+                "progress_queue": queue.Queue(),
+                "report_name": None,
+                "error": None,
+                "created_at": time.time(),
+            }
 
         thread = threading.Thread(
             target=_run_scan_background,
-            args=(scan_id, target, previous_path, openapi_path, profile, skip_reachability),
+            args=(scan_id, target, previous_path, openapi_path, profile, skip_reachability, login_user, login_pass, login_url, is_demo),
             daemon=True,
         )
         thread.start()
 
-        return jsonify({"scan_id": scan_id, "profile": profile})
+        return jsonify({"scan_id": scan_id, "profile": profile, "mode": "demo" if is_demo else "real"})
 
     except Exception as e:
         logger.error(f"Failed to initialize async scan: {e}", exc_info=True)
@@ -2430,11 +2542,12 @@ def scan_async():
 @app.route("/scan/progress/<scan_id>")
 def scan_progress(scan_id):
     """SSE endpoint — streams scan progress events."""
-    if scan_id not in scan_jobs:
+    with scan_jobs_lock:
+        job = scan_jobs.get(scan_id)
+    if not job:
         return "Scan not found", 404
 
     def event_stream():
-        job = scan_jobs[scan_id]
         q = job["progress_queue"]
         while True:
             try:
@@ -2462,9 +2575,10 @@ def scan_progress(scan_id):
 @app.route("/scan/status/<scan_id>")
 def scan_status(scan_id):
     """JSON status endpoint — polling fallback."""
-    if scan_id not in scan_jobs:
+    with scan_jobs_lock:
+        job = scan_jobs.get(scan_id)
+    if not job:
         return jsonify({"error": "Scan not found"}), 404
-    job = scan_jobs[scan_id]
     return jsonify({
         "status": job["status"],
         "target": job["target"],
@@ -2484,12 +2598,24 @@ def scan():
         logger.warning(f"Blocked scan attempt on: {target}")
         return render_template_string(HTML_BLOCKED, reason=reason), 403
 
+    # Differentiate Demo Mode vs Real Mode
+    form_mode = request.form.get("mode", "").strip().lower()
+    mock_param = request.form.get("mock_mode", "").strip().lower()
     skip_reachability = request.form.get("skip_reachability", "false").lower() in ("true", "1")
-    if not skip_reachability:
+
+    if form_mode == "demo" or mock_param in ("true", "1") or skip_reachability:
+        is_demo = True
+    elif form_mode == "real" or mock_param in ("false", "0"):
+        is_demo = False
+    else:
+        is_demo = False
+
+    # Target presence check ONLY in Real Mode; completely bypassed in Demo Mode!
+    if not is_demo and not skip_reachability:
         reachable, reach_msg = check_target_reachable(target, timeout=2.5)
         if not reachable:
-            logger.warning(f"Synchronous scan blocked - target unreachable: {target} ({reach_msg})")
-            return f"Target is offline or unreachable: {reach_msg} Please ensure your application is running before scanning.", 400
+            logger.warning(f"Synchronous scan blocked - target unreachable in real mode: {target} ({reach_msg})")
+            return f"Target is offline or unreachable: {reach_msg} Real Active Scan requires the target server to be running.", 400
     
     import tempfile
 
@@ -2510,7 +2636,7 @@ def scan():
             previous_path = tmp.name
     
     try:
-        engine = Engine()
+        engine = Engine(mock_mode=is_demo)
         engine.load_plugins()
         
         if not engine.set_target(target):
@@ -2833,11 +2959,17 @@ def export_waf_rules(report_id):
     
     for f in findings:
         rec = get_fix_recipes(f)
-        try:
-            waf_bundle["cloudflare_rules"].append(json.loads(rec.get("waf", "{}")))
-        except Exception:
-            pass
-        waf_bundle["nginx_block"] += f"\n# Fix for: {f.get('title')}\n" + rec.get("nginx", "") + "\n"
+        waf_str = rec.get("waf")
+        if waf_str and isinstance(waf_str, str) and waf_str.strip() and waf_str.strip() != "{}":
+            try:
+                parsed_rule = json.loads(waf_str)
+                if parsed_rule:
+                    waf_bundle["cloudflare_rules"].append(parsed_rule)
+            except (json.JSONDecodeError, ValueError) as json_err:
+                logger.warning(f"Failed to parse WAF recipe for finding '{f.get('title')}': {json_err}")
+        nginx_block = rec.get("nginx", "")
+        if nginx_block:
+            waf_bundle["nginx_block"] += f"\n# Fix for: {f.get('title')}\n" + nginx_block + "\n"
         
     response = jsonify(waf_bundle)
     response.headers["Content-Disposition"] = f'attachment; filename="autosec_waf_{clean_id}.json"'

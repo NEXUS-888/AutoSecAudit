@@ -18,6 +18,7 @@ from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse
 
 from plugins.base_plugin import BaseScanner
+from core.dev_detector import tag_dev_artifact_finding
 
 logger = logging.getLogger(__name__)
 
@@ -225,7 +226,7 @@ class CORSScanner(BaseScanner):
             if result.get("evil_origin"):
                 description += f"\nTested Origin: {result['evil_origin']}"
 
-            findings.append({
+            finding = {
                 "id": f"CORS-{len(findings)+1:03d}",
                 "title": f"{title} at {result['path']}",
                 "severity": result["severity"],
@@ -243,7 +244,10 @@ class CORSScanner(BaseScanner):
                 "tool_name": "CORSScanner",
                 "confidence": "high" if result["type"] in ("origin_reflection", "null_origin") else "medium",
                 "remediation": self._get_remediation(result["type"]),
-            })
+            }
+            if getattr(self, "dev_environment", None):
+                finding = tag_dev_artifact_finding(finding, self.dev_environment)
+            findings.append(finding)
 
         return {
             "tool_name": "CORSScanner",
@@ -252,13 +256,8 @@ class CORSScanner(BaseScanner):
         }
 
     def _extract_port(self) -> int:
-        try:
-            target = self.target.split("://")[-1]
-            if ":" in target:
-                return int(target.split(":")[1].split("/")[0])
-            return 443 if "https" in self.target else 80
-        except (ValueError, IndexError):
-            return 80
+        _, _, port = self._parse_target(self.target or "localhost")
+        return port or 80
 
     @staticmethod
     def _get_remediation(vuln_type: str) -> str:

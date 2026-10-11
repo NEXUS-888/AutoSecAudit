@@ -24,17 +24,23 @@ logger = logging.getLogger(__name__)
 HEADERS = {"User-Agent": "AutoSecAudit/2.0 SecretExposure-Scanner"}
 REQUEST_TIMEOUT = (3.0, 6.0)
 
+# Strict line-anchored regex for environment variables (multiline, case-sensitive)
+ENV_REGEX = re.compile(
+    r"^\s*(?:DB_|DATABASE_|AWS_|API_KEY|SECRET_|JWT_|TOKEN_|PORT|APP_|DEBUG|REDIS_|MAIL_|NODE_ENV)[A-Z0-9_]*\s*=\s*.+$",
+    re.MULTILINE
+)
+
 SENSITIVE_FILES = [
-    ("/.env", "Environment Variables & Secrets", "Critical", [r"[A-Z_]+=[^\s]+", r"DB_PASSWORD", r"SECRET_KEY", r"API_KEY", r"DATABASE_URL"]),
-    ("/.env.local", "Local Environment Configuration", "Critical", [r"[A-Z_]+="]),
-    ("/.git/config", "Git Repository Configuration", "High", [r"\[core\]", r"repositoryformatversion", r"url = "]),
-    ("/.git/HEAD", "Git HEAD Reference", "High", [r"ref: refs/heads/"]),
-    ("/docker-compose.yml", "Docker Compose Infrastructure File", "High", [r"version:", r"services:", r"image:"]),
-    ("/config.json", "Application Configuration File", "Medium", [r"\"database\"", r"\"password\"", r"\"api_key\""]),
-    ("/backup.sql", "Raw SQL Database Backup", "Critical", [r"CREATE TABLE", r"INSERT INTO", r"-- MySQL dump"]),
-    ("/dump.sql", "Database Dump File", "Critical", [r"CREATE TABLE", r"INSERT INTO"]),
-    ("/id_rsa", "Private SSH Key", "Critical", [r"BEGIN (?:RSA|OPENSSH) PRIVATE KEY"]),
-    ("/.aws/credentials", "AWS Cloud Credentials", "Critical", [r"aws_access_key_id", r"aws_secret_access_key"])
+    ("/.env", "Environment Variables & Secrets", "Critical", [ENV_REGEX, r"DB_PASSWORD\s*=", r"SECRET_KEY\s*=", r"DATABASE_URL\s*="]),
+    ("/.env.local", "Local Environment Configuration", "Critical", [ENV_REGEX, r"LOCAL_SECRET\s*="]),
+    ("/.git/config", "Git Repository Configuration", "High", [r"\[core\]", r"repositoryformatversion", r"url\s*=\s*"]),
+    ("/.git/HEAD", "Git HEAD Reference", "High", [r"ref:\s*refs/heads/", r"^[0-9a-f]{40}$"]),
+    ("/docker-compose.yml", "Docker Compose Infrastructure File", "High", [r"version:\s*['\"]?[0-9]", r"services:\s*"]),
+    ("/config.json", "Application Configuration File", "Medium", [r"\"database\"\s*:", r"\"password\"\s*:", r"\"api_key\"\s*:"]),
+    ("/backup.sql", "Raw SQL Database Backup", "Critical", [r"CREATE\s+TABLE", r"INSERT\s+INTO", r"-- MySQL dump", r"pg_dump"]),
+    ("/dump.sql", "Database Dump File", "Critical", [r"CREATE\s+TABLE", r"INSERT\s+INTO", r"pg_dump"]),
+    ("/id_rsa", "Private SSH Key", "Critical", [r"BEGIN\s+(?:RSA|OPENSSH|DSA|EC)?\s*PRIVATE\s+KEY"]),
+    ("/.aws/credentials", "AWS Cloud Credentials", "Critical", [r"aws_access_key_id\s*=", r"aws_secret_access_key\s*="])
 ]
 
 
@@ -69,15 +75,29 @@ class SecretExposureScanner(BaseScanner):
             try:
                 resp = session.get(url, timeout=REQUEST_TIMEOUT, verify=False, allow_redirects=False)
                 if resp.status_code == 200 and len(resp.text) > 5:
-                    # Check if response matches secret signatures
+                    # 1. Soft-404 / SPA catch-all check
+                    if self.is_soft_404(resp, session=session):
+                        continue
+
+                    # 2. Reject HTML immediately — sensitive config/secret files are never HTML
+                    content_type = resp.headers.get("Content-Type", "").lower()
                     content = resp.text
+                    if "html" in content_type or "<!doctype" in content[:150].lower() or "<html" in content[:150].lower():
+                        continue
+
+                    # 3. Check if response matches strict secret signatures
                     matched = False
                     for sig in signatures:
-                        if re.search(sig, content, re.IGNORECASE):
-                            matched = True
-                            break
+                        if hasattr(sig, "search"):
+                            if sig.search(content):
+                                matched = True
+                                break
+                        elif isinstance(sig, str):
+                            if re.search(sig, content, re.MULTILINE if "HEAD" in path or "=" in sig else 0):
+                                matched = True
+                                break
 
-                    if matched or ("html" not in resp.headers.get("Content-Type", "").lower() and len(content) > 10):
+                    if matched:
                         self.results.append({
                             "path": path,
                             "name": name,
@@ -162,16 +182,9 @@ class SecretExposureScanner(BaseScanner):
         }
 
     def _extract_host(self) -> str:
-        try:
-            return self.target.split("://")[-1].split("/")[0].split(":")[0]
-        except Exception:
-            return "localhost"
+        _, host, _ = self._parse_target(self.target or "localhost")
+        return host or "localhost"
 
     def _extract_port(self) -> int:
-        try:
-            target = self.target.split("://")[-1]
-            if ":" in target:
-                return int(target.split(":")[1].split("/")[0])
-            return 443 if "https" in self.target else 80
-        except (ValueError, IndexError):
-            return 80
+        _, _, port = self._parse_target(self.target or "localhost")
+        return port or 80

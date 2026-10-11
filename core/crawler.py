@@ -247,13 +247,21 @@ class WebCrawler:
         max_pages: int = 20,
         max_depth: int = 3,
         mock_mode: Optional[bool] = None,
+        auth_headers: Optional[Dict[str, str]] = None,
+        auth_cookies: Optional[Dict[str, str]] = None,
     ):
         self.max_pages = max_pages
         self.max_depth = max_depth
         self.mock_mode = mock_mode if mock_mode is not None else config.MOCK_MODE
+        self.auth_headers = auth_headers or {}
+        self.auth_cookies = auth_cookies or {}
         self._visited: Set[str] = set()
         self._session = requests.Session()
         self._session.headers.update(HEADERS)
+        if self.auth_headers:
+            self._session.headers.update(self.auth_headers)
+        if self.auth_cookies:
+            self._session.cookies.update(self.auth_cookies)
         self._session.verify = False
 
     def crawl(self, target: str) -> CrawlResult:

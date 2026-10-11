@@ -129,7 +129,7 @@ class DirBruteScanner(BaseScanner):
                 )
 
                 if resp.status_code in FOUND_CODES:
-                    # For 200 responses, verify content isn't a generic 404 page
+                    # For 200 responses, verify content isn't a generic 404 or SPA catch-all
                     if resp.status_code == 200:
                         get_resp = requests.get(
                             url, headers=HEADERS, timeout=REQUEST_TIMEOUT,
@@ -142,6 +142,35 @@ class DirBruteScanner(BaseScanner):
                             "does not exist", "no such file"
                         ]) and len(body) < 2000:
                             continue
+
+                        # 1. SPA Catch-all soft-404 check
+                        if self.is_soft_404(get_resp):
+                            continue
+
+                        content_type = get_resp.headers.get("Content-Type", "").lower()
+                        is_html_resp = "html" in content_type or "<!doctype" in body[:150] or "<html" in body[:150]
+
+                        # 2. Database & SQL backup integrity
+                        if entry.get("category") == "backup" or path.endswith((".sql", ".db", ".sqlite", ".dump")):
+                            if is_html_resp:
+                                continue  # An SQL backup will never be Content-Type: text/html
+                            if not any(k in get_resp.text for k in ["CREATE TABLE", "INSERT INTO", "-- MySQL dump", "pg_dump", "SQLite format"]):
+                                continue
+
+                        # 3. Archive / compressed files integrity
+                        if path.endswith((".zip", ".tar.gz", ".tgz", ".bak", ".tar", ".gz")):
+                            if is_html_resp:
+                                continue  # Archives are not HTML
+
+                        # 4. Environment & Secrets files
+                        if entry.get("category") == "secrets" or path.startswith("/.env") or "/.git/" in path:
+                            if is_html_resp:
+                                continue
+
+                        # 5. API specs and JSON configurations
+                        if path.endswith(".json"):
+                            if is_html_resp or not get_resp.text.strip().startswith(("{", "[")):
+                                continue
 
                     status_label = "accessible" if resp.status_code < 400 else "protected"
                     confidence = "high" if resp.status_code == 200 else "medium"
@@ -185,22 +214,36 @@ class DirBruteScanner(BaseScanner):
 
         for idx, result in enumerate(self.results, start=1):
             cat = result["category"]
-            title = category_names.get(cat, "Hidden Resource Found")
+            path = result.get("path", "")
             status_label = result["status_label"]
 
-            description = (
-                f"{title} at {result['path']}\n"
-                f"Status: HTTP {result['status_code']} ({status_label})\n"
-                f"Content-Length: {result['content_length']}\n"
-                f"Category: {cat}"
-            )
-            if status_label == "protected":
-                description += "\nNote: Resource exists but is access-controlled (401/403). Still a finding as it reveals path existence."
+            if path == "/robots.txt":
+                finding_title = "Standard Web File: /robots.txt (Informational)"
+                finding_severity = "Info"
+                description = (
+                    f"The /robots.txt file at {path} is publicly accessible "
+                    f"(HTTP {result['status_code']}). "
+                    "Having a robots.txt file is standard web practice and expected. "
+                    "Review any Disallow directives to ensure private internal paths "
+                    "are not unnecessarily advertised to web crawlers."
+                )
+            else:
+                title = category_names.get(cat, "Hidden Resource Found")
+                finding_title = f"{title}: {path}"
+                finding_severity = result["severity"]
+                description = (
+                    f"{title} at {path}\n"
+                    f"Status: HTTP {result['status_code']} ({status_label})\n"
+                    f"Content-Length: {result['content_length']}\n"
+                    f"Category: {cat}"
+                )
+                if status_label == "protected":
+                    description += "\nNote: Resource exists but is access-controlled (401/403). Still a finding as it reveals path existence."
 
             findings.append({
                 "id": f"DIR-{idx:03d}",
-                "title": f"{title}: {result['path']}",
-                "severity": result["severity"],
+                "title": finding_title,
+                "severity": finding_severity,
                 "host": self.target.split("://")[-1].split("/")[0].split(":")[0],
                 "port": self._extract_port(),
                 "description": description,
@@ -221,13 +264,8 @@ class DirBruteScanner(BaseScanner):
         }
 
     def _extract_port(self) -> int:
-        try:
-            target = self.target.split("://")[-1]
-            if ":" in target:
-                return int(target.split(":")[1].split("/")[0])
-            return 443 if "https" in self.target else 80
-        except (ValueError, IndexError):
-            return 80
+        _, _, port = self._parse_target(self.target or "localhost")
+        return port or 80
 
     @staticmethod
     def _get_references(category: str) -> list:

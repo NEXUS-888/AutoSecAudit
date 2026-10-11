@@ -9,6 +9,8 @@ import config
 from core.politeness import PolitenessEngine
 from core.timing import TimingVerifier
 from core.fuzzer import generate_json_fuzz_mutations, extract_json_leaf_paths, mutate_json_at_path
+from core.spa_detector import SPADetector
+from core.dev_detector import detect_dev_environment
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +26,50 @@ class BaseScanner(ABC):
         self._baseline_cache: Dict[str, Any] = {}
         self.politeness = PolitenessEngine(min_jitter_ms=0, max_jitter_ms=20)
         self.timing_verifier = TimingVerifier(baseline_samples=2, min_delay_ratio=0.70)
+        self._spa_detector: Optional[SPADetector] = None
+        self.dev_environment: Optional[str] = None
+        self.auth_headers: Dict[str, str] = {}
+        self.auth_cookies: Dict[str, str] = {}
 
     def set_discovered_endpoints(self, endpoints: list) -> None:
         """Set discovered endpoints from the web crawler."""
         self.discovered_endpoints = endpoints
+
+    def set_dev_environment(self, dev_env: Optional[str]) -> None:
+        """Set detected development environment (e.g. Vite Dev Server)."""
+        self.dev_environment = dev_env
+
+    def set_auth(self, headers: Optional[Dict[str, str]] = None, cookies: Optional[Dict[str, str]] = None) -> None:
+        """Set authentication headers and cookies for authenticated scanning."""
+        if headers:
+            self.auth_headers.update(headers)
+        if cookies:
+            self.auth_cookies.update(cookies)
+
+    def get_authenticated_session(self) -> requests.Session:
+        """Return a requests.Session pre-loaded with authentication credentials."""
+        session = requests.Session()
+        session.headers.update({"User-Agent": f"AutoSecAudit/2.0 {self.__class__.__name__}"})
+        if self.auth_headers:
+            session.headers.update(self.auth_headers)
+        if self.auth_cookies:
+            session.cookies.update(self.auth_cookies)
+        session.verify = False
+        return session
+
+    def get_spa_detector(self, session: Optional[requests.Session] = None) -> SPADetector:
+        """Lazily initialize and return the SPADetector for the target."""
+        if self._spa_detector is None:
+            base_url, _, _ = self._parse_target(self.target or "http://localhost")
+            self._spa_detector = SPADetector(base_url=base_url, session=session)
+        return self._spa_detector
+
+    def is_soft_404(self, resp: Optional[requests.Response], session: Optional[requests.Session] = None) -> bool:
+        """Check if a response is an SPA soft-404 false positive."""
+        if resp is None:
+            return False
+        detector = self.get_spa_detector(session=session)
+        return detector.is_soft_404(resp)
 
     @staticmethod
     def _parse_target(target: str):
@@ -82,7 +124,13 @@ class BaseScanner(ABC):
 
         if not tool_available:
             logger.warning(f"Skipping {self.__class__.__name__}: tool '{tool_name}' not installed and mock mode is OFF")
-            return {"tool_name": tool_name, "findings": []}
+            return {
+                "tool_name": tool_name,
+                "findings": [],
+                "status": "skipped",
+                "error": f"Tool '{tool_name}' is not installed on the system and mock mode is disabled",
+                "raw_output": f"Skipped: tool '{tool_name}' not found on system PATH."
+            }
 
         self.run()
         return self.parse_output()

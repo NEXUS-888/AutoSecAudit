@@ -1,0 +1,71 @@
+PASS  author names preserved
+PASS  affiliation preserved
+PASS  corresponding author designation preserved
+PASS  emails preserved
+PASS  acknowledgment preserved
+PASS  4 figures embedded :: 4
+PASS  4 tables present :: 4
+PASS  caption TABLE I
+PASS  caption TABLE II
+PASS  caption TABLE III
+PASS  caption TABLE IV
+PASS  caption Fig. 1.
+PASS  Fig. 1. referenced in text
+PASS  caption Fig. 2.
+PASS  Fig. 2. referenced in text
+PASS  caption Fig. 3.
+PASS  Fig. 3. referenced in text
+PASS  caption Fig. 4.
+PASS  Fig. 4. referenced in text
+PASS  reference list size :: 19
+PASS  all references 1..19 cited in body :: missing: []
+PASS  no citation beyond list :: 19
+PASS  Table III speedups recomputed :: {1: 1.0, 2: 1.8, 4: 2.58, 8: 2.84, 16: 2.79}
+PASS  64.8% latency reduction :: 64.82%
+PASS  Table IV column sums = totals row :: TP=46 FP=1 raw=76 cons=47
+PASS  Table IV row consolidated = TP+FP
+PASS  precision 97.9% :: 97.87
+PASS  recall 88.5% :: 88.46
+PASS  F1 92.9% :: 92.93
+PASS  alert reduction 38.2% :: 38.16
+PASS  delta arithmetic 47-10+3=40, 40-14=26
+PASS  abstract contains 184.2
+PASS  abstract contains 64.8%
+PASS  abstract contains 2.84x
+PASS  abstract contains 76
+PASS  abstract contains 47
+PASS  abstract contains 97.9%
+PASS  abstract contains 88.5%
+PASS  abstract contains 52
+PASS  conclusion contains 64.8%
+PASS  conclusion contains 2.84x
+PASS  conclusion contains 97.9%
+PASS  conclusion contains 88.5%
+PASS  conclusion contains 38.2%
+PASS  results text gives F1 and FN
+PASS  no 'false alarms are eliminated'
+PASS  no '100% classification fidelity'
+PASS  no 'Autonomous AI Remediation' claim
+PASS  no 'guarantee reliable'
+PASS  no unqualified 'compound-key deduplication'
+PASS  no 'breadth-first' except negation
+PASS  no autosec_list_scanners
+PASS  no embedded offline CVE dictionary claim except negation
+PASS  no 'weak HMAC secrets' except negation
+PASS  no 'stored XSS' claim
+PASS  timing formula matches code (0.70, 0.35; no 3*sigma)
+PASS  thread default disclosed (4)
+PASS  Table II lists exactly 4 MCP tools
+PASS  PDF page count :: 11
+PASS  PDF text contains TABLE I
+PASS  PDF text contains TABLE II
+PASS  PDF text contains TABLE III
+PASS  PDF text contains TABLE IV
+PASS  PDF text contains Fig. 1.
+PASS  PDF text contains Fig. 4.
+PASS  PDF text contains Doupé
+PASS  PDF text contains [19] DefectDojo
+PASS  PDF has no replacement characters
+PASS  PDF contains 4 figure images :: 4
+
+69/69 checks passed

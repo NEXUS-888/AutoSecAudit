@@ -84,6 +84,54 @@ class TestTargetReachability(unittest.TestCase):
                 self.assertIn("scan_id", data)
                 mock_check.assert_not_called()
 
+    def test_cli_run_scan_demo_mode_bypasses_reachability(self):
+        """Verify that run_scan in demo mode completely bypasses reachability check even on offline target."""
+        with patch("main.check_target_reachable") as mock_check, \
+             patch("main.Engine") as mock_engine_cls:
+            mock_eng = MagicMock()
+            mock_eng.load_plugins.return_value = 5
+            mock_eng.set_target.return_value = True
+            mock_rep = MagicMock()
+            mock_rep.summary = {"total": 0, "critical": 0, "high": 0, "medium": 0, "low": 0}
+            mock_rep.all_findings = []
+            mock_rep.delta = None
+            mock_rep.target = "localhost"
+            mock_rep.to_dict.return_value = {"summary": mock_rep.summary, "all_findings": []}
+            mock_eng.generate_report.return_value = mock_rep
+            mock_eng._generate_summary.return_value = mock_rep.summary
+            mock_engine_cls.return_value = mock_eng
+
+            exit_code = run_scan("http://localhost:3000", mock_mode=True)
+            self.assertEqual(exit_code, 0)
+            mock_check.assert_not_called()
+
+    def test_ui_async_scan_demo_mode_bypasses_reachability(self):
+        """Verify that the Web UI /scan/async endpoint with mode='demo' bypasses reachability check."""
+        with patch("ui.app.check_target_reachable") as mock_check:
+            with app.test_client() as client:
+                response = client.post("/scan/async", data={
+                    "target": "http://localhost:3000",
+                    "mode": "demo"
+                })
+                self.assertEqual(response.status_code, 200)
+                data = response.get_json()
+                self.assertIn("scan_id", data)
+                self.assertEqual(data.get("mode"), "demo")
+                mock_check.assert_not_called()
+
+    def test_ui_async_scan_real_mode_blocks_offline_target(self):
+        """Verify that the Web UI /scan/async endpoint with mode='real' enforces reachability and blocks offline targets."""
+        with patch("ui.app.check_target_reachable", return_value=(False, "Connection refused on localhost:3000")):
+            with app.test_client() as client:
+                response = client.post("/scan/async", data={
+                    "target": "http://localhost:3000",
+                    "mode": "real"
+                })
+                self.assertEqual(response.status_code, 400)
+                data = response.get_json()
+                self.assertIn("Target is offline or unreachable", data["error"])
+                self.assertIn("Real Active Scan requires the target server to be running", data["error"])
+
     def test_engine_set_target_refuses_offline_in_real_mode(self):
         """Verify that Engine.set_target in real mode refuses offline targets."""
         engine = Engine(mock_mode=False)

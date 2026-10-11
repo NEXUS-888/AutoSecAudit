@@ -28,8 +28,8 @@ def prompt_mode_selection(default_mock: bool = True) -> bool:
     print("\n" + "=" * 60)
     print("             AutoSecAudit Execution Mode")
     print("=" * 60)
-    print("  [1] Real Scan Mode  — Live HTTP attacks, crawler & injections")
-    print("  [2] Mock Demo Mode  — Simulated findings (safe for presentation)")
+    print("  [1] Real Active Scan  — Live HTTP attacks, crawler & active testing (requires online target)")
+    print("  [2] Mock Demo Mode    — Offline simulation (no live target required, safe for demonstration)")
     print("=" * 60)
     default_str = "2" if default_mock else "1"
     try:
@@ -38,7 +38,7 @@ def prompt_mode_selection(default_mock: bool = True) -> bool:
             print("\n>>> [MODE SELECTED]: REAL SCAN MODE (Live Requests Enabled)\n")
             return False
         elif choice == "2":
-            print("\n>>> [MODE SELECTED]: MOCK DEMO MODE (Simulated)\n")
+            print("\n>>> [MODE SELECTED]: MOCK DEMO MODE (Simulated, Target Presence Check Bypassed)\n")
             return True
         else:
             selected_str = "Mock Demo" if default_mock else "Real Scan"
@@ -51,12 +51,16 @@ def prompt_mode_selection(default_mock: bool = True) -> bool:
 
 def run_scan(target: str, previous_report: str = None, output_json: str = None, output_html: str = None,
              fail_on: str = None, webhook: str = None, openapi: str = None, headers: str = None,
-             mock_mode: Optional[bool] = None, profile: str = "full", skip_reachability: bool = False):
+             mock_mode: Optional[bool] = None, profile: str = "full", skip_reachability: bool = False,
+             login_user: str = None, login_pass: str = None, login_url: str = None):
     
     if mock_mode is not None:
         config.MOCK_MODE = mock_mode
+        is_demo = mock_mode
+    else:
+        is_demo = False  # Direct programmatic calls default to real mode unless specified
     
-    mode_label = "MOCK DEMO" if config.MOCK_MODE else "REAL ACTIVE SCAN"
+    mode_label = "MOCK DEMO (SIMULATION)" if is_demo else "REAL ACTIVE SCAN"
     logger.info(f"Starting scan for target: {target} [{mode_label}] (profile: {profile})")
     print(f"\n[ENGINE] Target: {target} | Execution Mode: {mode_label} | Profile: {profile.upper()}")
     
@@ -71,8 +75,8 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
         print(reason)
         return 1
 
-    # Pre-flight reachability check
-    if not skip_reachability:
+    # Pre-flight reachability check (ONLY in Real Mode; completely bypassed in Demo Mode)
+    if not is_demo and not skip_reachability:
         print(f"[PRE-FLIGHT] Checking target reachability for {target}...")
         reachable, reach_msg = check_target_reachable(target)
         if not reachable:
@@ -80,9 +84,11 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
             print(f"\n[TARGET OFFLINE] Could not connect to target '{target}'.")
             print(f"Reason: {reach_msg}")
             print("Please ensure your application server is started and accessible before scanning.")
-            print("(To run an offline simulation in demo mode, pass --skip-reachability-check)\n")
+            print("(To run an offline simulation in demo mode, pass --mock or --demo)\n")
             return 1
         print(f"[PRE-FLIGHT] Target online: {reach_msg}")
+    elif is_demo:
+        print(f"[DEMO MODE] Target presence check bypassed — running offline simulation.\n")
     
     # Process custom headers
     header_dict = {}
@@ -92,7 +98,13 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
                 k, v = h.split(":", 1)
                 header_dict[k.strip()] = v.strip()
 
-    engine = Engine(mock_mode=config.MOCK_MODE, profile=profile)
+    engine = Engine(mock_mode=is_demo, profile=profile)
+    if header_dict:
+        engine.set_custom_headers(header_dict)
+    if login_user and login_pass:
+        engine.set_auth_credentials(login_user, login_pass, login_url=login_url)
+        print(f"[AUTH] Configured automated login for user '{login_user}'")
+
     loaded = engine.load_plugins()
     print(f"Loaded {loaded} plugin(s) for profile '{profile}'")
     
@@ -238,15 +250,28 @@ def interactive_menu():
                     print("Target cannot be empty.")
                     continue
                 mock = prompt_mode_selection(default_mock=True)
-                run_scan(target=target, mock_mode=mock)
+                auth_opt = input("Enable Authenticated Deep Scan (Auto-Login)? [y/N]: ").strip().lower()
+                user, pwd, l_url = None, None, None
+                if auth_opt in ("y", "yes"):
+                    user = input("  Enter Username or Email: ").strip()
+                    import getpass
+                    pwd = getpass.getpass("  Enter Password: ")
+                    l_url = input("  Login URL (press Enter for auto-detect): ").strip() or None
+                run_scan(target=target, mock_mode=mock, login_user=user, login_pass=pwd, login_url=l_url)
             elif choice == "3":
                 list_plugins()
             elif choice == "4":
                 import subprocess
-                subprocess.run([sys.executable, "verify_proof.py"])
+                try:
+                    subprocess.run([sys.executable, "verify_proof.py"], timeout=180)
+                except subprocess.TimeoutExpired:
+                    print("\n[ERROR] verify_proof.py timed out after 180s.\n")
             elif choice == "5":
                 import subprocess
-                subprocess.run([sys.executable, "run_tests.py"])
+                try:
+                    subprocess.run([sys.executable, "run_tests.py"], timeout=180)
+                except subprocess.TimeoutExpired:
+                    print("\n[ERROR] run_tests.py timed out after 180s.\n")
             elif choice == "6":
                 print("\nExiting AutoSecAudit. Goodbye!\n")
                 return 0
@@ -265,8 +290,8 @@ def main():
     
     # Global mode flags
     mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument("--real", action="store_true", help="Force REAL active scanning mode")
-    mode_group.add_argument("--mock", action="store_true", help="Force MOCK demo mode")
+    mode_group.add_argument("--real", action="store_true", help="Force REAL active scanning mode (requires target online)")
+    mode_group.add_argument("--mock", "--demo", dest="mock", action="store_true", help="Force MOCK demo mode (offline simulation, no live target needed)")
     
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
     
@@ -279,18 +304,21 @@ def main():
     scan_parser.add_argument("--webhook", help="URL for Slack/Discord webhook alerts")
     scan_parser.add_argument("--openapi", help="Path or URL to OpenAPI/Swagger spec")
     scan_parser.add_argument("--headers", help="Custom HTTP headers (format 'Header1: val1; Header2: val2')")
+    scan_parser.add_argument("--login-user", help="Username or email for automated authentication")
+    scan_parser.add_argument("--login-pass", help="Password for automated authentication")
+    scan_parser.add_argument("--login-url", help="Explicit login URL path (auto-detected if omitted)")
     scan_parser.add_argument("--profile", choices=["full", "owasp", "api", "recon"], default="full", help="Select scan profile: full (all), owasp (OWASP Top 10), api (API Security), recon (Passive Recon)")
-    scan_parser.add_argument("--skip-reachability-check", action="store_true", help="Skip pre-flight target reachability check (for offline demo testing)")
+    scan_parser.add_argument("--skip-reachability-check", action="store_true", help="Skip pre-flight target reachability check")
     scan_mode_group = scan_parser.add_mutually_exclusive_group()
-    scan_mode_group.add_argument("--real", action="store_true", help="Force REAL active scanning mode")
-    scan_mode_group.add_argument("--mock", action="store_true", help="Force MOCK demo mode")
+    scan_mode_group.add_argument("--real", action="store_true", help="Force REAL active scanning mode (requires target online)")
+    scan_mode_group.add_argument("--mock", "--demo", dest="mock", action="store_true", help="Force MOCK demo mode (offline simulation, no live target needed)")
     
     subparsers.add_parser("plugins", help="List available plugins")
     
     server_parser = subparsers.add_parser("server", help="Start the web interface")
     server_mode_group = server_parser.add_mutually_exclusive_group()
     server_mode_group.add_argument("--real", action="store_true", help="Force REAL active scanning mode")
-    server_mode_group.add_argument("--mock", action="store_true", help="Force MOCK demo mode")
+    server_mode_group.add_argument("--mock", "--demo", dest="mock", action="store_true", help="Force MOCK demo mode")
 
     testbed_parser = subparsers.add_parser("testbed", help="Launch the local vulnerable sandbox testbed")
     testbed_parser.add_argument("--port", type=int, default=8080, help="Port to run testbed on (default: 8080)")
@@ -314,6 +342,8 @@ def main():
         mock_mode = True
     elif sys.stdin.isatty() and args.command in ("scan", "server"):
         mock_mode = prompt_mode_selection(default_mock=config.MOCK_MODE)
+    elif args.command == "scan":
+        mock_mode = False  # Non-interactive CLI scan without flags defaults to REAL scan
     
     if mock_mode is not None:
         config.MOCK_MODE = mock_mode
@@ -321,7 +351,14 @@ def main():
     if args.command == "scan":
         profile = getattr(args, "profile", "full")
         skip_reach = getattr(args, "skip_reachability_check", False)
-        return run_scan(args.target, args.previous, args.json, args.html, args.fail_on, args.webhook, args.openapi, args.headers, mock_mode=config.MOCK_MODE, profile=profile, skip_reachability=skip_reach)
+        return run_scan(
+            args.target, args.previous, args.json, args.html, args.fail_on,
+            args.webhook, args.openapi, args.headers, mock_mode=mock_mode,
+            profile=profile, skip_reachability=skip_reach,
+            login_user=getattr(args, "login_user", None),
+            login_pass=getattr(args, "login_pass", None),
+            login_url=getattr(args, "login_url", None)
+        )
 
     elif args.command == "plugins":
         list_plugins()

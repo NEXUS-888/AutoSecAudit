@@ -233,16 +233,9 @@ class CSRFScanner(BaseScanner):
         }
 
     def _extract_host(self) -> str:
-        try:
-            return self.target.split("://")[-1].split("/")[0].split(":")[0]
-        except Exception:
-            return "localhost"
+        _, host, _ = self._parse_target(self.target or "localhost")
+        return host or "localhost"
 
     def _extract_port(self) -> int:
-        try:
-            target = self.target.split("://")[-1]
-            if ":" in target:
-                return int(target.split(":")[1].split("/")[0])
-            return 443 if "https" in self.target else 80
-        except (ValueError, IndexError):
-            return 80
+        _, _, port = self._parse_target(self.target or "localhost")
+        return port or 80

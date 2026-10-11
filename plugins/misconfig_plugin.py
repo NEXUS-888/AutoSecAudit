@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional
 
 from plugins.base_plugin import BaseScanner
 from core.utils import format_severity
+from core.dev_detector import tag_dev_artifact_finding
 
 logger = logging.getLogger(__name__)
 
@@ -147,23 +148,24 @@ class MisconfigScanner(BaseScanner):
 
         for header_name, meta in self.SECURITY_HEADERS.items():
             if header_name not in resp.headers:
-                self.results.append(
-                    {
-                        "id": f"MISCONF-HDR-{len(self.results)+1:03d}",
-                        "title": f"Missing security header: {header_name}",
-                        "severity": format_severity(meta["severity"]),
-                        "host": host,
-                        "port": port,
-                        "description": meta["description"],
-                        "raw_output": (
-                            f"Response headers from {base_url} do not include "
-                            f"'{header_name}'. Headers present: "
-                            f"{', '.join(sorted(resp.headers.keys()))}"
-                        ),
-                        "owasp_tag": "A05:2021 Security Misconfiguration",
-                        "tool_name": "misconfig_scanner",
-                    }
-                )
+                f_hdr = {
+                    "id": f"MISCONF-HDR-{len(self.results)+1:03d}",
+                    "title": f"Missing security header: {header_name}",
+                    "severity": format_severity(meta["severity"]),
+                    "host": host,
+                    "port": port,
+                    "description": meta["description"],
+                    "raw_output": (
+                        f"Response headers from {base_url} do not include "
+                        f"'{header_name}'. Headers present: "
+                        f"{', '.join(sorted(resp.headers.keys()))}"
+                    ),
+                    "owasp_tag": "A05:2021 Security Misconfiguration",
+                    "tool_name": "misconfig_scanner",
+                }
+                if self.dev_environment:
+                    f_hdr = tag_dev_artifact_finding(f_hdr, self.dev_environment)
+                self.results.append(f_hdr)
 
     def _check_cors(self, base_url: str) -> None:
         """Send a cross-origin request and inspect CORS headers."""
@@ -185,41 +187,43 @@ class MisconfigScanner(BaseScanner):
         acao = resp.headers.get("Access-Control-Allow-Origin", "")
 
         if acao == "*":
-            self.results.append(
-                {
-                    "id": f"MISCONF-CORS-{len(self.results)+1:03d}",
-                    "title": "CORS wildcard Access-Control-Allow-Origin",
-                    "severity": format_severity("MEDIUM"),
-                    "host": host,
-                    "port": port,
-                    "description": (
-                        "The server returns 'Access-Control-Allow-Origin: *', "
-                        "allowing any origin to read responses. If credentials "
-                        "are also allowed, this is a critical misconfiguration."
-                    ),
-                    "raw_output": f"Access-Control-Allow-Origin: {acao}",
-                    "owasp_tag": "A05:2021 Security Misconfiguration",
-                    "tool_name": "misconfig_scanner",
-                }
-            )
+            f_cors = {
+                "id": f"MISCONF-CORS-{len(self.results)+1:03d}",
+                "title": "CORS wildcard Access-Control-Allow-Origin",
+                "severity": format_severity("MEDIUM"),
+                "host": host,
+                "port": port,
+                "description": (
+                    "The server returns 'Access-Control-Allow-Origin: *', "
+                    "allowing any origin to read responses. If credentials "
+                    "are also allowed, this is a critical misconfiguration."
+                ),
+                "raw_output": f"Access-Control-Allow-Origin: {acao}",
+                "owasp_tag": "A05:2021 Security Misconfiguration",
+                "tool_name": "misconfig_scanner",
+            }
+            if self.dev_environment:
+                f_cors = tag_dev_artifact_finding(f_cors, self.dev_environment)
+            self.results.append(f_cors)
         elif evil_origin in acao:
-            self.results.append(
-                {
-                    "id": f"MISCONF-CORS-{len(self.results)+1:03d}",
-                    "title": "CORS reflects arbitrary Origin",
-                    "severity": format_severity("HIGH"),
-                    "host": host,
-                    "port": port,
-                    "description": (
-                        f"The server reflected the attacker-controlled Origin "
-                        f"'{evil_origin}' in its Access-Control-Allow-Origin "
-                        f"header, permitting cross-site data theft."
-                    ),
-                    "raw_output": f"Access-Control-Allow-Origin: {acao}",
-                    "owasp_tag": "A05:2021 Security Misconfiguration",
-                    "tool_name": "misconfig_scanner",
-                }
-            )
+            f_cors = {
+                "id": f"MISCONF-CORS-{len(self.results)+1:03d}",
+                "title": "CORS reflects arbitrary Origin",
+                "severity": format_severity("HIGH"),
+                "host": host,
+                "port": port,
+                "description": (
+                    f"The server reflected the attacker-controlled Origin "
+                    f"'{evil_origin}' in its Access-Control-Allow-Origin "
+                    f"header, permitting cross-site data theft."
+                ),
+                "raw_output": f"Access-Control-Allow-Origin: {acao}",
+                "owasp_tag": "A05:2021 Security Misconfiguration",
+                "tool_name": "misconfig_scanner",
+            }
+            if self.dev_environment:
+                f_cors = tag_dev_artifact_finding(f_cors, self.dev_environment)
+            self.results.append(f_cors)
 
     def _check_sensitive_files(self, base_url: str) -> None:
         """Probe for common sensitive files that should not be public."""
@@ -236,29 +240,57 @@ class MisconfigScanner(BaseScanner):
                 )
 
                 if resp.status_code == 200 and len(resp.text.strip()) > 0:
-                    # Extra validation: avoid false positives from custom 404
-                    # pages that return 200.
+                    # 1. Reject SPA soft-404 catch-alls
+                    if self.is_soft_404(resp):
+                        continue
+
+                    # 2. Content integrity
+                    content_type = resp.headers.get("Content-Type", "").lower()
+                    is_html = "html" in content_type or "<!doctype" in resp.text[:150].lower() or "<html" in resp.text[:150].lower()
+                    path = entry["path"]
+
+                    if path.endswith((".sql", ".env", "/.git/config")) and is_html:
+                        continue
+                    if path.endswith(".json") and (is_html or not resp.text.strip().startswith(("{", "["))):
+                        continue
+
+                    # Extra validation: avoid false positives from custom 404 pages
                     body_lower = resp.text.lower()
                     is_custom_404 = any(
                         kw in body_lower
                         for kw in ["not found", "404", "page not found"]
-                    )
+                    ) and len(resp.text) < 2000
 
                     if not is_custom_404:
+                        if entry["path"] == "/robots.txt":
+                            file_title = "Standard Web File: robots.txt (Informational)"
+                            file_severity = "Info"
+                            file_desc = (
+                                f"The robots.txt file at {url} is publicly accessible "
+                                f"(HTTP {resp.status_code}, {len(resp.text)} bytes). "
+                                "Having a robots.txt file is standard web practice and expected. "
+                                "Review any Disallow directives to ensure sensitive internal paths "
+                                "are not unnecessarily advertised to web crawlers."
+                            )
+                        else:
+                            file_title = f"Exposed sensitive file: {entry['label']}"
+                            file_severity = format_severity(entry["severity"])
+                            file_desc = (
+                                f"The file at {url} is publicly accessible "
+                                f"(HTTP {resp.status_code}, "
+                                f"{len(resp.text)} bytes). It may expose "
+                                f"secrets, configuration details, or source "
+                                f"code information."
+                            )
+
                         self.results.append(
                             {
                                 "id": f"MISCONF-FILE-{len(self.results)+1:03d}",
-                                "title": f"Exposed sensitive file: {entry['label']}",
-                                "severity": format_severity(entry["severity"]),
+                                "title": file_title,
+                                "severity": file_severity,
                                 "host": host,
                                 "port": port,
-                                "description": (
-                                    f"The file at {url} is publicly accessible "
-                                    f"(HTTP {resp.status_code}, "
-                                    f"{len(resp.text)} bytes). It may expose "
-                                    f"secrets, configuration details, or source "
-                                    f"code information."
-                                ),
+                                "description": file_desc,
                                 "raw_output": resp.text[:500],
                                 "owasp_tag": "A05:2021 Security Misconfiguration",
                                 "tool_name": "misconfig_scanner",

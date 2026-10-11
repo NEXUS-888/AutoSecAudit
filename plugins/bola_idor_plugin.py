@@ -11,6 +11,7 @@ In mock mode, returns realistic sample findings.
 """
 
 import re
+import json
 import logging
 from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse, urljoin
@@ -76,10 +77,32 @@ class BOLAIdorScanner(BaseScanner):
             try:
                 # Test 1: Unauthenticated direct access to resource
                 resp = session.get(url, timeout=REQUEST_TIMEOUT, verify=False)
-                if resp.status_code == 200 and ("json" in resp.headers.get("Content-Type", "").lower() or len(resp.text) > 20):
-                    # Check if response contains user / record data
-                    body_lower = resp.text.lower()
-                    if any(k in body_lower for k in ("email", "username", "password", "balance", "ssn", "phone", "address", "order_id", "total")):
+                if resp.status_code == 200:
+                    # 1. Reject SPA soft-404 responses
+                    if self.is_soft_404(resp, session=session):
+                        continue
+
+                    # 2. Reject HTML responses
+                    content_type = resp.headers.get("Content-Type", "").lower()
+                    if "html" in content_type or "<!doctype" in resp.text[:150].lower() or "<html" in resp.text[:150].lower():
+                        continue
+
+                    # 3. Require valid JSON payload containing record keys
+                    try:
+                        data = resp.json()
+                    except (ValueError, json.JSONDecodeError):
+                        continue
+
+                    user_keys = {"email", "username", "password", "balance", "ssn", "phone", "address", "order_id", "total", "user_id"}
+                    has_record_data = False
+                    if isinstance(data, dict):
+                        if any(k in data for k in user_keys) or any(k in data.get("data", {}) for k in user_keys):
+                            has_record_data = True
+                    elif isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+                        if any(k in data[0] for k in user_keys):
+                            has_record_data = True
+
+                    if has_record_data:
                         self.results.append({
                             "type": "unauthenticated_bola",
                             "path": path,
@@ -165,16 +188,9 @@ class BOLAIdorScanner(BaseScanner):
         }
 
     def _extract_host(self) -> str:
-        try:
-            return self.target.split("://")[-1].split("/")[0].split(":")[0]
-        except Exception:
-            return "localhost"
+        _, host, _ = self._parse_target(self.target or "localhost")
+        return host or "localhost"
 
     def _extract_port(self) -> int:
-        try:
-            target = self.target.split("://")[-1]
-            if ":" in target:
-                return int(target.split(":")[1].split("/")[0])
-            return 443 if "https" in self.target else 80
-        except (ValueError, IndexError):
-            return 80
+        _, _, port = self._parse_target(self.target or "localhost")
+        return port or 80

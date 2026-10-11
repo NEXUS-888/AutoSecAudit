@@ -60,6 +60,8 @@ class Report:
     summary: Dict[str, int] = field(default_factory=dict)
     delta: Optional[Dict[str, Any]] = None
     previous_report_path: Optional[str] = None
+    dev_environment: Optional[str] = None
+    auth_status: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -69,5 +71,7 @@ class Report:
             "all_findings": [f.to_dict() for f in self.all_findings],
             "summary": self.summary,
             "delta": self.delta,
-            "previous_report_path": self.previous_report_path
+            "previous_report_path": self.previous_report_path,
+            "dev_environment": self.dev_environment,
+            "auth_status": self.auth_status
         }

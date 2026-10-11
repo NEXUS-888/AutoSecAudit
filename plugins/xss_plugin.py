@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional
 
 from plugins.base_plugin import BaseScanner
 from core.utils import format_severity
+from core.dev_detector import tag_dev_artifact_finding
 
 logger = logging.getLogger(__name__)
 
@@ -232,8 +233,8 @@ class XSSScanner(BaseScanner):
                             f"[XSS] DOM sink found on {page}: {sink}"
                         )
                         break  # one sink per page is enough for a finding
-            except requests.RequestException:
-                pass
+            except requests.RequestException as exc:
+                logger.debug(f"[XSS] DOM sink request failed for {page}: {exc}")
 
     def _test_security_headers(self, base_url: str) -> None:
         """Check for missing XSS-related security headers on the root page."""
@@ -400,7 +401,7 @@ class XSSScanner(BaseScanner):
             }
             finding_confidence = confidence_map.get(rtype, "medium")
 
-            findings.append({
+            finding = {
                 "id": finding_id,
                 "title": title,
                 "severity": format_severity(severity),
@@ -411,7 +412,11 @@ class XSSScanner(BaseScanner):
                 "owasp_tag": "A03:2021 Injection",
                 "tool_name": "xss_scanner",
                 "confidence": finding_confidence,
-            })
+            }
+            if rtype in ("missing_header", "weak_header") and getattr(self, "dev_environment", None):
+                finding = tag_dev_artifact_finding(finding, self.dev_environment)
+
+            findings.append(finding)
 
         return {"tool_name": "xss_scanner", "findings": findings}
 
@@ -420,9 +425,7 @@ class XSSScanner(BaseScanner):
     # ------------------------------------------------------------------
     def _get_mock_output(self) -> Dict[str, Any]:
         _, host, port = self._parse_url(self.target)
-        return {
-            "tool_name": "xss_scanner",
-            "findings": [
+        findings = [
                 {
                     "id": "XSS-001",
                     "title": "Reflected XSS (/search?q=<payload>)",
@@ -491,5 +494,14 @@ class XSSScanner(BaseScanner):
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "xss_scanner",
                 },
-            ],
+            ]
+
+        if getattr(self, "dev_environment", None):
+            for f in findings:
+                if "Header" in f.get("title", ""):
+                    tag_dev_artifact_finding(f, self.dev_environment)
+
+        return {
+            "tool_name": "xss_scanner",
+            "findings": findings,
         }

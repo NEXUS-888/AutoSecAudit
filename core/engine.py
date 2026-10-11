@@ -26,6 +26,23 @@ class Engine:
         self.previous_report: Optional[Dict[str, Any]] = None
         self.crawl_result = None  # populated by run_plugins
         self.crawler_data: Dict[str, Any] = {}  # populated by OpenAPI importer
+        self.dev_environment: Optional[str] = None
+        self.auth_credentials: Optional[Dict[str, Any]] = None
+        self.auth_result: Optional[Any] = None
+        self.custom_headers: Dict[str, str] = {}
+
+    def set_auth_credentials(self, username: str, password: str, login_url: Optional[str] = None) -> None:
+        """Configure test credentials for automated login."""
+        self.auth_credentials = {
+            "username": username,
+            "password": password,
+            "login_url": login_url
+        }
+        logger.info(f"Configured automated login credentials for user: {username}")
+
+    def set_custom_headers(self, headers: Dict[str, str]) -> None:
+        """Set custom HTTP headers across all scans."""
+        self.custom_headers = dict(headers)
 
     def set_profile(self, profile: str) -> None:
         """Set active scan profile."""
@@ -124,16 +141,59 @@ class Engine:
         self.scan_results = []
         timestamp = get_timestamp()
 
-        # Run web crawler first to discover real endpoints
-        crawler = WebCrawler(mock_mode=self.mock_mode)
+        # Automated Authentication if credentials configured
+        auth_cookies = {}
+        auth_headers = dict(self.custom_headers)
+
+        if self.auth_credentials and not self.mock_mode and self.target:
+            try:
+                from core.authenticator import AutoAuthenticator
+                authenticator = AutoAuthenticator(
+                    base_url=self.target,
+                    username=self.auth_credentials["username"],
+                    password=self.auth_credentials["password"],
+                    login_url=self.auth_credentials.get("login_url")
+                )
+                self.auth_result = authenticator.authenticate()
+                if self.auth_result.success:
+                    logger.info(f"Automated authentication successful on {self.target} - session captured.")
+                    auth_cookies.update(self.auth_result.cookies)
+                    auth_headers.update(self.auth_result.headers)
+                else:
+                    logger.warning(f"Automated authentication failed on {self.target}: {self.auth_result.message}")
+            except Exception as e:
+                logger.error(f"Error during automated login: {e}", exc_info=True)
+
+        # Run web crawler first to discover real endpoints (including authenticated paths)
+        crawler = WebCrawler(
+            mock_mode=self.mock_mode,
+            auth_headers=auth_headers,
+            auth_cookies=auth_cookies
+        )
         self.crawl_result = crawler.crawl(self.target)
         discovered = self.crawl_result.get_injectable_endpoints()
         login_endpoints = self.crawl_result.get_login_endpoints()
         logger.info(f"Crawler discovered {len(discovered)} injectable endpoints, {len(login_endpoints)} login paths")
 
-        # Pass discovered endpoints to all plugins
+        # Detect dev environment (e.g. Vite, Webpack, Next.js dev servers)
+        if not self.mock_mode and self.target:
+            try:
+                import requests
+                from core.dev_detector import detect_dev_environment
+                resp = requests.get(self.target, headers=auth_headers, timeout=(2.0, 4.0), verify=False)
+                self.dev_environment = detect_dev_environment(resp.text, dict(resp.headers))
+                if self.dev_environment:
+                    logger.warning(f"Target identified as dev environment: {self.dev_environment}. Artifact findings will be tagged.")
+            except Exception as exc:
+                logger.debug(f"Dev environment detection failed: {exc}")
+
+        # Pass discovered endpoints, dev environment, and auth context to all plugins
         for plugin in self.plugins:
             plugin.set_discovered_endpoints(discovered)
+            if self.dev_environment and hasattr(plugin, "set_dev_environment"):
+                plugin.set_dev_environment(self.dev_environment)
+            if hasattr(plugin, "set_auth"):
+                plugin.set_auth(headers=auth_headers, cookies=auth_cookies)
 
         logger.info(f"Running {len(self.plugins)} plugins on {self.target}")
 
@@ -162,6 +222,8 @@ class Engine:
                         self.scan_results.append(scan_result)
                         if status == "failed":
                             logger.warning(f"Plugin {plugin.__class__.__name__} reported failure: {error}")
+                        elif status == "skipped":
+                            logger.info(f"Plugin {plugin.__class__.__name__} skipped: {error}")
                         else:
                             logger.info(f"Plugin {plugin.__class__.__name__} completed with {len(scan_result.findings)} findings")
                 except TimeoutError:
@@ -238,13 +300,21 @@ class Engine:
 
         summary = self._generate_summary(all_findings)
 
+        auth_status = None
+        if self.auth_result:
+            auth_status = "Authenticated" if self.auth_result.success else f"Auth Failed ({self.auth_result.message})"
+        elif self.custom_headers:
+            auth_status = "Custom Headers"
+
         report = Report(
             target=self.target,
             timestamp=get_timestamp(),
             scan_results=self.scan_results,
             all_findings=all_findings,
             summary=summary,
-            previous_report_path=None
+            previous_report_path=None,
+            dev_environment=self.dev_environment,
+            auth_status=auth_status
         )
 
         return report
