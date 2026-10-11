@@ -54,7 +54,10 @@ print("[PASS] PDF generation produces valid %PDF binary document")
 
 # 2. Test _resolve_report_data helper
 sample_json_path = f"{config.REPORTS_DIR}/scan_test_unit_sample.json"
+sample_ts_path = f"{config.REPORTS_DIR}/scan_20260831_192031.json"
 with open(sample_json_path, "w", encoding="utf-8") as f:
+    json.dump(sample_report, f)
+with open(sample_ts_path, "w", encoding="utf-8") as f:
     json.dump(sample_report, f)
 
 data, resolved_id = _resolve_report_data("test_unit_sample")
@@ -126,7 +129,7 @@ with app.test_client() as client:
     print("[PASS] Landing page includes full suite of light theme component CSS overrides")
 
 # Clean up test artifacts
-for p in [test_pdf_path, sample_json_path, f"{config.REPORTS_DIR}/report_test_unit_sample.pdf"]:
+for p in [test_pdf_path, sample_json_path, sample_ts_path, f"{config.REPORTS_DIR}/report_test_unit_sample.pdf"]:
     if os.path.exists(p):
         try:
             os.remove(p)

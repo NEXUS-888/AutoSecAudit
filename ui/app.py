@@ -2642,7 +2642,7 @@ def scan_async():
     mock_param = request.form.get("mock_mode", "").strip().lower()
     skip_reachability = request.form.get("skip_reachability", "false").lower() in ("true", "1")
 
-    if form_mode == "demo" or mock_param in ("true", "1") or skip_reachability:
+    if form_mode == "demo" or mock_param in ("true", "1"):
         is_demo = True
     elif form_mode == "real" or mock_param in ("false", "0"):
         is_demo = False
@@ -2782,7 +2782,7 @@ def scan():
     mock_param = request.form.get("mock_mode", "").strip().lower()
     skip_reachability = request.form.get("skip_reachability", "false").lower() in ("true", "1")
 
-    if form_mode == "demo" or mock_param in ("true", "1") or skip_reachability:
+    if form_mode == "demo" or mock_param in ("true", "1"):
         is_demo = True
     elif form_mode == "real" or mock_param in ("false", "0"):
         is_demo = False
@@ -2974,7 +2974,7 @@ HTML_REPORT_NOT_FOUND = """
 
 
 def _resolve_report_data(report_id: str):
-    """Resolve report JSON data and normalized clean ID across multiple naming schemes and timestamp matching."""
+    """Resolve report JSON data and normalized clean ID across exact known filename patterns."""
     if not report_id or report_id in ("undefined", "null"):
         return None, None
     _validate_report_id(report_id)
@@ -2991,22 +2991,6 @@ def _resolve_report_data(report_id: str):
             data = load_json(cp)
             if data:
                 return data, clean_id
-
-    # Fallback: scan all JSON files in REPORTS_DIR matching normalized timestamps or IDs
-    import glob
-    for fpath in sorted(glob.glob(f"{config.REPORTS_DIR}/*.json"), reverse=True):
-        try:
-            data = load_json(fpath)
-            if not data:
-                continue
-            ts = str(data.get("timestamp", ""))
-            norm_ts = ts.replace(" ", "_").replace(":", "").replace("-", "").replace("T", "_")
-            file_stem = Path(fpath).stem.replace("scan_", "").replace("report_", "")
-            if clean_id in norm_ts or norm_ts in clean_id or clean_id == file_stem:
-                return data, file_stem
-        except Exception as e:
-            logger.debug(f"Skipping unreadable candidate report {fpath}: {e}")
-            continue
 
     return None, clean_id
 
@@ -3065,19 +3049,10 @@ def download_report(report_id):
         abort(404, description="Report not found.")
         
     clean_id = resolved_id or report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "")
-    json_path = f"{config.REPORTS_DIR}/scan_{clean_id}.json"
-    if not os.path.exists(json_path):
-        json_path = f"{config.REPORTS_DIR}/report_{clean_id}.json"
-    if not os.path.exists(json_path):
-        json_path = f"{config.REPORTS_DIR}/{report_id}.json"
-    if not os.path.exists(json_path):
-        save_json(report_data, json_path)
 
-    response = send_file(
-        json_path,
-        as_attachment=True,
-        mimetype="application/json",
-        download_name=f"report_{clean_id}.json"
+    response = Response(
+        json.dumps(report_data, indent=2),
+        mimetype="application/json"
     )
     response.headers["Content-Type"] = "application/json"
     response.headers["Content-Disposition"] = f'attachment; filename="report_{clean_id}.json"'
@@ -3171,9 +3146,6 @@ def export_dev_ticket(report_id, finding_id):
     findings = report_data.get("all_findings") or report_data.get("findings") or []
     matching = next((f for f in findings if str(f.get("id")) == str(finding_id) or str(f.get("title", "")).lower() == str(finding_id).lower()), None)
     
-    if not matching and findings:
-        matching = findings[0]
-        
     if not matching:
         abort(404, description="Finding not found.")
         
