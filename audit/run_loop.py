@@ -28,10 +28,10 @@ STATE = AUDIT / "STATE.md"
 RUNTIME = ROOT / ".git" / "audit-loop"  # inside .git: never committed, never in diffs
 
 LAST_BATCH = 18
-MAX_ROUNDS = 4
+MAX_ROUNDS = 6
 SONNET_BATCHES = {"01", "06", "17"}  # mechanical batches; everything else is verified by Opus
 PROTECTED = ("audit/BACKLOG.md", "audit/VERIFIER.md", "audit/run_loop.py",
-             "audit/show_batch.py", "audit/wait_for_status.py", ".claude/")
+             "audit/show_batch.py", "audit/wait_for_status.py", "audit/supervise.py", ".claude/")
 TEST_FILE_RE = re.compile(r"(^|/)test_[^/]*\.py$")
 SKIP_RE = re.compile(r"unittest\.skip|skipTest\(|expectedFailure|pytest\.mark\.(skip|xfail)|@skip")
 VERIFIER_TOOLS = ["Read", "Grep", "Glob", "Bash(git diff:*)", "Bash(git show:*)", "Bash(git log:*)",
@@ -113,7 +113,25 @@ def older_python():
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+def keep_awake() -> None:
+    """Ask Windows not to sleep while this process runs (ES_CONTINUOUS | ES_SYSTEM_REQUIRED)."""
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
+
+
+def ensure_requirements() -> None:
+    """Install anything the fixer added to requirements.txt so tests run in this interpreter."""
+    try:
+        result = run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"], timeout=900)
+        if result.returncode != 0:
+            log("pip install -r requirements.txt failed: " + result.stderr.strip()[-300:])
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log(f"pip install skipped: {exc}")
+
+
 def run_tests(tag: str) -> dict:
+    ensure_requirements()
     try:
         result = run([sys.executable, "run_tests.py"], timeout=TEST_TIMEOUT)
         output = result.stdout + result.stderr
@@ -346,6 +364,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
+    keep_awake()
 
     while True:
         state = read_state()
