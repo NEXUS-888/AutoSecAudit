@@ -17,9 +17,11 @@ class TestB04Auth(unittest.TestCase):
     """Test suite for Batch 04: Dashboard access control (AUD-10, AUD-11, AUD-12)."""
 
     def setUp(self):
+        app.config["WTF_CSRF_ENABLED"] = False
         self.client = app.test_client()
 
     def tearDown(self):
+        app.config["WTF_CSRF_ENABLED"] = True
         # Clean up any test users created
         try:
             with sqlite3.connect(str(auth.DB_PATH)) as conn:

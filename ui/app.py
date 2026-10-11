@@ -5,10 +5,13 @@ import threading
 import uuid
 import queue
 import time
+import urllib.parse
+from typing import Optional
 from flask import Flask, render_template_string, render_template, request, redirect, url_for, send_file, abort, Response, jsonify, session
 from functools import wraps
 from pathlib import Path
 from werkzeug.utils import secure_filename
+from flask_wtf.csrf import CSRFProtect, CSRFError
 import json
 
 import config
@@ -31,6 +34,130 @@ app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"), stati
 app.secret_key = config.SECRET_KEY
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+app.config.setdefault("WTF_CSRF_ENABLED", True)
+
+
+class AutoSecCSRFProtect(CSRFProtect):
+    """CSRF protection supporting standard form fields, headers, and JSON body."""
+
+    def _get_csrf_token(self):
+        token = super()._get_csrf_token()
+        if token:
+            return token
+        if request.is_json:
+            try:
+                data = request.get_json(silent=True)
+                if isinstance(data, dict):
+                    field_name = app.config.get("WTF_CSRF_FIELD_NAME", "csrf_token")
+                    return data.get(field_name)
+            except Exception:
+                pass
+        return None
+
+
+csrf = AutoSecCSRFProtect(app)
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    if request.is_json or request.path.startswith("/api/") or request.path.startswith("/scan/"):
+        return jsonify({"success": False, "error": e.description, "message": "CSRF validation failed."}), 400
+    return render_template("auth.html", mode="login", error=f"CSRF Error: {e.description}"), 400
+
+
+# ---------------------------------------------------------------------------
+# In-memory Login Throttling (AUD-15)
+# ---------------------------------------------------------------------------
+LOGIN_FAILURES = {}  # {ip: [timestamp, ...]}
+LOGIN_FAILURES_LOCK = threading.Lock()
+LOGIN_WINDOW_SECONDS = 300  # 5 minutes
+MAX_LOGIN_FAILURES = 5
+
+
+def reset_login_throttles():
+    """Clear in-memory login failure counts (useful for testing)."""
+    with LOGIN_FAILURES_LOCK:
+        LOGIN_FAILURES.clear()
+
+
+def _get_client_ip() -> str:
+    return request.remote_addr or "127.0.0.1"
+
+
+def _reserve_login_attempt(ip: str) -> bool:
+    """
+    Atomically check whether the IP is under the failure threshold.
+    If under the threshold, reserve an attempt timestamp immediately
+    under the lock to eliminate check-then-act concurrency races.
+    Returns True if attempt is allowed, False if throttled (>= 5 failures).
+    """
+    now = time.time()
+    with LOGIN_FAILURES_LOCK:
+        if len(LOGIN_FAILURES) > 1000:
+            stale_ips = [
+                k for k, ts in list(LOGIN_FAILURES.items())
+                if not ts or now - ts[-1] >= LOGIN_WINDOW_SECONDS
+            ]
+            for k in stale_ips:
+                del LOGIN_FAILURES[k]
+
+        timestamps = LOGIN_FAILURES.get(ip, [])
+        recent = [t for t in timestamps if now - t < LOGIN_WINDOW_SECONDS]
+        if len(recent) >= MAX_LOGIN_FAILURES:
+            LOGIN_FAILURES[ip] = recent
+            return False
+
+        recent.append(now)
+        LOGIN_FAILURES[ip] = recent
+        return True
+
+
+def _release_login_reservation(ip: str):
+    """If a login succeeds, clear failures for that IP."""
+    with LOGIN_FAILURES_LOCK:
+        LOGIN_FAILURES.pop(ip, None)
+
+
+def _is_login_throttled(ip: str) -> bool:
+    now = time.time()
+    with LOGIN_FAILURES_LOCK:
+        timestamps = LOGIN_FAILURES.get(ip, [])
+        recent = [t for t in timestamps if now - t < LOGIN_WINDOW_SECONDS]
+        LOGIN_FAILURES[ip] = recent
+        return len(recent) >= MAX_LOGIN_FAILURES
+
+
+def _record_login_failure(ip: str):
+    now = time.time()
+    with LOGIN_FAILURES_LOCK:
+        timestamps = LOGIN_FAILURES.get(ip, [])
+        recent = [t for t in timestamps if now - t < LOGIN_WINDOW_SECONDS]
+        recent.append(now)
+        LOGIN_FAILURES[ip] = recent
+
+
+def _clear_login_failures(ip: str):
+    with LOGIN_FAILURES_LOCK:
+        LOGIN_FAILURES.pop(ip, None)
+
+
+def _safe_next_url(target: Optional[str]) -> str:
+    """Validate that `next` URL is a safe local relative path; fallback to /dashboard."""
+    fallback = url_for("dashboard")
+    if not target or not isinstance(target, str):
+        return fallback
+    target = target.strip()
+    if not target.startswith("/") or target.startswith("//") or target.startswith("/\\"):
+        return fallback
+    if "\\" in target:
+        return fallback
+    try:
+        parsed = urllib.parse.urlsplit(target)
+        if parsed.scheme or parsed.netloc:
+            return fallback
+    except Exception:
+        return fallback
+    return target
 
 # ---------------------------------------------------------------------------
 # SSE Scan Progress: in-memory job store
@@ -1112,6 +1239,7 @@ HTML_FORM = """
             </div>
 
             <form id="scanForm" action="/scan" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <!-- Execution Mode Selector (Demo vs Real Active Scan) -->
                 <div style="margin-bottom: 20px;">
                     <div class="label-row" style="margin-bottom: 6px;">
@@ -1451,9 +1579,12 @@ HTML_FORM = """
             consoleText.textContent = 'Submitting target for automated analysis...';
 
             var formData = new FormData(this);
+            var csrfInput = this.querySelector('input[name="csrf_token"]');
+            var csrfHeader = csrfInput ? csrfInput.value : '';
 
             fetch('/scan/async', {
                 method: 'POST',
+                headers: csrfHeader ? { 'X-CSRFToken': csrfHeader } : {},
                 body: formData
             })
             .then(function (res) {
@@ -2181,19 +2312,30 @@ def dashboard():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     """User login endpoint supporting HTML form and AJAX JSON requests."""
-    next_url = request.args.get("next") or request.form.get("next") or url_for("dashboard")
+    client_ip = _get_client_ip()
+    raw_next = request.args.get("next") or request.form.get("next")
+
     if request.method == "POST":
         if request.is_json:
-            data = request.get_json() or {}
+            data = request.get_json(silent=True) or {}
             identifier = data.get("identifier", "")
             password = data.get("password", "")
-            next_url = data.get("next") or next_url
+            raw_next = data.get("next") or raw_next
         else:
             identifier = request.form.get("identifier", "")
             password = request.form.get("password", "")
 
+        next_url = _safe_next_url(raw_next)
+
+        if not _reserve_login_attempt(client_ip):
+            msg = "Too many failed login attempts. Please try again in 5 minutes."
+            if request.is_json:
+                return jsonify({"success": False, "message": msg}), 429
+            return render_template("auth.html", mode="login", error=msg, form_data={"identifier": identifier}, next=next_url), 429
+
         ok, msg, user = auth.verify_user(identifier, password)
         if ok and user:
+            _release_login_reservation(client_ip)
             session["user_id"] = user["id"]
             session["username"] = user["username"]
             if request.is_json:
@@ -2202,9 +2344,10 @@ def login():
         else:
             if request.is_json:
                 return jsonify({"success": False, "message": msg}), 401
-            return render_template("auth.html", mode="login", error=msg, form_data={"identifier": identifier}, next=next_url)
+            return render_template("auth.html", mode="login", error=msg, form_data={"identifier": identifier}, next=next_url), 401
 
     # GET request
+    next_url = _safe_next_url(raw_next)
     if get_current_user():
         return redirect(next_url)
     return render_template("auth.html", mode="login", next=next_url)
@@ -2213,7 +2356,8 @@ def login():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     """User registration endpoint supporting HTML form and AJAX JSON requests."""
-    next_url = request.args.get("next") or request.form.get("next") or url_for("dashboard")
+    raw_next = request.args.get("next") or request.form.get("next")
+    next_url = _safe_next_url(raw_next)
     allow_reg = os.environ.get("AUTOSEC_ALLOW_REGISTRATION", "").lower() == "true"
     if not allow_reg:
         msg = "Registration is disabled."
@@ -2225,17 +2369,19 @@ def register():
 
     if request.method == "POST":
         if request.is_json:
-            data = request.get_json() or {}
+            data = request.get_json(silent=True) or {}
             username = data.get("username", "")
             email = data.get("email", "")
             password = data.get("password", "")
             full_name = data.get("full_name", "")
-            next_url = data.get("next") or next_url
+            raw_next = data.get("next") or raw_next
         else:
             username = request.form.get("username", "")
             email = request.form.get("email", "")
             password = request.form.get("password", "")
             full_name = request.form.get("full_name", "")
+
+        next_url = _safe_next_url(raw_next)
 
         ok, msg, user = auth.create_user(username, email, password, full_name=full_name, role="developer")
         if ok and user:
@@ -3038,4 +3184,4 @@ def export_dev_ticket(report_id, finding_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=config.DEBUG, host="0.0.0.0", port=5000)
+    app.run(debug=config.DEBUG, host=config.HOST, port=5000)

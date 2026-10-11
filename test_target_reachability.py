@@ -11,11 +11,15 @@ class TestTargetReachability(unittest.TestCase):
     """Test suite for target liveness / reachability validation."""
 
     def setUp(self):
+        app.config["WTF_CSRF_ENABLED"] = False
         import core.auth as auth
         self.admin = auth.get_user_by_username("admin")
         if not self.admin:
             auth.init_user_db()
             self.admin = auth.get_user_by_username("admin")
+
+    def tearDown(self):
+        app.config["WTF_CSRF_ENABLED"] = True
 
     def _auth_client(self, client):
         with client.session_transaction() as sess:

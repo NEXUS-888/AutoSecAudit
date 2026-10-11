@@ -87,6 +87,7 @@ class TestSilentFailures(unittest.TestCase):
 
     def test_scan_async_handles_invalid_input(self):
         """Verify scan_async returns structured JSON errors instead of unhandled 500 HTML."""
+        app.config["WTF_CSRF_ENABLED"] = False
         with app.test_client() as client:
             import core.auth as auth
             admin = auth.get_user_by_username("admin")

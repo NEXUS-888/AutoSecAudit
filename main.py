@@ -242,7 +242,7 @@ def interactive_menu():
                 print(f"\n[STARTING SERVER in {mode_str} MODE]")
                 print("Open http://localhost:5000 in your browser (Press Ctrl+C to stop)\n")
                 from ui.app import app
-                app.run(debug=config.DEBUG, host="0.0.0.0", port=5000)
+                app.run(debug=config.DEBUG, host=config.HOST, port=5000)
                 break
             elif choice == "2":
                 target = input("\nEnter target URL or IP (e.g. http://localhost:8000): ").strip()
@@ -374,7 +374,7 @@ def main():
         print(f"Starting AutoSecAudit Web Dashboard [{mode_str} MODE]...")
         print("Open http://localhost:5000 in your browser")
         print("=" * 60 + "\n")
-        app.run(debug=config.DEBUG, host="0.0.0.0", port=5000)
+        app.run(debug=config.DEBUG, host=config.HOST, port=5000)
         return 0
     else:
         parser.print_help()

@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>AutoSecAudit — Autonomous Web Application Security Auditing Framework</title>
     <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1908,9 +1909,6 @@
                     <input type="password" id="loginPassword" class="form-control" placeholder="••••••••" required autocomplete="current-password">
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.75rem; padding: 0.75rem;">Sign In</button>
-                <p style="text-align: center; margin-top: 1.25rem; font-size: 0.78rem; color: var(--fg-muted); font-family: var(--font-mono);">
-                    Demo admin: <code style="color: var(--accent-cyan);">admin</code> / <code style="color: var(--accent-cyan);">AutoSec@2026</code>
-                </p>
             </form>
 
             <!-- Register Form -->
@@ -2135,9 +2133,13 @@
             }
 
             try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 const res = await fetch(endpoint, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": csrfToken
+                    },
                     body: JSON.stringify(payload)
                 });
                 const data = await res.json();

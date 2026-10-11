@@ -192,6 +192,7 @@
         {% endif %}
 
         <form method="POST" action="{{ '/register' if mode == 'register' else '/login' }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {% if mode == 'register' %}
                 <div class="form-group">
                     <label class="form-label">Full Name</label>
@@ -227,9 +228,6 @@
                 Already have an account? <a href="/login">Sign in</a>
             {% else %}
                 Need an account? <a href="/register">Sign up</a>
-                <p style="margin-top: 0.75rem; font-size: 0.78rem; color: var(--fg-muted);">
-                    Demo admin: <code>admin</code> / <code>AutoSec@2026</code>
-                </p>
             {% endif %}
         </div>
     </div>
