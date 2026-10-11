@@ -114,7 +114,24 @@ class TestAutoAuthenticator(unittest.TestCase):
             "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiYWRtaW4ifQ"
         }
 
-        session.get.return_value = get_resp
+        def mock_get(url, *args, **kwargs):
+            headers = kwargs.get("headers", {}) or {}
+            auth_header = headers.get("Authorization", "") or session.headers.get("Authorization", "")
+            if "/api/login" in url:
+                return get_resp
+            if "Bearer eyJhbG" in auth_header:
+                resp = MagicMock(spec=requests.Response)
+                resp.status_code = 200
+                resp.url = url
+                resp.text = '{"status": "authenticated", "user": "admin"}'
+                return resp
+            resp = MagicMock(spec=requests.Response)
+            resp.status_code = 401
+            resp.url = url
+            resp.text = '{"error": "Unauthorized"}'
+            return resp
+
+        session.get.side_effect = mock_get
         session.post.return_value = post_resp
 
         auth = AutoAuthenticator(

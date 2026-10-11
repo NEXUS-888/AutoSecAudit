@@ -146,14 +146,21 @@ class _LinkFormParser(HTMLParser):
 # URL utility helpers
 # ---------------------------------------------------------------------------
 def _normalize_url(base_url: str, href: str) -> Optional[str]:
-    """Resolve a relative href against a base URL. Returns None if off-domain."""
+    """Resolve a relative href against a base URL. Returns None if off-origin."""
     try:
         resolved = urllib.parse.urljoin(base_url, href)
         parsed_base = urllib.parse.urlparse(base_url)
         parsed_resolved = urllib.parse.urlparse(resolved)
 
-        # Stay on the same host
-        if parsed_resolved.hostname != parsed_base.hostname:
+        base_port = parsed_base.port or (443 if parsed_base.scheme.lower() == "https" else 80)
+        resolved_port = parsed_resolved.port or (443 if parsed_resolved.scheme.lower() == "https" else 80)
+
+        # Stay on the exact same origin (scheme + hostname + port)
+        if (
+            parsed_resolved.scheme.lower() != parsed_base.scheme.lower()
+            or (parsed_resolved.hostname or "").lower() != (parsed_base.hostname or "").lower()
+            or resolved_port != base_port
+        ):
             return None
 
         # Strip fragment
@@ -230,6 +237,9 @@ def extract_js_endpoints(text: str, source_path: str = "") -> List[DiscoveredEnd
     return discovered
 
 
+DEFAULT_DENY_PATTERN = r"logout|log-out|signout|sign-out|logoff|delete|remove|destroy"
+
+
 # ---------------------------------------------------------------------------
 # Crawler
 # ---------------------------------------------------------------------------
@@ -249,12 +259,19 @@ class WebCrawler:
         mock_mode: Optional[bool] = None,
         auth_headers: Optional[Dict[str, str]] = None,
         auth_cookies: Optional[Dict[str, str]] = None,
+        deny_pattern: Optional[Any] = None,
     ):
         self.max_pages = max_pages
         self.max_depth = max_depth
         self.mock_mode = mock_mode if mock_mode is not None else config.MOCK_MODE
         self.auth_headers = auth_headers or {}
         self.auth_cookies = auth_cookies or {}
+        if deny_pattern is None:
+            self.deny_regex = re.compile(DEFAULT_DENY_PATTERN, re.IGNORECASE)
+        elif isinstance(deny_pattern, str):
+            self.deny_regex = re.compile(deny_pattern, re.IGNORECASE) if deny_pattern else None
+        else:
+            self.deny_regex = deny_pattern
         self._visited: Set[str] = set()
         self._session = requests.Session()
         self._session.headers.update(HEADERS)
@@ -263,6 +280,21 @@ class WebCrawler:
         if self.auth_cookies:
             self._session.cookies.update(self.auth_cookies)
         self._session.verify = False
+
+    def _is_denied(self, url_or_path: str) -> bool:
+        """Check if URL path or query matches the deny pattern (ignoring hostname)."""
+        if not self.deny_regex or not url_or_path:
+            return False
+        try:
+            parsed = urllib.parse.urlparse(url_or_path)
+            target_str = parsed.path
+            if parsed.query:
+                target_str += "?" + parsed.query
+            if not target_str and not parsed.netloc:
+                target_str = url_or_path
+            return bool(self.deny_regex.search(target_str))
+        except Exception:
+            return bool(self.deny_regex.search(url_or_path))
 
     def crawl(self, target: str) -> CrawlResult:
         """Crawl the target and return discovered endpoints."""
@@ -293,6 +325,9 @@ class WebCrawler:
             return
         if result.pages_visited >= self.max_pages:
             return
+        if self._is_denied(url):
+            logger.debug(f"[Crawler] Skipping denied URL: {url}")
+            return
 
         # Normalize and skip if visited
         normalized = url.split("?")[0].split("#")[0].rstrip("/")
@@ -304,6 +339,22 @@ class WebCrawler:
             resp = self._session.get(url, timeout=CRAWL_TIMEOUT, allow_redirects=True)
         except requests.RequestException as e:
             logger.debug(f"[Crawler] Failed to fetch {url}: {e}")
+            return
+
+        # Check if redirect left the target origin (scheme + host + port)
+        target_parsed = urllib.parse.urlparse(result.target)
+        resp_parsed = urllib.parse.urlparse(resp.url)
+        target_port = target_parsed.port or (443 if target_parsed.scheme.lower() == "https" else 80)
+        resp_port = resp_parsed.port or (443 if resp_parsed.scheme.lower() == "https" else 80)
+        target_origin = (target_parsed.scheme.lower(), (target_parsed.hostname or "").lower(), target_port)
+        resp_origin = (resp_parsed.scheme.lower(), (resp_parsed.hostname or "").lower(), resp_port)
+        if target_origin != resp_origin:
+            logger.debug(f"[Crawler] Discarding response from off-origin redirect: {resp.url}")
+            return
+
+        # Check if final URL or redirect chain hit a denied URL
+        if self._is_denied(resp.url) or any(self._is_denied(r.url) for r in getattr(resp, "history", [])):
+            logger.debug(f"[Crawler] Discarding response from denied redirect: {resp.url}")
             return
 
         result.pages_visited += 1
@@ -331,9 +382,15 @@ class WebCrawler:
         # Process discovered forms
         for form in parser.forms:
             action = form["action"] or current_path
+            if self._is_denied(action):
+                continue
             resolved = _normalize_url(url, action)
             if resolved:
+                if self._is_denied(resolved):
+                    continue
                 form_path = _extract_path(resolved)
+                if self._is_denied(form_path):
+                    continue
                 result.forms.append(DiscoveredEndpoint(
                     path=form_path,
                     method=form["method"],
@@ -345,10 +402,16 @@ class WebCrawler:
         # Process links
         urls_to_visit = []
         for href in parser.links:
+            if self._is_denied(href):
+                continue
             resolved = _normalize_url(url, href)
             if resolved:
-                result.links.append(resolved)
+                if self._is_denied(resolved):
+                    continue
                 link_path = _extract_path(resolved)
+                if self._is_denied(link_path):
+                    continue
+                result.links.append(resolved)
                 params = _extract_query_params(resolved)
                 result.endpoints.append(DiscoveredEndpoint(
                     path=link_path,
@@ -362,11 +425,15 @@ class WebCrawler:
         js_endpoints = extract_js_endpoints(resp.text, current_path)
         existing_paths = {ep.path for ep in result.endpoints}
         for j_ep in js_endpoints:
+            if self._is_denied(j_ep.path):
+                continue
             if j_ep.path not in existing_paths:
                 existing_paths.add(j_ep.path)
                 result.endpoints.append(j_ep)
 
         for match in _HREF_PATTERN.findall(resp.text):
+            if self._is_denied(match):
+                continue
             if match not in existing_paths:
                 existing_paths.add(match)
                 result.endpoints.append(DiscoveredEndpoint(
@@ -377,6 +444,8 @@ class WebCrawler:
 
         # Recurse into discovered links
         for next_url in urls_to_visit:
+            if self._is_denied(next_url):
+                continue
             if result.pages_visited < self.max_pages:
                 self._crawl_page(next_url, result, depth + 1)
 

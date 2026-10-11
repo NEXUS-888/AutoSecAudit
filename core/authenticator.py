@@ -56,6 +56,56 @@ CSRF_TOKEN_CANDIDATES = [
     "xsrf_token", "xsrf-token", "antiforgery_token", "__requestverificationtoken"
 ]
 
+MAX_CREDENTIAL_SUBMISSIONS = 6
+DEFAULT_DENY_PATTERN = r"logout|log-out|signout|sign-out|logoff|delete|remove|destroy"
+
+FAILURE_INDICATORS = [
+    "invalid credential", "invalid username", "invalid password",
+    "invalid email or password", "invalid email", "incorrect password",
+    "wrong password", "bad credentials", "authentication failed",
+    "user not found", "access denied", "login failed", "unauthorized",
+    "not authorized", "login error", "details don't match",
+    "don't match our records", "do not match", "credentials do not match"
+]
+
+
+def _extract_token_from_json(data: Any) -> Optional[str]:
+    """Search for auth token recursively in nested JSON structures."""
+    token_keys = {"token", "access_token", "jwt", "accesstoken", "id_token", "authtoken"}
+    if isinstance(data, dict):
+        for k, v in data.items():
+            if k.lower() in token_keys and isinstance(v, str) and len(v) > 10:
+                return v
+        for container in ["authentication", "data", "auth", "session", "result", "user"]:
+            if container in data and isinstance(data[container], dict):
+                t = _extract_token_from_json(data[container])
+                if t:
+                    return t
+        for v in data.values():
+            if isinstance(v, (dict, list)):
+                t = _extract_token_from_json(v)
+                if t:
+                    return t
+    elif isinstance(data, list):
+        for item in data:
+            t = _extract_token_from_json(item)
+            if t:
+                return t
+    return None
+
+
+def _has_failure_indicator(resp: requests.Response) -> bool:
+    """Check for explicit failure strings in response body regardless of status code."""
+    body_lower = resp.text.lower() if resp and resp.text else ""
+    return any(f in body_lower for f in FAILURE_INDICATORS)
+
+
+def _is_clear_credential_rejection(resp: requests.Response) -> bool:
+    """Determine if response indicates invalid credentials specifically."""
+    if resp.status_code in (401, 403):
+        return True
+    return _has_failure_indicator(resp)
+
 
 @dataclass
 class AuthResult:
@@ -135,7 +185,8 @@ class AutoAuthenticator:
         password: str,
         login_url: Optional[str] = None,
         timeout: Tuple[float, float] = (3.0, 8.0),
-        session: Optional[requests.Session] = None
+        session: Optional[requests.Session] = None,
+        verify_url: Optional[str] = None,
     ):
         if not base_url.startswith(("http://", "https://")):
             base_url = f"http://{base_url}"
@@ -143,6 +194,7 @@ class AutoAuthenticator:
         self.username = username
         self.password = password
         self.explicit_login_url = login_url
+        self.verify_url = verify_url or f"{self.base_url}/"
         self.timeout = timeout
         self.session = session or requests.Session()
         self.session.headers.update({
@@ -150,6 +202,7 @@ class AutoAuthenticator:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8",
         })
         self.session.verify = False
+        self.credential_submissions_count = 0
 
     def authenticate(self) -> AuthResult:
         """
@@ -161,6 +214,11 @@ class AutoAuthenticator:
         if not self.username or not self.password:
             return AuthResult(success=False, message="Missing username or password.")
 
+        self.credential_submissions_count = 0
+
+        # Snapshot anonymous baseline of verify_url prior to authentication
+        anon_status, anon_url, anon_text = self._get_anonymous_verify_baseline()
+
         login_endpoints = self._resolve_login_endpoints()
         if not login_endpoints:
             return AuthResult(success=False, message=f"No login endpoint could be discovered on {self.base_url}.")
@@ -169,89 +227,133 @@ class AutoAuthenticator:
         last_failure_message = "No valid credentials or session established."
 
         for endpoint_url in login_endpoints:
+            if self.credential_submissions_count >= MAX_CREDENTIAL_SUBMISSIONS:
+                logger.info(f"[AutoAuth] Reached maximum credential submissions limit ({MAX_CREDENTIAL_SUBMISSIONS}).")
+                break
+
             logger.info(f"[AutoAuth] Probing login candidate: {endpoint_url}")
-            result = self._try_login_at_endpoint(endpoint_url)
+            result, rejected = self._try_login_at_endpoint(endpoint_url, anon_status, anon_url, anon_text)
             if result.success:
                 logger.info(
                     f"[AutoAuth] Successfully authenticated at {endpoint_url}! "
                     f"Captured {len(result.cookies)} cookie(s), token={'yes' if result.token else 'no'}"
                 )
                 return result
+
             if result.message and "404" not in result.message:
                 last_failure_message = result.message
+
+            # Stop at the first endpoint that clearly rejects the credentials
+            if rejected:
+                logger.info(f"[AutoAuth] Endpoint {endpoint_url} clearly rejected credentials. Stopping further spraying.")
+                return result
 
         return AuthResult(
             success=False,
             message=f"Authentication failed on {self.base_url}: {last_failure_message}"
         )
 
+    def _get_anonymous_verify_baseline(self) -> Tuple[int, str, str]:
+        """Fetch baseline state of verify_url prior to authentication."""
+        try:
+            resp = self.session.get(self.verify_url, timeout=self.timeout, allow_redirects=True)
+            return resp.status_code, getattr(resp, "url", "") or "", resp.text or ""
+        except Exception:
+            return 0, "", ""
+
     def _resolve_login_endpoints(self) -> List[str]:
         """Resolve ordered list of candidate URLs to test."""
+        deny_re = re.compile(DEFAULT_DENY_PATTERN, re.IGNORECASE)
         if self.explicit_login_url:
             full_url = urllib.parse.urljoin(f"{self.base_url}/", self.explicit_login_url.lstrip("/"))
             return [full_url]
 
         candidates = []
         for path in COMMON_LOGIN_PATHS:
+            if deny_re.search(path):
+                continue
             candidates.append(urllib.parse.urljoin(f"{self.base_url}/", path.lstrip("/")))
         return candidates
 
-    def _try_login_at_endpoint(self, url: str) -> AuthResult:
-        """Attempt login at a specific endpoint using both Form and JSON approaches."""
+    def _try_login_at_endpoint(
+        self,
+        url: str,
+        anon_status: int = 0,
+        anon_url: str = "",
+        anon_text: str = ""
+    ) -> Tuple[AuthResult, bool]:
+        """Attempt login at a specific endpoint using Form and JSON approaches."""
         try:
             get_resp = self.session.get(url, timeout=self.timeout, allow_redirects=True)
         except requests.RequestException as e:
             logger.debug(f"[AutoAuth] GET probe to {url} failed: {e}")
-            return AuthResult(success=False, login_url=url, message=f"GET probe failed: {e}")
+            return AuthResult(success=False, login_url=url, message=f"GET probe failed: {e}"), False
 
-        # If endpoint returns 404, skip
         if get_resp.status_code == 404:
-            return AuthResult(success=False, login_url=url, message="Endpoint returned 404")
+            return AuthResult(success=False, login_url=url, message="Endpoint returned 404"), False
 
         content_type = get_resp.headers.get("Content-Type", "").lower()
-        is_html = "html" in content_type or "<!doctype" in get_resp.text[:150].lower() or "<html" in get_resp.text[:150].lower()
+        is_html = "html" in content_type or "<!doctype" in get_resp.text[:150].lower() or "<html" in get_resp.text[:150].lower() or "<form" in get_resp.text.lower()
+        is_json_resp = "application/json" in content_type or (get_resp.text.strip().startswith("{") and get_resp.text.strip().endswith("}"))
 
-        # Strategy A: If it's an HTML page, parse form inputs & hidden CSRF tokens
+        # Check 1: HTML page with password form
         if is_html:
-            form_result = self._attempt_html_form_login(url, get_resp)
-            if form_result.success:
-                return form_result
+            parser = _LoginFormParser()
+            try:
+                parser.feed(get_resp.text)
+            except Exception as e:
+                logger.debug(f"[AutoAuth] HTML form parse error on {url}: {e}")
 
-        # Strategy B: Attempt JSON API authentication (common for SPAs and REST APIs)
-        json_result = self._attempt_json_api_login(url)
-        if json_result.success:
-            return json_result
+            if parser.forms:
+                return self._attempt_html_form_login(url, get_resp, parser.forms[0], anon_status, anon_url, anon_text)
 
-        # Strategy C: Blind Form POST as fallback
-        fallback_result = self._attempt_blind_form_login(url)
-        if fallback_result.success:
-            return fallback_result
+        # Check 2: JSON API endpoint
+        # During auto-discovery, only probe if an empty JSON POST returns 400, 401, or 422.
+        # Explicit login_url is exempted.
+        is_json_login = False
+        if self.explicit_login_url:
+            is_json_login = True
+        else:
+            try:
+                empty_post_resp = self.session.post(
+                    url,
+                    json={},
+                    headers={"Content-Type": "application/json", "Accept": "application/json"},
+                    timeout=self.timeout,
+                    allow_redirects=True
+                )
+                if empty_post_resp.status_code in (400, 401, 422):
+                    is_json_login = True
+            except requests.RequestException:
+                pass
 
+        if is_json_login:
+            return self._attempt_json_api_login(url, anon_status, anon_url, anon_text)
+
+        # Endpoint does not look like a login endpoint (no password form and not JSON auth)
         return AuthResult(
             success=False,
             login_url=url,
-            message="Credentials rejected or no valid session captured.",
+            message="Endpoint has no login form or JSON API authentication structure.",
             status_code=get_resp.status_code
-        )
+        ), False
 
-    def _attempt_html_form_login(self, page_url: str, get_resp: requests.Response) -> AuthResult:
+    def _attempt_html_form_login(
+        self,
+        page_url: str,
+        get_resp: requests.Response,
+        form: Dict[str, Any],
+        anon_status: int = 0,
+        anon_url: str = "",
+        anon_text: str = ""
+    ) -> Tuple[AuthResult, bool]:
         """Parse HTML login form, populate user/pass and CSRF token, and submit."""
-        parser = _LoginFormParser()
-        try:
-            parser.feed(get_resp.text)
-        except Exception as e:
-            logger.debug(f"[AutoAuth] HTML form parse error on {page_url}: {e}")
-            return AuthResult(success=False, login_url=page_url, message="Form parse error")
+        if self.credential_submissions_count >= MAX_CREDENTIAL_SUBMISSIONS:
+            return AuthResult(success=False, login_url=page_url, message="Max credential submissions limit reached."), False
 
-        if not parser.forms:
-            logger.debug(f"[AutoAuth] No password form found on {page_url}")
-            return AuthResult(success=False, login_url=page_url, message="No password form found")
-
-        form = parser.forms[0]
         action = form.get("action") or ""
         post_url = urllib.parse.urljoin(page_url, action)
 
-        # Detect username/email field name
         user_field = None
         pass_field = None
 
@@ -263,10 +365,9 @@ class AutoAuthenticator:
                 user_field = field_name
 
         if not pass_field:
-            return AuthResult(success=False, login_url=page_url, message="Password input field could not be identified")
+            return AuthResult(success=False, login_url=page_url, message="Password input field could not be identified"), False
 
         if not user_field:
-            # Pick first text input that isn't password or csrf
             for field_name, input_type in form["inputs"].items():
                 if field_name != pass_field and input_type in ("text", "email"):
                     user_field = field_name
@@ -275,12 +376,10 @@ class AutoAuthenticator:
         if not user_field:
             user_field = "username"
 
-        # Build payload with hidden fields (CSRF tokens)
         payload = dict(form.get("hidden_fields", {}))
         payload[user_field] = self.username
         payload[pass_field] = self.password
 
-        # Add common CSRF token if not present in hidden fields but found in cookies
         for cookie_name, cookie_val in self.session.cookies.items():
             if any(c in cookie_name.lower() for c in ["csrf", "xsrf"]):
                 if not any(c in payload for c in CSRF_TOKEN_CANDIDATES):
@@ -292,6 +391,10 @@ class AutoAuthenticator:
             "Origin": self.base_url,
         }
 
+        # Snapshot cookie jar before the POST
+        cookies_before = dict(self.session.cookies)
+        self.credential_submissions_count += 1
+
         try:
             resp = self.session.post(
                 post_url,
@@ -300,17 +403,29 @@ class AutoAuthenticator:
                 timeout=self.timeout,
                 allow_redirects=True
             )
-            return self._evaluate_auth_response(post_url, resp)
+            return self._evaluate_auth_response(post_url, resp, cookies_before, anon_status, anon_url, anon_text)
         except requests.RequestException as exc:
-            return AuthResult(success=False, login_url=post_url, message=f"POST error: {exc}")
+            return AuthResult(success=False, login_url=post_url, message=f"POST error: {exc}"), False
 
-    def _attempt_json_api_login(self, url: str) -> AuthResult:
-        """Attempt JSON-based API login payload."""
-        payload_variations = [
-            {"username": self.username, "password": self.password},
-            {"email": self.username, "password": self.password},
-            {"identifier": self.username, "password": self.password},
-        ]
+    def _attempt_json_api_login(
+        self,
+        url: str,
+        anon_status: int = 0,
+        anon_url: str = "",
+        anon_text: str = ""
+    ) -> Tuple[AuthResult, bool]:
+        if "@" in self.username:
+            payload_variations = [
+                {"email": self.username, "password": self.password},
+                {"username": self.username, "password": self.password},
+                {"identifier": self.username, "password": self.password},
+            ]
+        else:
+            payload_variations = [
+                {"username": self.username, "password": self.password},
+                {"email": self.username, "password": self.password},
+                {"identifier": self.username, "password": self.password},
+            ]
 
         headers = {
             "Content-Type": "application/json",
@@ -319,7 +434,16 @@ class AutoAuthenticator:
             "Referer": url,
         }
 
+        last_res = AuthResult(success=False, login_url=url, message="JSON login attempts failed")
+        was_rejected = False
+
         for payload in payload_variations:
+            if self.credential_submissions_count >= MAX_CREDENTIAL_SUBMISSIONS:
+                break
+
+            cookies_before = dict(self.session.cookies)
+            self.credential_submissions_count += 1
+
             try:
                 resp = self.session.post(
                     url,
@@ -328,125 +452,153 @@ class AutoAuthenticator:
                     timeout=self.timeout,
                     allow_redirects=True
                 )
-                auth_res = self._evaluate_auth_response(url, resp)
+                auth_res, rejected = self._evaluate_auth_response(url, resp, cookies_before, anon_status, anon_url, anon_text)
                 if auth_res.success:
-                    return auth_res
+                    return auth_res, False
+                if rejected:
+                    was_rejected = True
+                    last_res = auth_res
+                    break
+                last_res = auth_res
             except requests.RequestException as exc:
                 logger.debug(f"[AutoAuth] JSON login probe failed for {url}: {exc}")
                 continue
 
-        return AuthResult(success=False, login_url=url, message="JSON login attempts failed")
+        return last_res, was_rejected
 
-    def _attempt_blind_form_login(self, url: str) -> AuthResult:
-        """Fallback form POST attempt with common field permutations."""
-        field_pairs = [
-            ("username", "password"),
-            ("email", "password"),
-            ("user", "pass"),
-            ("login", "password"),
-        ]
-
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Origin": self.base_url,
-            "Referer": url,
-        }
-
-        for u_name, p_name in field_pairs:
-            payload = {u_name: self.username, p_name: self.password}
-            try:
-                resp = self.session.post(
-                    url,
-                    data=payload,
-                    headers=headers,
-                    timeout=self.timeout,
-                    allow_redirects=True
-                )
-                auth_res = self._evaluate_auth_response(url, resp)
-                if auth_res.success:
-                    return auth_res
-            except requests.RequestException as exc:
-                logger.debug(f"[AutoAuth] Blind form probe failed for {url}: {exc}")
-                continue
-
-        return AuthResult(success=False, login_url=url, message="Blind form login failed")
-
-    def _evaluate_auth_response(self, login_url: str, resp: requests.Response) -> AuthResult:
+    def _evaluate_auth_response(
+        self,
+        login_url: str,
+        resp: requests.Response,
+        cookies_before: Dict[str, str],
+        anon_status: int = 0,
+        anon_url: str = "",
+        anon_text: str = ""
+    ) -> Tuple[AuthResult, bool]:
         """Inspect response to determine if login succeeded and extract tokens/cookies."""
-        # Check 1: Did we receive new session cookies?
-        captured_cookies = dict(self.session.cookies)
-        
-        # Check 2: Did we receive a JSON response containing an auth token?
+        # Check 1 & 2: Check for explicit rejection or 401/403 status
+        if _is_clear_credential_rejection(resp):
+            return AuthResult(
+                success=False,
+                login_url=login_url,
+                message=f"Server rejected credentials (status {resp.status_code}).",
+                status_code=resp.status_code
+            ), True
+
+        # Check 3: Did we receive new or changed session cookies from the login response?
+        cookies_after = dict(self.session.cookies)
+        resp_cookies = dict(getattr(resp, "cookies", {}) or {})
+        new_or_changed_cookies = dict(resp_cookies)
+        for k, v in cookies_after.items():
+            if k not in cookies_before or cookies_before[k] != v:
+                new_or_changed_cookies[k] = v
+
+        # Check 4: Did we receive a JSON response containing an auth token?
         token = None
         auth_headers = {}
-
         try:
             data = resp.json()
-            if isinstance(data, dict):
-                # Search for token keys
-                for key in ["token", "access_token", "jwt", "accessToken", "id_token", "authToken"]:
-                    if key in data and isinstance(data[key], str) and len(data[key]) > 10:
-                        token = data[key]
-                        break
-                    if "data" in data and isinstance(data["data"], dict) and key in data["data"]:
-                        token = data["data"][key]
-                        break
-        except (ValueError, json.JSONDecodeError):
+            token = _extract_token_from_json(data)
+        except (ValueError, json.JSONDecodeError, AttributeError):
             pass
 
         if token:
             auth_headers["Authorization"] = f"Bearer {token}"
 
-        # Indicators of successful authentication:
-        # A. HTTP 200 with captured session cookie or token
-        # B. HTTP 302/301 redirect to dashboard/home with cookies
-        # C. JSON response with success: true
-        has_cookies = len(captured_cookies) > 0
+        has_new_cookies = len(new_or_changed_cookies) > 0
         has_token = token is not None
         status_ok = resp.status_code in (200, 201, 302, 303, 307)
+        is_redirect_away = resp.status_code in (301, 302, 303, 307) and getattr(resp, "url", "") and "/login" not in resp.url.lower()
 
-        # Check for explicit failure strings in response body
-        body_lower = resp.text.lower()
-        has_explicit_failure = any(f in body_lower for f in [
-            "invalid credential", "invalid username", "invalid password",
-            "login failed", "unauthorized", "incorrect password",
-            "user not found", "access denied", "wrong password"
-        ]) and resp.status_code in (400, 401, 403)
-
-        if has_explicit_failure:
+        if not (has_new_cookies or has_token or is_redirect_away) or not status_ok:
             return AuthResult(
                 success=False,
                 login_url=login_url,
-                message="Server rejected credentials with invalid authentication error.",
+                message=f"Response status {resp.status_code} did not establish an authenticated session.",
                 status_code=resp.status_code
-            )
+            ), False
 
-        if (has_cookies or has_token) and status_ok:
-            return AuthResult(
-                success=True,
-                cookies=captured_cookies,
-                headers=auth_headers,
-                login_url=login_url,
-                token=token,
-                message="Login successful. Session credentials captured.",
-                status_code=resp.status_code
-            )
-
-        # If redirected away from login path with status 200 after redirect
-        if resp.status_code == 200 and resp.url and "/login" not in resp.url.lower():
-            return AuthResult(
-                success=True,
-                cookies=captured_cookies,
-                headers=auth_headers,
-                login_url=login_url,
-                token=token,
-                message="Login successful via navigation redirect.",
-                status_code=resp.status_code
-            )
-
-        return AuthResult(
-            success=False,
-            login_url=login_url,
-            message=f"Response status {resp.status_code} did not establish an authenticated session.",
-            status_code=resp.status_code
+        # Check 5: Post-login verification step
+        verified = self._verify_authenticated_session(
+            token, auth_headers, new_or_changed_cookies, is_redirect_away,
+            anon_status, anon_url, anon_text
         )
+
+        if not verified:
+            return AuthResult(
+                success=False,
+                login_url=login_url,
+                message="Post-login session verification failed.",
+                status_code=resp.status_code
+            ), False
+
+        captured_cookies = dict(self.session.cookies) if (has_new_cookies or is_redirect_away) else new_or_changed_cookies
+        return AuthResult(
+            success=True,
+            cookies=captured_cookies,
+            headers=auth_headers,
+            login_url=login_url,
+            token=token,
+            message="Login successful. Session credentials captured and verified.",
+            status_code=resp.status_code
+        ), False
+
+    def _verify_authenticated_session(
+        self,
+        token: Optional[str],
+        auth_headers: Dict[str, str],
+        new_cookies: Dict[str, str],
+        is_redirect_away: bool,
+        anon_status: int,
+        anon_url: str,
+        anon_text: str
+    ) -> bool:
+        """Verify authenticated session against anonymous baseline."""
+        try:
+            verify_resp = self.session.get(
+                self.verify_url,
+                headers=dict(auth_headers),
+                timeout=self.timeout,
+                allow_redirects=True
+            )
+        except Exception as e:
+            logger.debug(f"[AutoAuth] Verify request failed: {e}")
+            return False
+
+        # A. If anonymous was 401/403 and authenticated is 200:
+        if anon_status in (401, 403) and verify_resp.status_code == 200:
+            return True
+
+        # B. If anonymous redirected to login and authenticated stays on root or non-login:
+        if "/login" in anon_url.lower() and "/login" not in getattr(verify_resp, "url", "").lower() and verify_resp.status_code == 200:
+            return True
+
+        # C. Check for logout links or username appearing in authenticated text:
+        verify_text = verify_resp.text or ""
+        verify_lower = verify_text.lower()
+        logout_keywords = ["logout", "log-out", "signout", "sign-out", "logoff", "sign off"]
+        has_new_logout = any(kw in verify_lower for kw in logout_keywords) and not any(kw in anon_text.lower() for kw in logout_keywords)
+        has_new_username = self.username.lower() in verify_lower and self.username.lower() not in anon_text.lower()
+
+        if has_new_logout or has_new_username:
+            return True
+
+        # D. Login POST redirected away from login (e.g. 302 to /dashboard) and verify is not on login:
+        if is_redirect_away and "/login" not in getattr(verify_resp, "url", "").lower():
+            return True
+
+        # E. Token alone: requires status change (A/B), logout/username (C), or redirect (D)
+        if token and not new_cookies:
+            if anon_status in (401, 403) and verify_resp.status_code == 200:
+                return True
+            return False
+
+        # F. Cookies or session: require material body difference from anonymous baseline
+        if new_cookies or is_redirect_away:
+            anon_clean = anon_text.strip()
+            verify_clean = verify_text.strip()
+            if anon_clean and verify_clean:
+                if anon_clean != verify_clean and abs(len(verify_clean) - len(anon_clean)) >= 20:
+                    return True
+
+        return False
