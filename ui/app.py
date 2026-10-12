@@ -2630,7 +2630,7 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
             importer = OpenAPIImporter(openapi_path)
             if importer.load_spec():
                 imported_eps = importer.get_endpoints()
-                engine.crawler_data["injectable_endpoints"] = imported_eps
+                engine.add_endpoints(imported_eps)
                 emit("init", f"Imported {len(imported_eps)} endpoints from OpenAPI spec", 13)
 
         if previous_path:

@@ -118,7 +118,7 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
         if importer.load_spec():
             imported_eps = importer.get_endpoints()
             print(f"Imported {len(imported_eps)} endpoint(s) from OpenAPI spec")
-            engine.crawler_data["injectable_endpoints"] = imported_eps
+            engine.add_endpoints(imported_eps)
     
     if previous_report:
         if engine.set_previous_report(previous_report):

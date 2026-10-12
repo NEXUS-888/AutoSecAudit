@@ -3,7 +3,9 @@ import importlib
 import pkgutil
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+import dataclasses
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime
 
 import config
@@ -53,13 +55,36 @@ class Engine:
             mock_mode=self.mock_mode,
             politeness=client_politeness,
         )
+        self.scan_timeout: Optional[int] = None
         self.previous_report: Optional[Dict[str, Any]] = None
         self.crawl_result = None  # populated by run_plugins
-        self.crawler_data: Dict[str, Any] = {}  # populated by OpenAPI importer
+        self.imported_endpoints: List[Dict[str, Any]] = []
         self.dev_environment: Optional[str] = None
         self.auth_credentials: Optional[Dict[str, Any]] = None
         self.auth_result: Optional[Any] = None
         self.custom_headers: Dict[str, str] = {}
+
+    def add_endpoints(self, endpoints: List[Dict[str, Any]]) -> None:
+        """Add endpoints (e.g. from OpenAPI spec) to be scanned by plugins."""
+        if not endpoints:
+            return
+        self.imported_endpoints.extend(endpoints)
+        # Update any currently loaded plugins with merged & deduped list
+        for plugin in self.plugins:
+            current = getattr(plugin, "discovered_endpoints", []) or []
+            merged = []
+            seen = set()
+            for ep in current + endpoints:
+                if isinstance(ep, dict):
+                    key = (str(ep.get("method", "GET")).upper(), str(ep.get("path", "")), str(ep.get("param", "")))
+                    if key not in seen:
+                        seen.add(key)
+                        merged.append({
+                            "path": ep.get("path", ""),
+                            "param": ep.get("param", ""),
+                            "method": str(ep.get("method", "GET")).upper(),
+                        })
+            plugin.set_discovered_endpoints(merged)
 
     def set_auth_credentials(self, username: str, password: str, login_url: Optional[str] = None) -> None:
         """Configure test credentials for automated login."""
@@ -242,25 +267,49 @@ class Engine:
             except Exception as exc:
                 logger.debug(f"Dev environment detection failed: {exc}")
 
+        # Merge crawler endpoints with imported OpenAPI endpoints (dedupe on method+path+param)
+        all_endpoints = []
+        seen_keys = set()
+        for ep in (discovered or []) + (self.imported_endpoints or []):
+            if isinstance(ep, dict):
+                m = str(ep.get("method", "GET")).upper()
+                p = str(ep.get("path", ""))
+                param = str(ep.get("param", ""))
+                key = (m, p, param)
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    all_endpoints.append({
+                        "path": p,
+                        "param": param,
+                        "method": m,
+                    })
+
         # Configure and inject shared HTTP client, auth, discovered endpoints, and dev environment
         self.setup_shared_http_client(auth_headers=auth_headers, auth_cookies=auth_cookies)
         for plugin in self.plugins:
-            plugin.set_discovered_endpoints(discovered)
+            plugin.set_discovered_endpoints(all_endpoints)
             if self.dev_environment and hasattr(plugin, "set_dev_environment"):
                 plugin.set_dev_environment(self.dev_environment)
 
-        logger.info(f"Running {len(self.plugins)} plugins on {self.target}")
+        timeout = getattr(config, "SCAN_TIMEOUT", 300) if self.scan_timeout is None else self.scan_timeout
+        if self.http_client:
+            self.http_client.deadline = time.monotonic() + timeout
 
-        with ThreadPoolExecutor(max_workers=config.THREAD_COUNT) as executor:
+        logger.info(f"Running {len(self.plugins)} plugins on {self.target} (timeout: {timeout}s)")
+
+        executor = ThreadPoolExecutor(max_workers=config.THREAD_COUNT)
+        try:
             future_to_plugin = {
                 executor.submit(self._execute_plugin, plugin): plugin 
                 for plugin in self.plugins
             }
-            
-            for future in as_completed(future_to_plugin):
+
+            done, not_done = wait(future_to_plugin.keys(), timeout=timeout)
+
+            for future in done:
                 plugin = future_to_plugin[future]
                 try:
-                    result = future.result(timeout=config.SCAN_TIMEOUT)
+                    result = future.result()
                     if result:
                         status = result.get("status", "success")
                         error = result.get("error")
@@ -280,17 +329,6 @@ class Engine:
                             logger.info(f"Plugin {plugin.__class__.__name__} skipped: {error}")
                         else:
                             logger.info(f"Plugin {plugin.__class__.__name__} completed with {len(scan_result.findings)} findings")
-                except TimeoutError:
-                    logger.error(f"Plugin {plugin.__class__.__name__} timed out after {config.SCAN_TIMEOUT}s")
-                    self.scan_results.append(ScanResult(
-                        tool_name=plugin.__class__.__name__,
-                        target=self.target,
-                        timestamp=timestamp,
-                        findings=[],
-                        raw_output=f"Plugin timed out after {config.SCAN_TIMEOUT}s",
-                        status="timeout",
-                        error=f"Timeout after {config.SCAN_TIMEOUT}s"
-                    ))
                 except Exception as e:
                     logger.error(f"Plugin {plugin.__class__.__name__} failed: {e}", exc_info=True)
                     self.scan_results.append(ScanResult(
@@ -302,6 +340,24 @@ class Engine:
                         status="failed",
                         error=str(e)
                     ))
+
+            for future in not_done:
+                plugin = future_to_plugin[future]
+                logger.error(f"Plugin {plugin.__class__.__name__} timed out after {timeout}s")
+                self.scan_results.append(ScanResult(
+                    tool_name=plugin.__class__.__name__,
+                    target=self.target,
+                    timestamp=timestamp,
+                    findings=[],
+                    raw_output=f"Plugin timed out after {timeout}s",
+                    status="timeout",
+                    error=f"Timeout after {timeout}s"
+                ))
+        finally:
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                executor.shutdown(wait=False)
 
         return self.scan_results
 
@@ -325,25 +381,40 @@ class Engine:
 
     def _dict_to_findings(self, findings_data: List[Dict]) -> List[Finding]:
         """Convert dictionary data to Finding objects."""
+        finding_fields = {f.name: f for f in dataclasses.fields(Finding)}
         findings = []
         for f in findings_data:
-            finding = Finding(
-                id=f.get("id", ""),
-                title=f.get("title", ""),
-                severity=f.get("severity", "Medium"),
-                host=f.get("host", self.target),
-                port=f.get("port", 0),
-                description=f.get("description", ""),
-                raw_output=f.get("raw_output", ""),
-                cve_id=f.get("cve_id"),
-                cvss_score=f.get("cvss_score"),
-                references=f.get("references"),
-                owasp_tag=f.get("owasp_tag"),
-                tool_name=f.get("tool_name"),
-                confidence=f.get("confidence", "medium"),
-                remediation=f.get("remediation")
-            )
-            findings.append(finding)
+            kwargs = {}
+            for name, field_def in finding_fields.items():
+                if name in f:
+                    kwargs[name] = f[name]
+                elif name == "host":
+                    kwargs["host"] = self.target or ""
+                elif name == "confidence":
+                    kwargs["confidence"] = "medium"
+                elif name == "port":
+                    kwargs["port"] = 0
+                elif name == "id":
+                    kwargs["id"] = ""
+                elif name == "title":
+                    kwargs["title"] = ""
+                elif name == "severity":
+                    kwargs["severity"] = "Medium"
+                elif name == "description":
+                    kwargs["description"] = ""
+                elif name == "raw_output":
+                    kwargs["raw_output"] = ""
+                elif field_def.default is not dataclasses.MISSING:
+                    kwargs[name] = field_def.default
+                elif field_def.default_factory is not dataclasses.MISSING:
+                    kwargs[name] = field_def.default_factory()
+
+            if not kwargs.get("host") and self.target:
+                kwargs["host"] = self.target
+            if not kwargs.get("confidence"):
+                kwargs["confidence"] = "medium"
+
+            findings.append(Finding(**kwargs))
         return findings
 
     @property

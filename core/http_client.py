@@ -95,6 +95,8 @@ class ScanHttpClient:
         if auth_cookies:
             self.session.cookies.update(auth_cookies)
 
+        self.deadline: Optional[float] = None
+
     @property
     def throttled_count(self) -> int:
         """Thread-safe getter for throttled requests count."""
@@ -203,7 +205,11 @@ class ScanHttpClient:
         try:
             if json_data is None and "json" in kwargs:
                 json_data = kwargs.pop("json")
-            # 0. Initial scope check
+            # 0. Initial scope and deadline check
+            if self.deadline is not None and time.monotonic() > self.deadline:
+                logger.warning(f"[ScanHttpClient] Request skipped: scan deadline exceeded for {url}")
+                return None
+
             initial_check_url = url
             if self.target and not urllib.parse.urlparse(url).scheme:
                 initial_check_url = urllib.parse.urljoin(self.target, url)
@@ -212,9 +218,18 @@ class ScanHttpClient:
                 return None
 
             req_timeout = timeout if timeout is not None else self.default_timeout
+            if self.deadline is not None:
+                remaining = self.deadline - time.monotonic()
+                if remaining <= 0:
+                    return None
+                if isinstance(req_timeout, (int, float)):
+                    req_timeout = min(req_timeout, max(0.1, remaining))
+
             attempt_429 = 0
 
             while True:
+                if self.deadline is not None and time.monotonic() > self.deadline:
+                    return None
                 # 1. Pacing delay
                 self.politeness.pace_request()
 
@@ -322,6 +337,9 @@ class ScanHttpClient:
             req_headers["User-Agent"] = DEFAULT_USER_AGENT
 
         for hop in range(MAX_REDIRECTS):
+            if self.deadline is not None and time.monotonic() > self.deadline:
+                resp = None
+                break
             req = requests.Request(
                 method=current_method,
                 url=current_url,
