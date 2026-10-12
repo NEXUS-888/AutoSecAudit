@@ -8,9 +8,28 @@ import logging
 logger = logging.getLogger("config")
 
 BASE_DIR = Path(__file__).parent
-DATA_DIR = str(BASE_DIR / "data")
-REPORTS_DIR = str(BASE_DIR / "data" / "reports")
 PLUGINS_DIR = str(BASE_DIR / "plugins")
+
+
+def _get_data_dir() -> str:
+    return os.environ.get("AUTOSEC_DATA_DIR") or str(BASE_DIR / "data")
+
+
+def _get_reports_dir() -> str:
+    return str(Path(_get_data_dir()) / "reports")
+
+
+def __getattr__(name: str):
+    if name == "DATA_DIR":
+        return _get_data_dir()
+    if name == "REPORTS_DIR":
+        return _get_reports_dir()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+
+def __dir__():
+    return sorted(list(globals().keys()) + ["DATA_DIR", "REPORTS_DIR"])
+
 
 MOCK_MODE = os.environ.get("AUTOSEC_MOCK_MODE", "true").lower() == "true"
 
@@ -33,7 +52,7 @@ def _get_or_create_secret_key() -> str:
     env_key = os.environ.get("AUTOSEC_SECRET_KEY")
     if env_key:
         return env_key
-    secret_path = Path(DATA_DIR) / ".secret_key"
+    secret_path = Path(_get_data_dir()) / ".secret_key"
     try:
         if secret_path.is_file():
             content = secret_path.read_text(encoding="utf-8").strip()

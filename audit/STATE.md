@@ -1,10 +1,10 @@
 # Audit loop state
 
-batch: 16
-round: 3
+batch: 17
+round: 1
 status: ready_for_review
-base: b4f605f68c03884d3c0ee3641679aca991f023ef
-tests: 334
+base: 58b86e7fcf8f526581dcf1fc71eabe6f60a30909
+tests: 350
 
 <!--
 status values:

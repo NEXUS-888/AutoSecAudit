@@ -24,10 +24,6 @@ from reports.generator import ReportGenerator, _enrich_report_data
 from intelligence.enricher import Enricher
 from intelligence.compliance import ComplianceMapper
 
-logging.basicConfig(
-    level=getattr(logging, config.LOG_LEVEL),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"), static_url_path="/static")

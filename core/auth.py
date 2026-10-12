@@ -23,8 +23,19 @@ logger = logging.getLogger(__name__)
 DB_PATH = Path(config.DATA_DIR) / "users.db"
 
 
+_initialized_dbs = set()
+
+
+def _ensure_db_initialized() -> None:
+    db_key = str(DB_PATH)
+    if db_key not in _initialized_dbs:
+        _initialized_dbs.add(db_key)
+        init_user_db()
+
+
 def _get_db() -> sqlite3.Connection:
     """Get SQLite database connection with row factory."""
+    _ensure_db_initialized()
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
@@ -33,7 +44,10 @@ def _get_db() -> sqlite3.Connection:
 
 def init_user_db() -> None:
     """Initialize the users database table and seed default admin if empty."""
-    with contextlib.closing(_get_db()) as conn:
+    _initialized_dbs.add(str(DB_PATH))
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with contextlib.closing(sqlite3.connect(str(DB_PATH))) as conn:
+        conn.row_factory = sqlite3.Row
         with conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS users (
@@ -213,7 +227,3 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error fetching user by username {username}: {e}")
         return None
-
-
-# Auto-initialize database schema on import
-init_user_db()
