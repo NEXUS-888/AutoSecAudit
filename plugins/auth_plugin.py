@@ -449,6 +449,9 @@ class AuthScanner(BaseScanner):
     # ------------------------------------------------------------------
 
     def parse_output(self) -> Dict[str, Any]:
+        for f in self.results:
+            if "vuln_type" not in f:
+                f["vuln_type"] = "idor" if "IDOR" in f.get("title", "") else "auth"
         return {"tool_name": "auth_scanner", "findings": self.results}
 
     def _get_tool_name(self) -> str:
@@ -474,6 +477,11 @@ class AuthScanner(BaseScanner):
                     "raw_output": '{"authentication":{"token":"eyJhbGciOi...","bid":1,"umail":"admin@juice-sh.op"}}',
                     "owasp_tag": "A07:2021 Identification and Authentication Failures",
                     "tool_name": "auth_scanner",
+                    "vuln_type": "auth",
+                    "endpoint": "/rest/user/login",
+                    "param": "email",
+                    "method": "POST",
+                    "evidence": '{"authentication":{"token":"eyJhbGciOi...","bid":1,"umail":"admin@juice-sh.op"}}',
                 },
                 {
                     "id": "AUTH-IDOR-002",
@@ -488,6 +496,11 @@ class AuthScanner(BaseScanner):
                     "raw_output": '{"status":"success","data":{"id":1,"username":"admin","email":"admin@juice-sh.op","role":"admin"}}',
                     "owasp_tag": "A01:2021 Broken Access Control",
                     "tool_name": "auth_scanner",
+                    "vuln_type": "idor",
+                    "endpoint": "/api/Users/1",
+                    "param": "id",
+                    "method": "GET",
+                    "evidence": '{"status":"success","data":{"id":1,"username":"admin","email":"admin@juice-sh.op","role":"admin"}}',
                 },
                 {
                     "id": "AUTH-WEAKPW-003",
@@ -502,6 +515,11 @@ class AuthScanner(BaseScanner):
                     "raw_output": '{"status":"success","data":{"id":22,"email":"weaktest1@autosec.test"}}',
                     "owasp_tag": "A07:2021 Identification and Authentication Failures",
                     "tool_name": "auth_scanner",
+                    "vuln_type": "auth",
+                    "endpoint": "/api/Users/",
+                    "param": "password",
+                    "method": "POST",
+                    "evidence": '{"status":"success","data":{"id":22,"email":"weaktest1@autosec.test"}}',
                 },
                 {
                     "id": "AUTH-ENUM-004",
@@ -517,6 +535,11 @@ class AuthScanner(BaseScanner):
                     "raw_output": "{'admin@juice-sh.op': 200, 'nonexistent@fake.invalid': 401}",
                     "owasp_tag": "A07:2021 Identification and Authentication Failures",
                     "tool_name": "auth_scanner",
+                    "vuln_type": "auth",
+                    "endpoint": "/rest/user/reset-password",
+                    "param": "email",
+                    "method": "POST",
+                    "evidence": "{'admin@juice-sh.op': 200, 'nonexistent@fake.invalid': 401}",
                 },
                 {
                     "id": "AUTH-RATE-005",
@@ -532,6 +555,10 @@ class AuthScanner(BaseScanner):
                     "raw_output": "10/10 requests accepted in 1.23s",
                     "owasp_tag": "A07:2021 Identification and Authentication Failures",
                     "tool_name": "auth_scanner",
+                    "vuln_type": "auth",
+                    "endpoint": "/rest/user/login",
+                    "method": "POST",
+                    "evidence": "10/10 requests accepted in 1.23s",
                 },
             ],
         }

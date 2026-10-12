@@ -382,6 +382,15 @@ class XSSScanner(BaseScanner):
             }
             finding_confidence = confidence_map.get(rtype, "medium")
 
+            finding_vuln_type = "misconfig" if rtype in ("missing_header", "weak_header") else "xss"
+            ep_str = result.get("endpoint", "/")
+            ep = ep_str.split("?")[0] if "?" in ep_str else ep_str
+            param = ep_str.split("?")[1].split("=")[0] if "?" in ep_str and "=" in ep_str else None
+            if rtype in ("missing_header", "weak_header") and result.get("header_name"):
+                param = result["header_name"]
+            elif rtype == "dom_xss_indicator":
+                param = "dom_xss"
+
             finding = {
                 "id": finding_id,
                 "title": title,
@@ -393,6 +402,11 @@ class XSSScanner(BaseScanner):
                 "owasp_tag": "A03:2021 Injection",
                 "tool_name": "xss_scanner",
                 "confidence": finding_confidence,
+                "vuln_type": finding_vuln_type,
+                "endpoint": ep,
+                "param": param,
+                "method": "GET",
+                "evidence": result.get("evidence"),
             }
             if rtype in ("missing_header", "weak_header") and getattr(self, "dev_environment", None):
                 finding = tag_dev_artifact_finding(finding, self.dev_environment)
@@ -423,6 +437,11 @@ class XSSScanner(BaseScanner):
                     "raw_output": '<h2>Search results for: <script>alert("aUtOsEc42xSs")</script></h2>',
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "xss_scanner",
+                    "vuln_type": "xss",
+                    "endpoint": "/search",
+                    "param": "q",
+                    "method": "GET",
+                    "evidence": '<h2>Search results for: <script>alert("aUtOsEc42xSs")</script></h2>',
                 },
                 {
                     "id": "XSS-002",
@@ -440,6 +459,11 @@ class XSSScanner(BaseScanner):
                     "raw_output": 'document.write(location.hash.substring(1))',
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "xss_scanner",
+                    "vuln_type": "xss",
+                    "endpoint": "/",
+                    "param": "dom_xss",
+                    "method": "GET",
+                    "evidence": 'document.write(location.hash.substring(1))',
                 },
                 {
                     "id": "XSS-003",
@@ -457,6 +481,11 @@ class XSSScanner(BaseScanner):
                     "raw_output": "Header 'Content-Security-Policy' not present in response.",
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "xss_scanner",
+                    "vuln_type": "misconfig",
+                    "endpoint": "/",
+                    "param": "Content-Security-Policy",
+                    "method": "GET",
+                    "evidence": "Header 'Content-Security-Policy' not present in response.",
                 },
                 {
                     "id": "XSS-004",
@@ -474,6 +503,11 @@ class XSSScanner(BaseScanner):
                     "raw_output": "Header 'X-XSS-Protection' not present in response.",
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "xss_scanner",
+                    "vuln_type": "misconfig",
+                    "endpoint": "/",
+                    "param": "X-XSS-Protection",
+                    "method": "GET",
+                    "evidence": "Header 'X-XSS-Protection' not present in response.",
                 },
             ]
 

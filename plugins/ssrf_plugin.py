@@ -63,6 +63,9 @@ class SSRFScanner(BaseScanner):
         _, host, port = self._parse_target(self.target)
         findings = []
         for index, result in enumerate(self.results, 1):
+            ep_str = result.get("endpoint", "")
+            ep = ep_str.split("?")[0] if "?" in ep_str else ep_str
+            param = ep_str.split("?")[1].split("=")[0] if "?" in ep_str and "=" in ep_str else "url"
             findings.append({"id": f"SSRF-{index:03d}",
                 "title": f"Server-Side Request Forgery ({result['endpoint']})",
                 "severity": format_severity("Critical" if result["metadata"] else "High"),
@@ -70,6 +73,11 @@ class SSRFScanner(BaseScanner):
                 "description": f"A URL parameter caused a response consistent with server-side access to an internal destination. Probe: {result['payload']}. HTTP {result['status_code']}.",
                 "raw_output": result["evidence"], "owasp_tag": "A10:2021 Server-Side Request Forgery (SSRF)",
                 "tool_name": "ssrf_scanner", "confidence": "high" if result["metadata"] else "medium",
+                "vuln_type": "ssrf",
+                "endpoint": ep,
+                "param": param,
+                "method": "GET",
+                "evidence": result.get("evidence"),
                 "remediation": "Allowlist schemes, hosts, and ports; resolve and validate IPs after DNS resolution; block loopback, link-local, and private ranges; and disable redirects.",})
         return {"tool_name": "ssrf_scanner", "findings": findings}
 
@@ -78,4 +86,10 @@ class SSRFScanner(BaseScanner):
         return {"tool_name": "ssrf_scanner", "findings": [{"id": "SSRF-001", "title": "SSRF via /fetch?url=<url>", "severity": "High",
             "host": host, "port": port, "description": "The URL fetcher returned content consistent with a loopback request.",
             "raw_output": "HTTP 502 upstream connection to 127.0.0.1", "owasp_tag": "A10:2021 Server-Side Request Forgery (SSRF)",
-            "tool_name": "ssrf_scanner", "confidence": "medium"}]}
+            "tool_name": "ssrf_scanner", "confidence": "medium",
+            "vuln_type": "ssrf",
+            "endpoint": "/fetch",
+            "param": "url",
+            "method": "GET",
+            "evidence": "HTTP 502 upstream connection to 127.0.0.1",
+        }]}

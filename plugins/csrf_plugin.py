@@ -119,6 +119,7 @@ class CSRFScanner(BaseScanner):
                         self.results.append({
                             "type": "cookie_missing_samesite",
                             "path": path,
+                            "cookie_name": cookie.name,
                             "severity": "Low",
                             "detail": f"Cookie '{cookie.name}' is set without a 'SameSite' attribute, leaving it vulnerable to cross-site request inclusion.",
                             "url": url
@@ -127,6 +128,7 @@ class CSRFScanner(BaseScanner):
                         self.results.append({
                             "type": "cookie_samesite_none_insecure",
                             "path": path,
+                            "cookie_name": cookie.name,
                             "severity": "Medium",
                             "detail": f"Cookie '{cookie.name}' uses 'SameSite=None' without the 'Secure' flag.",
                             "url": url
@@ -137,7 +139,9 @@ class CSRFScanner(BaseScanner):
         seen = set()
 
         for res in self.results:
-            key = f"{res['type']}:{res['path']}"
+            cookie_name = res.get("cookie_name", "")
+            param = f"{res['type']}:{cookie_name}" if cookie_name else ("csrf_token" if "form" in res.get("type", "") else res.get("param", "csrf_token"))
+            key = f"{res['type']}:{res['path']}:{cookie_name}"
             if key in seen:
                 continue
             seen.add(key)
@@ -166,6 +170,11 @@ class CSRFScanner(BaseScanner):
                 "owasp_tag": "A01:2021-Broken Access Control",
                 "tool_name": "CSRFScanner",
                 "confidence": "high",
+                "vuln_type": "csrf",
+                "endpoint": res.get("path"),
+                "param": param,
+                "method": "POST" if "form" in res.get("type", "") else "GET",
+                "evidence": res.get("detail"),
                 "remediation": (
                     "1. Enforce unique, cryptographically random Anti-CSRF tokens for all state-changing forms (e.g. csurf or Flask-WTF).\n"
                     "2. Set SameSite=Lax or SameSite=Strict on all authentication cookies.\n"
@@ -204,6 +213,11 @@ class CSRFScanner(BaseScanner):
                     "owasp_tag": "A01:2021-Broken Access Control",
                     "tool_name": "CSRFScanner",
                     "confidence": "high",
+                    "vuln_type": "csrf",
+                    "endpoint": "/settings/profile",
+                    "param": "csrf_token",
+                    "method": "POST",
+                    "evidence": "Form action='/settings/profile' method='POST' missing csrf_token field",
                     "remediation": "Implement synchronized anti-CSRF token verification on all POST/PUT endpoints and set SameSite=Lax on session cookies."
                 },
                 {
@@ -225,6 +239,11 @@ class CSRFScanner(BaseScanner):
                     "owasp_tag": "A01:2021-Broken Access Control",
                     "tool_name": "CSRFScanner",
                     "confidence": "high",
+                    "vuln_type": "csrf",
+                    "endpoint": "/settings/profile",
+                    "param": "cookie_missing_samesite:session_id",
+                    "method": "GET",
+                    "evidence": "Set-Cookie: session_id=abc123xyz; Path=/; HttpOnly",
                     "remediation": "Add 'SameSite=Lax' or 'SameSite=Strict' to all Set-Cookie directives."
                 }
             ],

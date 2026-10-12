@@ -169,6 +169,10 @@ class APIAbuseScanner(BaseScanner):
                     "raw_output": '{"status":200,"leaked_fields":["password","email"]}',
                     "owasp_tag": "A01:2021 Broken Access Control",
                     "tool_name": "api_abuse_scanner",
+                    "vuln_type": "api_abuse",
+                    "endpoint": "/api/Users",
+                    "method": "GET",
+                    "evidence": '{"status":200,"leaked_fields":["password","email"]}',
                 },
                 {
                     "id": "API-002",
@@ -184,6 +188,11 @@ class APIAbuseScanner(BaseScanner):
                     "raw_output": '{"status":201,"body_contains_role":true}',
                     "owasp_tag": "A04:2021 Insecure Design",
                     "tool_name": "api_abuse_scanner",
+                    "vuln_type": "api_abuse",
+                    "endpoint": "/api/Users",
+                    "param": "role",
+                    "method": "POST",
+                    "evidence": '{"status":201,"body_contains_role":true}',
                 },
                 {
                     "id": "API-003",
@@ -199,6 +208,10 @@ class APIAbuseScanner(BaseScanner):
                     "raw_output": '{"data":{"__schema":{"types":[{"name":"Query"}]}}}',
                     "owasp_tag": "A01:2021 Broken Access Control",
                     "tool_name": "api_abuse_scanner",
+                    "vuln_type": "api_abuse",
+                    "endpoint": "/graphql",
+                    "method": "POST",
+                    "evidence": '{"data":{"__schema":{"types":[{"name":"Query"}]}}}',
                 },
                 {
                     "id": "API-004",
@@ -214,6 +227,10 @@ class APIAbuseScanner(BaseScanner):
                     "raw_output": '{"status":200,"endpoint":"/api/admin"}',
                     "owasp_tag": "A01:2021 Broken Access Control",
                     "tool_name": "api_abuse_scanner",
+                    "vuln_type": "api_abuse",
+                    "endpoint": "/api/admin",
+                    "method": "GET",
+                    "evidence": '{"status":200,"endpoint":"/api/admin"}',
                 },
                 {
                     "id": "API-005",
@@ -229,6 +246,10 @@ class APIAbuseScanner(BaseScanner):
                     "raw_output": '{"pattern":"credit_card","endpoint":"/api/Orders"}',
                     "owasp_tag": "A04:2021 Insecure Design",
                     "tool_name": "api_abuse_scanner",
+                    "vuln_type": "api_abuse",
+                    "endpoint": "/api/Orders",
+                    "method": "GET",
+                    "evidence": '{"pattern":"credit_card","endpoint":"/api/Orders"}',
                 },
             ],
         }
@@ -316,6 +337,11 @@ class APIAbuseScanner(BaseScanner):
         raw_output: str,
         owasp_tag: str,
         cve_id: Optional[str] = None,
+        vuln_type: str = "api_abuse",
+        endpoint: Optional[str] = None,
+        param: Optional[str] = None,
+        method: Optional[str] = None,
+        evidence: Optional[str] = None,
     ) -> None:
         finding: Dict[str, Any] = {
             "id": self._next_id(),
@@ -327,6 +353,11 @@ class APIAbuseScanner(BaseScanner):
             "raw_output": raw_output[:1000],
             "owasp_tag": owasp_tag,
             "tool_name": "api_abuse_scanner",
+            "vuln_type": vuln_type,
+            "endpoint": endpoint,
+            "param": param,
+            "method": method,
+            "evidence": evidence or raw_output[:500],
         }
         if cve_id:
             finding["cve_id"] = cve_id

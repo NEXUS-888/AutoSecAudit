@@ -87,6 +87,34 @@ class NiktoPlugin(BaseScanner):
         
         finding_id = f"NIKTO-{len(title[:20])}"
         
+        text_lower = (title + " " + description).lower()
+        if "sql" in text_lower:
+            vuln_type = "sqli"
+        elif "xss" in text_lower or "cross-site scripting" in text_lower:
+            vuln_type = "xss"
+        elif "traversal" in text_lower or "directory traversal" in text_lower:
+            vuln_type = "path_traversal"
+        elif "index" in text_lower or "directory indexing" in text_lower:
+            vuln_type = "dir_brute"
+        else:
+            vuln_type = "misconfig"
+
+        osvdb_match = re.search(r"OSVDB-(\d+)", title, re.IGNORECASE)
+        uri_match = re.match(r"^(?:OSVDB-\d+:\s*)?(/[^\s:]*)", title)
+        if uri_match:
+            endpoint = uri_match.group(1)
+            remainder = title[uri_match.end():].lstrip(": ").strip()
+            if osvdb_match:
+                param = f"OSVDB-{osvdb_match.group(1)}"
+            else:
+                param = remainder[:50] if remainder else endpoint
+        else:
+            endpoint = "/"
+            if osvdb_match:
+                param = f"OSVDB-{osvdb_match.group(1)}"
+            else:
+                param = title[:50]
+
         return {
             "id": finding_id,
             "title": title,
@@ -95,7 +123,13 @@ class NiktoPlugin(BaseScanner):
             "port": 80,
             "description": description,
             "cve_id": cve_id,
-            "raw_output": line[:500]
+            "raw_output": line[:500],
+            "tool_name": "nikto",
+            "vuln_type": vuln_type,
+            "endpoint": endpoint,
+            "param": param,
+            "method": "GET",
+            "evidence": line[:500],
         }
 
     def _extract_cve(self, text: str) -> Optional[str]:
@@ -145,7 +179,13 @@ class NiktoPlugin(BaseScanner):
                     "host": self._extract_host(self.target),
                     "port": 80,
                     "description": "The server leaks internal IP via certain headers",
-                    "raw_output": "+ Server may reveal internal IP via headers - Nikto v2.1.6"
+                    "raw_output": "+ Server may reveal internal IP via headers - Nikto v2.1.6",
+                    "tool_name": "nikto",
+                    "vuln_type": "misconfig",
+                    "endpoint": "/",
+                    "param": "internal_ip_headers",
+                    "method": "GET",
+                    "evidence": "+ Server may reveal internal IP via headers - Nikto v2.1.6",
                 },
                 {
                     "id": "NIKTO-002",
@@ -154,7 +194,13 @@ class NiktoPlugin(BaseScanner):
                     "host": self._extract_host(self.target),
                     "port": 80,
                     "description": "Response lacks Content-Type header",
-                    "raw_output": "+ Missing Content-Type header - Nikto v2.1.6"
+                    "raw_output": "+ Missing Content-Type header - Nikto v2.1.6",
+                    "tool_name": "nikto",
+                    "vuln_type": "misconfig",
+                    "endpoint": "/",
+                    "param": "Content-Type",
+                    "method": "GET",
+                    "evidence": "+ Missing Content-Type header - Nikto v2.1.6",
                 },
                 {
                     "id": "NIKTO-003",
@@ -163,7 +209,13 @@ class NiktoPlugin(BaseScanner):
                     "host": self._extract_host(self.target),
                     "port": 80,
                     "description": "Directory listing may be available",
-                    "raw_output": "+ Directory indexing enabled - Nikto v2.1.6"
+                    "raw_output": "+ Directory indexing enabled - Nikto v2.1.6",
+                    "tool_name": "nikto",
+                    "vuln_type": "dir_brute",
+                    "endpoint": "/icons/",
+                    "param": "directory_indexing",
+                    "method": "GET",
+                    "evidence": "+ Directory indexing enabled - Nikto v2.1.6",
                 },
                 {
                     "id": "NIKTO-004",
@@ -173,7 +225,13 @@ class NiktoPlugin(BaseScanner):
                     "port": 80,
                     "description": "Potential XSS vulnerability in query parameters",
                     "cve_id": "CVE-2021-12345",
-                    "raw_output": "+ XSS via query parameter - Nikto v2.1.6"
+                    "raw_output": "+ XSS via query parameter - Nikto v2.1.6",
+                    "tool_name": "nikto",
+                    "vuln_type": "xss",
+                    "endpoint": "/search",
+                    "param": "q",
+                    "method": "GET",
+                    "evidence": "+ XSS via query parameter - Nikto v2.1.6",
                 },
                 {
                     "id": "NIKTO-005",
@@ -183,7 +241,13 @@ class NiktoPlugin(BaseScanner):
                     "port": 80,
                     "description": "Potential SQL injection vulnerability detected",
                     "cve_id": "CVE-2021-99999",
-                    "raw_output": "+ SQL Injection possible - Nikto v2.1.6"
+                    "raw_output": "+ SQL Injection possible - Nikto v2.1.6",
+                    "tool_name": "nikto",
+                    "vuln_type": "sqli",
+                    "endpoint": "/login",
+                    "param": "id",
+                    "method": "GET",
+                    "evidence": "+ SQL Injection possible - Nikto v2.1.6",
                 }
             ]
         }

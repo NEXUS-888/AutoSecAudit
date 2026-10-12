@@ -37,20 +37,73 @@ class Correlator:
 
         return self.correlation_groups
 
+    def _deduplicate(self, findings: List[Finding]) -> List[Finding]:
+        """Deduplicate findings by fingerprint, merging evidence and references."""
+        seen = {}
+        unique = []
+        for f in findings:
+            fp = getattr(f, "fingerprint", None)
+            if not fp and hasattr(f, "compute_fingerprint"):
+                fp = f.compute_fingerprint()
+                f.fingerprint = fp
+            if not fp:
+                from core.models import compute_finding_fingerprint
+                fp = compute_finding_fingerprint(
+                    tool=getattr(f, "tool_name", None),
+                    vuln_type=getattr(f, "vuln_type", None),
+                    method=getattr(f, "method", None),
+                    endpoint=getattr(f, "endpoint", None),
+                    param=getattr(f, "param", None),
+                    title=getattr(f, "title", None),
+                )
+                f.fingerprint = fp
+
+            if fp in seen:
+                existing = seen[fp]
+                # Merge evidence
+                if f.evidence:
+                    if not existing.evidence:
+                        existing.evidence = f.evidence
+                    elif f.evidence not in existing.evidence:
+                        existing.evidence = f"{existing.evidence}; {f.evidence}"
+                # Merge references
+                if f.references:
+                    if existing.references is None:
+                        existing.references = []
+                    for ref in f.references:
+                        if ref not in existing.references:
+                            existing.references.append(ref)
+            else:
+                seen[fp] = f
+                unique.append(f)
+        return unique
+
     def link_related(self, findings: List[Finding]) -> List[Finding]:
-        """Link related findings and add correlation metadata."""
-        port_map = defaultdict(list)
-        for i, f in enumerate(findings):
-            host_clean = f.host.rstrip("/") if f.host else f.host
-            key = f"{host_clean}:{f.port}"
-            port_map[key].append(i)
+        """Deduplicate findings by fingerprint and link related findings by (endpoint, param).
+        
+        Guaranteed to be idempotent.
+        """
+        deduped = self._deduplicate(findings)
 
-        for key, indices in port_map.items():
-            if len(indices) > 1:
-                related_ids = [findings[i].id for i in indices]
-                for i in indices:
-                    if not findings[i].references:
-                        findings[i].references = []
-                    findings[i].references.append(f"Related findings: {', '.join(related_ids[:3])}")
+        endpoint_param_map = defaultdict(list)
+        for f in deduped:
+            if getattr(f, "endpoint", None):
+                key = (f.endpoint, f.param or "")
+                endpoint_param_map[key].append(f)
 
-        return findings
+        for key, group in endpoint_param_map.items():
+            if len(group) > 1:
+                related_ids = [item.id for item in group if item.id]
+                ref_str = f"Related findings: {', '.join(related_ids[:3])}"
+                for f in group:
+                    if f.references is None:
+                        f.references = []
+                    existing_related = [r for r in f.references if r.startswith("Related findings:")]
+                    if existing_related:
+                        if ref_str not in existing_related:
+                            f.references = [r for r in f.references if not r.startswith("Related findings:")]
+                            f.references.append(ref_str)
+                    else:
+                        f.references.append(ref_str)
+
+        return deduped

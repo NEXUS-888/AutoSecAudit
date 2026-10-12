@@ -116,6 +116,10 @@ class CommandInjectionScanner(BaseScanner):
         _, host, port = self._parse_target(self.target)
         findings = []
         for index, result in enumerate(self.results, 1):
+            ep = result.get("endpoint", "")
+            param = result.get("param", "command")
+            if "?" in ep and "=" in ep:
+                param = ep.split("?")[1].split("=")[0]
             findings.append({
                 "id": f"CMDI-{index:03d}",
                 "title": f"OS Command Injection ({result['endpoint']})",
@@ -124,6 +128,11 @@ class CommandInjectionScanner(BaseScanner):
                 "description": f"A shell metacharacter probe produced command-execution evidence at {result['endpoint']}. Payload: {result['payload']}. HTTP {result['status_code']} in {result['elapsed']}s.",
                 "raw_output": result["evidence"], "owasp_tag": "A03:2021 Injection",
                 "tool_name": "command_injection_scanner", "confidence": result["confidence"],
+                "vuln_type": "command_injection",
+                "endpoint": ep.split("?")[0] if "?" in ep else ep,
+                "param": param,
+                "method": "POST" if "body" in str(result) else "GET",
+                "evidence": result.get("evidence"),
                 "remediation": "Use argument-array APIs with shell execution disabled, strict allowlists, and server-side input validation.",
             })
         return {"tool_name": "command_injection_scanner", "findings": findings}
@@ -135,4 +144,9 @@ class CommandInjectionScanner(BaseScanner):
             "host": host, "port": port, "description": "The command parameter reflected AUTOSEC_RCE_TEST after a shell separator probe.",
             "raw_output": "command output: AUTOSEC_RCE_TEST", "owasp_tag": "A03:2021 Injection",
             "tool_name": "command_injection_scanner", "confidence": "high",
+            "vuln_type": "command_injection",
+            "endpoint": "/api/exec",
+            "param": "command",
+            "method": "GET",
+            "evidence": "command output: AUTOSEC_RCE_TEST",
         }]}

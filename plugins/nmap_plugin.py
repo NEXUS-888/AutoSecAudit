@@ -101,7 +101,13 @@ class NmapPlugin(BaseScanner):
                                 "host": host_addr,
                                 "port": int(port_id) if port_id else 0,
                                 "description": description,
-                                "raw_output": self.raw_output[:1000]
+                                "raw_output": self.raw_output[:1000],
+                                "tool_name": "nmap",
+                                "vuln_type": "port_scan",
+                                "endpoint": f"{port_str}/{protocol}",
+                                "param": port_str,
+                                "method": (protocol or "tcp").upper(),
+                                "evidence": f"Port {port_str}/{protocol} open ({service_name})",
                             })
 
         except ET.ParseError as e:
@@ -149,7 +155,13 @@ class NmapPlugin(BaseScanner):
                     "host": self._extract_host(self.target),
                     "port": 80,
                     "description": "Service: http (Apache httpd 2.4.41)",
-                    "raw_output": "Mock Nmap XML output - port 80 open"
+                    "raw_output": "Mock Nmap XML output - port 80 open",
+                    "tool_name": "nmap",
+                    "vuln_type": "port_scan",
+                    "endpoint": "80/tcp",
+                    "param": "80",
+                    "method": "TCP",
+                    "evidence": "Port 80/tcp open - http",
                 },
                 {
                     "id": "NMAP-443",
@@ -158,7 +170,13 @@ class NmapPlugin(BaseScanner):
                     "host": self._extract_host(self.target),
                     "port": 443,
                     "description": "Service: https (Apache httpd 2.4.41)",
-                    "raw_output": "Mock Nmap XML output - port 443 open"
+                    "raw_output": "Mock Nmap XML output - port 443 open",
+                    "tool_name": "nmap",
+                    "vuln_type": "port_scan",
+                    "endpoint": "443/tcp",
+                    "param": "443",
+                    "method": "TCP",
+                    "evidence": "Port 443/tcp open - https",
                 },
                 {
                     "id": "NMAP-22",
@@ -167,7 +185,13 @@ class NmapPlugin(BaseScanner):
                     "host": self._extract_host(self.target),
                     "port": 22,
                     "description": "Service: ssh (OpenSSH 8.2)",
-                    "raw_output": "Mock Nmap XML output - port 22 open"
+                    "raw_output": "Mock Nmap XML output - port 22 open",
+                    "tool_name": "nmap",
+                    "vuln_type": "port_scan",
+                    "endpoint": "22/tcp",
+                    "param": "22",
+                    "method": "TCP",
+                    "evidence": "Port 22/tcp open - ssh",
                 }
             ]
         }

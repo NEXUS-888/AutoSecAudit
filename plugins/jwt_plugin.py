@@ -44,14 +44,14 @@ class JWTScanner(BaseScanner):
         algorithm = str(header_data.get("alg", "")).lower()
         issues = []
         if algorithm == "none":
-            issues.append(("JWT accepts alg=none", "Critical"))
+            issues.append(("JWT accepts alg=none", "Critical", "alg_none"))
         if "exp" not in claims_data:
-            issues.append(("JWT has no expiration claim", "Medium"))
+            issues.append(("JWT has no expiration claim", "Medium", "no_exp"))
         elif isinstance(claims_data["exp"], (int, float)) and claims_data["exp"] < datetime.now(timezone.utc).timestamp():
-            issues.append(("JWT is expired but still exposed", "Low"))
-        for title, severity in issues:
+            issues.append(("JWT is expired but still exposed", "Low", "expired"))
+        for title, severity, check_type in issues:
             self.results.append({"title": title, "severity": severity, "source": source, "algorithm": algorithm,
-                                 "claims": claims_data, "evidence": token[:180]})
+                                 "claims": claims_data, "evidence": token[:180], "param": check_type})
 
     def run(self) -> None:
         self.results = []
@@ -76,18 +76,38 @@ class JWTScanner(BaseScanner):
     def parse_output(self) -> Dict[str, Any]:
         parsed = urllib.parse.urlparse(self.target if self.target.startswith("http") else f"http://{self.target}")
         host, port = parsed.hostname or "unknown", parsed.port or (443 if parsed.scheme == "https" else 80)
-        findings = [{"id": f"JWT-{i:03d}", "title": r["title"], "severity": format_severity(r["severity"]), "host": host, "port": port,
+        findings = [{
+            "id": f"JWT-{i:03d}", "title": r["title"], "severity": format_severity(r["severity"]), "host": host, "port": port,
             "description": f"{r['title']} was observed in {r['source']}. Header algorithm: {r['algorithm']}.", "raw_output": r["evidence"],
             "owasp_tag": "A02:2021 Cryptographic Failures", "tool_name": "jwt_scanner", "confidence": "high" if r["severity"] == "Critical" else "medium",
+            "vuln_type": "jwt",
+            "endpoint": r.get("source") if str(r.get("source", "")).startswith("/") else "/",
+            "param": r.get("param") or ("alg_none" if "alg=none" in r["title"] else ("no_exp" if "no expiration" in r["title"] else "expired")),
+            "method": "POST",
+            "evidence": r.get("evidence"),
             "remediation": "Use an allowlisted asymmetric algorithm, verify signatures with the expected key, require issuer/audience claims, and enforce a short expiration with refresh-token rotation."}
             for i, r in enumerate(self.results, 1)]
         return {"tool_name": "jwt_scanner", "findings": findings}
 
     def _get_mock_output(self) -> Dict[str, Any]:
         _, host, port = self._parse_target(self.target)
-        return {"tool_name": "jwt_scanner", "findings": [{"id": "JWT-001", "title": "JWT accepts alg=none", "severity": "Critical", "host": host, "port": port,
+        return {"tool_name": "jwt_scanner", "findings": [{
+            "id": "JWT-001", "title": "JWT accepts alg=none", "severity": "Critical", "host": host, "port": port,
             "description": "A session token uses the unsigned none algorithm and lacks signature protection.", "raw_output": "eyJhbGciOiJub25lIn0.eyJzdWIiOiIxIn0.",
-            "owasp_tag": "A02:2021 Cryptographic Failures", "tool_name": "jwt_scanner", "confidence": "high"},
-            {"id": "JWT-002", "title": "JWT has no expiration claim", "severity": "Medium", "host": host, "port": port,
-             "description": "A JWT was observed without an exp claim, allowing indefinite validity if accepted by the server.", "raw_output": "claims: {sub: 1}",
-             "owasp_tag": "A02:2021 Cryptographic Failures", "tool_name": "jwt_scanner", "confidence": "medium"}]}
+            "owasp_tag": "A02:2021 Cryptographic Failures", "tool_name": "jwt_scanner", "confidence": "high",
+            "vuln_type": "jwt",
+            "endpoint": "/auth",
+            "param": "alg_none",
+            "method": "POST",
+            "evidence": "eyJhbGciOiJub25lIn0.eyJzdWIiOiIxIn0.",
+        },
+        {
+            "id": "JWT-002", "title": "JWT has no expiration claim", "severity": "Medium", "host": host, "port": port,
+            "description": "A JWT was observed without an exp claim, allowing indefinite validity if accepted by the server.", "raw_output": "claims: {sub: 1}",
+            "owasp_tag": "A02:2021 Cryptographic Failures", "tool_name": "jwt_scanner", "confidence": "medium",
+            "vuln_type": "jwt",
+            "endpoint": "/auth",
+            "param": "no_exp",
+            "method": "POST",
+            "evidence": "claims: {sub: 1}",
+        }]}

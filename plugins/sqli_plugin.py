@@ -394,6 +394,12 @@ class SQLiScanner(BaseScanner):
                 f"SQL Injection ({result['endpoint']})",
             )
 
+            ep_str = result.get("endpoint", "")
+            ep = ep_str.split("?")[0] if "?" in ep_str else ep_str
+            param = result.get("param")
+            if not param and "?" in ep_str and "=" in ep_str:
+                param = ep_str.split("?")[1].split("=")[0]
+
             findings.append({
                 "id": finding_id,
                 "title": title,
@@ -405,6 +411,11 @@ class SQLiScanner(BaseScanner):
                 "owasp_tag": "A03:2021 Injection",
                 "tool_name": "sqli_scanner",
                 "confidence": confidence,
+                "vuln_type": "sqli",
+                "endpoint": ep,
+                "param": param,
+                "method": "POST" if result.get("type") == "login_bypass" else "GET",
+                "evidence": result.get("evidence"),
             })
 
         return {"tool_name": "sqli_scanner", "findings": findings}
@@ -434,6 +445,11 @@ class SQLiScanner(BaseScanner):
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "sqli_scanner",
                     "confidence": "high",
+                    "vuln_type": "sqli",
+                    "endpoint": "/search",
+                    "param": "q",
+                    "method": "GET",
+                    "evidence": "Error: You have an error in your SQL syntax near '' OR 1=1--'",
                 },
                 {
                     "id": "SQLI-002",
@@ -452,6 +468,11 @@ class SQLiScanner(BaseScanner):
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "sqli_scanner",
                     "confidence": "low",
+                    "vuln_type": "sqli",
+                    "endpoint": "/rest/user/login",
+                    "param": "email",
+                    "method": "POST",
+                    "evidence": '{"authentication":{"token":"mock-jwt-token","umail":"admin@example.com"}}',
                 },
                 {
                     "id": "SQLI-003",
@@ -470,6 +491,11 @@ class SQLiScanner(BaseScanner):
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "sqli_scanner",
                     "confidence": "high",
+                    "vuln_type": "sqli",
+                    "endpoint": "/api/Products",
+                    "param": "q",
+                    "method": "GET",
+                    "evidence": "SQLITE_ERROR: SELECTs to the left and right of UNION do not have the same number of result columns",
                 },
                 {
                     "id": "SQLI-004",
@@ -488,6 +514,11 @@ class SQLiScanner(BaseScanner):
                     "owasp_tag": "A03:2021 Injection",
                     "tool_name": "sqli_scanner",
                     "confidence": "high",
+                    "vuln_type": "sqli",
+                    "endpoint": "/api/Products/1",
+                    "param": "id",
+                    "method": "GET",
+                    "evidence": "ERROR: syntax error at or near 'OR' at character 35",
                 },
             ],
         }

@@ -148,6 +148,11 @@ class BOLAIdorScanner(BaseScanner):
                 "owasp_tag": "API1:2023-Broken Object Level Authorization",
                 "tool_name": "BOLAIdorScanner",
                 "confidence": "high",
+                "vuln_type": "idor",
+                "endpoint": res["path"],
+                "param": "id",
+                "method": "GET",
+                "evidence": f"URL: {res['url']}\nHTTP Status: {res['status']}",
                 "remediation": (
                     "1. Validate that the authenticated session user has explicit ownership of the requested resource ID before querying database records.\n"
                     "2. Avoid exposing raw auto-incrementing database primary keys in API routes; use non-predictable UUIDs or cryptographically signed tokens.\n"
@@ -185,6 +190,11 @@ class BOLAIdorScanner(BaseScanner):
                     "owasp_tag": "API1:2023-Broken Object Level Authorization",
                     "tool_name": "BOLAIdorScanner",
                     "confidence": "high",
+                    "vuln_type": "idor",
+                    "endpoint": "/api/users/1",
+                    "param": "id",
+                    "method": "GET",
+                    "evidence": 'GET /api/users/2 HTTP/1.1\nHTTP/1.1 200 OK\n{"id": 2, "email": "victim@example.com", "role": "admin"}',
                     "remediation": "Enforce object-level ownership checks: verify req.user.id === resource.ownerId prior to returning data."
                 }
             ],

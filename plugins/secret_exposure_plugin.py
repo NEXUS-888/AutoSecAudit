@@ -138,6 +138,10 @@ class SecretExposureScanner(BaseScanner):
                 "owasp_tag": "A05:2021 Security Misconfiguration",
                 "tool_name": "SecretExposureScanner",
                 "confidence": "high",
+                "vuln_type": "secret_exposure",
+                "endpoint": res["path"],
+                "method": "GET",
+                "evidence": res.get("sample", ""),
                 "remediation": (
                     "1. Immediately revoke and rotate all credentials, API keys, and database passwords found in the exposed file.\n"
                     "2. Configure the web server (Nginx/Apache) or cloud CDN to explicitly deny access to hidden files (.*) and configuration files.\n"
@@ -174,6 +178,10 @@ class SecretExposureScanner(BaseScanner):
                     "owasp_tag": "A05:2021 Security Misconfiguration",
                     "tool_name": "SecretExposureScanner",
                     "confidence": "high",
+                    "vuln_type": "secret_exposure",
+                    "endpoint": "/.env",
+                    "method": "GET",
+                    "evidence": "DATABASE_URL=postgres://app:p@ss123@db:5432/prod\nJWT_SECRET=supersecret_key",
                     "remediation": "Block access to dotfiles in Nginx/Apache configuration and rotate all exposed database and API keys."
                 }
             ],

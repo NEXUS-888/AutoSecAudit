@@ -164,6 +164,13 @@ class MisconfigScanner(BaseScanner):
                     ),
                     "owasp_tag": "A05:2021 Security Misconfiguration",
                     "tool_name": "misconfig_scanner",
+                    "vuln_type": "misconfig",
+                    "endpoint": "/",
+                    "param": header_name,
+                    "method": "GET",
+                    "evidence": (
+                        f"Response headers from {base_url} do not include '{header_name}'."
+                    ),
                 }
                 if self.dev_environment:
                     f_hdr = tag_dev_artifact_finding(f_hdr, self.dev_environment)
@@ -205,6 +212,11 @@ class MisconfigScanner(BaseScanner):
                 "raw_output": f"Access-Control-Allow-Origin: {acao}",
                 "owasp_tag": "A05:2021 Security Misconfiguration",
                 "tool_name": "misconfig_scanner",
+                "vuln_type": "misconfig",
+                "endpoint": "/",
+                "param": "acao_wildcard",
+                "method": "GET",
+                "evidence": f"Access-Control-Allow-Origin: {acao}",
             }
             if self.dev_environment:
                 f_cors = tag_dev_artifact_finding(f_cors, self.dev_environment)
@@ -224,6 +236,11 @@ class MisconfigScanner(BaseScanner):
                 "raw_output": f"Access-Control-Allow-Origin: {acao}",
                 "owasp_tag": "A05:2021 Security Misconfiguration",
                 "tool_name": "misconfig_scanner",
+                "vuln_type": "misconfig",
+                "endpoint": "/",
+                "param": "origin_reflect",
+                "method": "GET",
+                "evidence": f"Access-Control-Allow-Origin: {acao}",
             }
             if self.dev_environment:
                 f_cors = tag_dev_artifact_finding(f_cors, self.dev_environment)
@@ -300,6 +317,11 @@ class MisconfigScanner(BaseScanner):
                                 "raw_output": resp.text[:500],
                                 "owasp_tag": "A05:2021 Security Misconfiguration",
                                 "tool_name": "misconfig_scanner",
+                                "vuln_type": "misconfig",
+                                "endpoint": entry["path"],
+                                "param": entry["path"],
+                                "method": "GET",
+                                "evidence": resp.text[:500],
                             }
                         )
             except requests.RequestException as exc:
@@ -344,6 +366,11 @@ class MisconfigScanner(BaseScanner):
                                 "raw_output": resp.text[:500],
                                 "owasp_tag": "A05:2021 Security Misconfiguration",
                                 "tool_name": "misconfig_scanner",
+                                "vuln_type": "misconfig",
+                                "endpoint": f"{path}/",
+                                "param": f"{path}/",
+                                "method": "GET",
+                                "evidence": resp.text[:500],
                             }
                         )
             except requests.RequestException as exc:
@@ -390,6 +417,11 @@ class MisconfigScanner(BaseScanner):
                     "raw_output": resp.text[:500],
                     "owasp_tag": "A05:2021 Security Misconfiguration",
                     "tool_name": "misconfig_scanner",
+                    "vuln_type": "misconfig",
+                    "endpoint": "/autosec_nonexistent_path_404_test",
+                    "param": "verbose_error",
+                    "method": "GET",
+                    "evidence": resp.text[:500],
                 }
             )
 
@@ -437,6 +469,11 @@ class MisconfigScanner(BaseScanner):
                         "raw_output": f"Allow: {allow_header}",
                         "owasp_tag": "A05:2021 Security Misconfiguration",
                         "tool_name": "misconfig_scanner",
+                        "vuln_type": "misconfig",
+                        "endpoint": "/",
+                        "param": ",".join(sorted(found_dangerous)),
+                        "method": "OPTIONS",
+                        "evidence": f"Allow: {allow_header}",
                     }
                 )
 
@@ -480,6 +517,11 @@ class MisconfigScanner(BaseScanner):
                         "raw_output": f"{hdr_name}: {value}",
                         "owasp_tag": "A05:2021 Security Misconfiguration",
                         "tool_name": "misconfig_scanner",
+                        "vuln_type": "misconfig",
+                        "endpoint": "/",
+                        "param": hdr_name,
+                        "method": "GET",
+                        "evidence": f"{hdr_name}: {value}",
                     }
                 )
 
@@ -488,6 +530,37 @@ class MisconfigScanner(BaseScanner):
     # ------------------------------------------------------------------
 
     def parse_output(self) -> Dict[str, Any]:
+        for f in self.results:
+            if not f.get("tool_name"):
+                f["tool_name"] = "misconfig_scanner"
+            if not f.get("vuln_type"):
+                f["vuln_type"] = "misconfig"
+            if not f.get("endpoint"):
+                f["endpoint"] = "/"
+            if not f.get("method"):
+                f["method"] = "GET"
+            if "param" not in f:
+                title = f.get("title", "")
+                if "Missing security header:" in title:
+                    f["param"] = title.split("Missing security header:")[-1].strip()
+                elif "Information disclosure:" in title:
+                    f["param"] = title.split("Information disclosure:")[-1].strip()
+                elif "CORS wildcard" in title:
+                    f["param"] = "acao_wildcard"
+                elif "CORS reflects" in title:
+                    f["param"] = "origin_reflect"
+                elif "Exposed sensitive file:" in title:
+                    f["param"] = f.get("endpoint", "/")
+                elif "Directory listing" in title:
+                    f["param"] = f.get("endpoint", "/")
+                elif "Dangerous HTTP methods" in title:
+                    f["param"] = "dangerous_methods"
+                elif "Verbose error" in title:
+                    f["param"] = "verbose_error"
+                else:
+                    f["param"] = None
+            if not f.get("evidence"):
+                f["evidence"] = f.get("raw_output")
         return {"tool_name": "misconfig_scanner", "findings": self.results}
 
     def _get_tool_name(self) -> str:
@@ -514,6 +587,11 @@ class MisconfigScanner(BaseScanner):
                     "raw_output": "Response headers do not include 'Strict-Transport-Security'.",
                     "owasp_tag": "A05:2021 Security Misconfiguration",
                     "tool_name": "misconfig_scanner",
+                    "vuln_type": "misconfig",
+                    "endpoint": "/",
+                    "param": "Strict-Transport-Security",
+                    "method": "GET",
+                    "evidence": "Response headers do not include 'Strict-Transport-Security'.",
                 },
                 {
                     "id": "MISCONF-HDR-002",
@@ -528,6 +606,11 @@ class MisconfigScanner(BaseScanner):
                     "raw_output": "Response headers do not include 'Content-Security-Policy'.",
                     "owasp_tag": "A05:2021 Security Misconfiguration",
                     "tool_name": "misconfig_scanner",
+                    "vuln_type": "misconfig",
+                    "endpoint": "/",
+                    "param": "Content-Security-Policy",
+                    "method": "GET",
+                    "evidence": "Response headers do not include 'Content-Security-Policy'.",
                 },
                 {
                     "id": "MISCONF-FILE-003",
@@ -543,6 +626,11 @@ class MisconfigScanner(BaseScanner):
                     "raw_output": "DB_HOST=localhost\nDB_PASSWORD=s3cret\nAPI_KEY=abc123...",
                     "owasp_tag": "A05:2021 Security Misconfiguration",
                     "tool_name": "misconfig_scanner",
+                    "vuln_type": "misconfig",
+                    "endpoint": "/.env",
+                    "param": "/.env",
+                    "method": "GET",
+                    "evidence": "DB_HOST=localhost\nDB_PASSWORD=s3cret\nAPI_KEY=abc123...",
                 },
                 {
                     "id": "MISCONF-CORS-004",
@@ -558,6 +646,11 @@ class MisconfigScanner(BaseScanner):
                     "raw_output": "Access-Control-Allow-Origin: *",
                     "owasp_tag": "A05:2021 Security Misconfiguration",
                     "tool_name": "misconfig_scanner",
+                    "vuln_type": "misconfig",
+                    "endpoint": "/",
+                    "param": "acao_wildcard",
+                    "method": "GET",
+                    "evidence": "Access-Control-Allow-Origin: *",
                 },
                 {
                     "id": "MISCONF-INFO-005",
@@ -573,6 +666,11 @@ class MisconfigScanner(BaseScanner):
                     "raw_output": "X-Powered-By: Express",
                     "owasp_tag": "A05:2021 Security Misconfiguration",
                     "tool_name": "misconfig_scanner",
+                    "vuln_type": "misconfig",
+                    "endpoint": "/",
+                    "param": "X-Powered-By",
+                    "method": "GET",
+                    "evidence": "X-Powered-By: Express",
                 },
                 {
                     "id": "MISCONF-METHOD-006",
@@ -588,6 +686,11 @@ class MisconfigScanner(BaseScanner):
                     "raw_output": "Allow: GET, HEAD, POST, PUT, DELETE, OPTIONS",
                     "owasp_tag": "A05:2021 Security Misconfiguration",
                     "tool_name": "misconfig_scanner",
+                    "vuln_type": "misconfig",
+                    "endpoint": "/",
+                    "param": "PUT,DELETE",
+                    "method": "OPTIONS",
+                    "evidence": "Allow: GET, HEAD, POST, PUT, DELETE, OPTIONS",
                 },
             ],
         }

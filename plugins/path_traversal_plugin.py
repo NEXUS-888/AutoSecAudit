@@ -53,15 +53,37 @@ class PathTraversalScanner(BaseScanner):
 
     def parse_output(self) -> Dict[str, Any]:
         _, host, port = self._parse_target(self.target)
-        findings = [{"id": f"LFI-{i:03d}", "title": f"Local File Inclusion / Path Traversal ({r['endpoint']})", "severity": format_severity("High"),
-            "host": host, "port": port, "description": f"A traversal payload returned recognizable local-file content at {r['endpoint']}. Payload: {r['payload']}.",
-            "raw_output": r["evidence"], "owasp_tag": "A01:2021 Broken Access Control", "tool_name": "path_traversal_scanner", "confidence": "high",
-            "remediation": "Resolve paths against a fixed base directory, reject traversal segments after decoding, and use opaque file identifiers instead of user-controlled paths."}
-            for i, r in enumerate(self.results, 1)]
+        findings = []
+        for i, r in enumerate(self.results, 1):
+            ep_str = r.get("endpoint", "")
+            ep = ep_str.split("?")[0] if "?" in ep_str else ep_str
+            param = ep_str.split("?")[1].split("=")[0] if "?" in ep_str and "=" in ep_str else "file"
+            findings.append({
+                "id": f"LFI-{i:03d}",
+                "title": f"Local File Inclusion / Path Traversal ({r['endpoint']})",
+                "severity": format_severity("High"),
+                "host": host, "port": port,
+                "description": f"A traversal payload returned recognizable local-file content at {r['endpoint']}. Payload: {r['payload']}.",
+                "raw_output": r["evidence"], "owasp_tag": "A01:2021 Broken Access Control",
+                "tool_name": "path_traversal_scanner", "confidence": "high",
+                "vuln_type": "path_traversal",
+                "endpoint": ep,
+                "param": param,
+                "method": "GET",
+                "evidence": r.get("evidence"),
+                "remediation": "Resolve paths against a fixed base directory, reject traversal segments after decoding, and use opaque file identifiers instead of user-controlled paths."
+            })
         return {"tool_name": "path_traversal_scanner", "findings": findings}
 
     def _get_mock_output(self) -> Dict[str, Any]:
         _, host, port = self._parse_target(self.target)
-        return {"tool_name": "path_traversal_scanner", "findings": [{"id": "LFI-001", "title": "Local File Inclusion / Path Traversal (/download?file=<payload>)", "severity": "High",
+        return {"tool_name": "path_traversal_scanner", "findings": [{
+            "id": "LFI-001", "title": "Local File Inclusion / Path Traversal (/download?file=<payload>)", "severity": "High",
             "host": host, "port": port, "description": "The file parameter returned /etc/passwd content after a traversal probe.", "raw_output": "root:x:0:0:root:/root:/bin/bash",
-            "owasp_tag": "A01:2021 Broken Access Control", "tool_name": "path_traversal_scanner", "confidence": "high"}]}
+            "owasp_tag": "A01:2021 Broken Access Control", "tool_name": "path_traversal_scanner", "confidence": "high",
+            "vuln_type": "path_traversal",
+            "endpoint": "/download",
+            "param": "file",
+            "method": "GET",
+            "evidence": "root:x:0:0:root:/root:/bin/bash",
+        }]}

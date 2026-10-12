@@ -22,7 +22,11 @@ class MockPlugin(BaseScanner):
                     "host": self.target,
                     "port": 80,
                     "description": "This is a mock finding from MockPlugin",
-                    "raw_output": "Mock raw output data"
+                    "raw_output": "Mock raw output data",
+                    "vuln_type": "generic",
+                    "endpoint": "/",
+                    "method": "GET",
+                    "evidence": "Mock raw output data",
                 },
                 {
                     "id": "MOCK-002",
@@ -31,7 +35,11 @@ class MockPlugin(BaseScanner):
                     "host": self.target,
                     "port": 443,
                     "description": "Mock SSL certificate issue",
-                    "raw_output": "Mock SSL output"
+                    "raw_output": "Mock SSL output",
+                    "vuln_type": "ssl_tls",
+                    "endpoint": "/",
+                    "method": "GET",
+                    "evidence": "Mock SSL output",
                 }
             ]
         }

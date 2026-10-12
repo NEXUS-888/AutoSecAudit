@@ -129,6 +129,11 @@ class OpenRedirectScanner(BaseScanner):
                 "owasp_tag": "A01:2021-Broken Access Control",
                 "tool_name": "OpenRedirectScanner",
                 "confidence": "high",
+                "vuln_type": "open_redirect",
+                "endpoint": res["path"],
+                "param": res["param"],
+                "method": "GET",
+                "evidence": f"Tested URL: {res['url']}\nHTTP Status: {res['status']}\nLocation Header: {res['location']}",
                 "remediation": (
                     "1. Avoid accepting user-controlled target URLs for redirection.\n"
                     "2. If redirection is necessary, enforce an allowlist of permitted relative paths (e.g. starting with a single '/' and not '//') or approved trusted domains.\n"
@@ -166,6 +171,11 @@ class OpenRedirectScanner(BaseScanner):
                     "owasp_tag": "A01:2021-Broken Access Control",
                     "tool_name": "OpenRedirectScanner",
                     "confidence": "high",
+                    "vuln_type": "open_redirect",
+                    "endpoint": "/login",
+                    "param": "next",
+                    "method": "GET",
+                    "evidence": "GET /login?next=https://attacker.example.com HTTP/1.1\nHTTP/1.1 302 Found\nLocation: https://attacker.example.com",
                     "remediation": "Validate the 'next' parameter against an internal relative path allowlist starting with a single '/' (e.g. rejecting '//')."
                 }
             ],

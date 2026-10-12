@@ -146,6 +146,11 @@ class SSLTLSScanner(BaseScanner):
                 "owasp_tag": "A02:2021-Cryptographic Failures",
                 "tool_name": "SSLTLSScanner",
                 "confidence": "high",
+                "vuln_type": "ssl_tls",
+                "endpoint": "/",
+                "param": res["type"],
+                "method": "GET",
+                "evidence": res.get("detail"),
                 "remediation": (
                     "1. Force HTTP-to-HTTPS 301 redirection on all incoming web traffic.\n"
                     "2. Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains; preload' header to all HTTPS responses.\n"
@@ -182,6 +187,11 @@ class SSLTLSScanner(BaseScanner):
                     "owasp_tag": "A02:2021-Cryptographic Failures",
                     "tool_name": "SSLTLSScanner",
                     "confidence": "high",
+                    "vuln_type": "ssl_tls",
+                    "endpoint": "/",
+                    "param": "missing_hsts",
+                    "method": "GET",
+                    "evidence": "HTTPS Response Headers missing Strict-Transport-Security",
                     "remediation": "Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains' header to all HTTPS web responses."
                 }
             ],
