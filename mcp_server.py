@@ -148,29 +148,18 @@ def handle_scan(args: Dict[str, Any]) -> Dict[str, Any]:
     profile = args.get("profile", "full")
     skip_reachability = args.get("skip_reachability", False)
 
-    from core.utils import check_target_reachable, is_target_allowed
-    allowed, allow_msg = is_target_allowed(target)
-    if not allowed:
-        return {
-            "status": "error",
-            "error": f"Target not allowed: {allow_msg}",
-            "target": target,
-        }
-
-    if not skip_reachability and not mock_mode:
-        reachable, reach_msg = check_target_reachable(target)
-        if not reachable:
-            return {
-                "status": "error",
-                "error": f"Target is offline or unreachable: {reach_msg} Please ensure the service is running before scanning.",
-                "target": target,
-            }
+    from core.pipeline import run_scan_pipeline, ScanRequest
 
     logger.info(f"Starting MCP scan for target: {target} (mock={mock_mode}, profile={profile})")
     try:
-        engine = Engine(mock_mode=mock_mode, profile=profile)
-        report = engine.run(target, profile=profile, check_reachable=(not skip_reachability and not mock_mode))
-    except (ConnectionError, ValueError) as e:
+        req = ScanRequest(
+            target=target,
+            mock_mode=mock_mode,
+            profile=profile,
+            skip_reachability=skip_reachability,
+        )
+        report, paths = run_scan_pipeline(req)
+    except (ConnectionError, ValueError, PermissionError) as e:
         logger.error(f"Scan failed for target {target}: {e}")
         return {
             "status": "error",
@@ -188,6 +177,7 @@ def handle_scan(args: Dict[str, Any]) -> Dict[str, Any]:
         "mode": "MOCK DEMO" if mock_mode else "ACTIVE SCAN",
         "profile": profile,
         "timestamp": report.timestamp,
+        "report_id": getattr(report, "report_id", None) or report_dict.get("report_id"),
         "executive_grade": posture["grade"],
         "grade_label": posture["grade_label"],
         "executive_summary": posture["summary"],
@@ -197,6 +187,7 @@ def handle_scan(args: Dict[str, Any]) -> Dict[str, Any]:
         "medium_count": posture["medium_count"],
         "low_count": posture["low_count"],
         "threat_matrix": posture["threat_matrix"],
+        "findings": findings,
     }
 
 

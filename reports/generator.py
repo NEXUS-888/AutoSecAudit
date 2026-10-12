@@ -6,6 +6,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import config
 from core.models import Report
+from core.utils import generate_report_id
 from intelligence.danger_engine import calculate_security_posture, analyze_real_danger
 from intelligence.recipes import get_fix_recipes, generate_dev_ticket_markdown
 
@@ -45,11 +46,20 @@ class ReportGenerator:
         """Generate HTML report from Report object."""
         template = self.env.get_template("report.html")
         report_dict = report.to_dict()
-        if output_path:
-            report_dict.setdefault("report_id", Path(output_path).stem.replace("report_", "").replace("scan_", ""))
+        rep_id = getattr(report, "report_id", None)
+        if not rep_id or not isinstance(rep_id, str):
+            rep_id = report_dict.get("report_id")
+        if not rep_id or not isinstance(rep_id, str):
+            if output_path:
+                rep_id = Path(output_path).stem.replace("report_", "").replace("scan_", "")
+            else:
+                rep_id = generate_report_id()
+            if hasattr(report, "report_id"):
+                report.report_id = rep_id
+        report_dict["report_id"] = rep_id
         
         report_dict = _enrich_report_data(report_dict)
-        html_content = template.render(report=report_dict, report_id=report_dict.get("report_id"))
+        html_content = template.render(report=report_dict, report_id=rep_id)
         
         if output_path:
             output_file = Path(output_path)
@@ -65,11 +75,16 @@ class ReportGenerator:
                           output_path: Optional[str] = None) -> str:
         """Generate HTML report from dictionary."""
         template = self.env.get_template("report.html")
-        if output_path:
-            report_data.setdefault("report_id", Path(output_path).stem.replace("report_", "").replace("scan_", ""))
+        rep_id = report_data.get("report_id")
+        if not rep_id or not isinstance(rep_id, str):
+            if output_path:
+                rep_id = Path(output_path).stem.replace("report_", "").replace("scan_", "")
+            else:
+                rep_id = generate_report_id()
+            report_data["report_id"] = rep_id
         
         report_data = _enrich_report_data(report_data)
-        html_content = template.render(report=report_data, report_id=report_data.get("report_id"))
+        html_content = template.render(report=report_data, report_id=rep_id)
         
         if output_path:
             output_file = Path(output_path)
@@ -307,7 +322,8 @@ class ReportGenerator:
         return str(output_file)
 
     def generate_report(self, report: Report, 
-                       previous_report: Optional[Report] = None) -> str:
+                       previous_report: Optional[Report] = None,
+                       output_path: Optional[str] = None) -> str:
         """Generate full report with optional delta comparison."""
         if previous_report:
             from intelligence.delta import DeltaAnalyzer
@@ -318,8 +334,16 @@ class ReportGenerator:
         else:
             report_data = report.to_dict()
         
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_data["report_id"] = timestamp
-        output_path = f"{config.REPORTS_DIR}/report_{timestamp}.html"
+        rep_id = getattr(report, "report_id", None)
+        if not rep_id or not isinstance(rep_id, str):
+            rep_id = report_data.get("report_id")
+        if not rep_id or not isinstance(rep_id, str):
+            rep_id = generate_report_id()
+            if hasattr(report, "report_id"):
+                report.report_id = rep_id
+        report_data["report_id"] = rep_id
+
+        if output_path is None:
+            output_path = f"{config.REPORTS_DIR}/report_{rep_id}.html"
         
         return self.generate_from_dict(report_data, output_path)

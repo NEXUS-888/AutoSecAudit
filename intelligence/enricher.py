@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 class Enricher:
     """Enrich findings with CVE data from external APIs."""
 
-    def __init__(self):
+    def __init__(self, mock_mode: Optional[bool] = None):
         self.cve_cache: Dict[str, Dict[str, Any]] = {}
-        self.mock_mode = getattr(config, 'MOCK_MODE', False)
+        self.mock_mode = mock_mode if mock_mode is not None else getattr(config, 'MOCK_MODE', False)
 
     def enrich(self, findings: List[Finding]) -> List[Finding]:
         """Enrich findings with CVE data."""

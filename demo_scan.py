@@ -5,44 +5,13 @@ import sys
 os.environ["AUTOSEC_MOCK_MODE"] = "true"
 sys.path.insert(0, os.path.dirname(__file__))
 
-from core.engine import Engine
-from intelligence.correlator import Correlator
-from intelligence.enricher import Enricher
-from intelligence.compliance import ComplianceMapper
+from core.pipeline import run_scan_pipeline, ScanRequest
 
-# 1. Initialize engine
-engine = Engine(mock_mode=True)
-
-# 2. Load ALL plugins
-count = engine.load_plugins()
-print(f"[+] Loaded {count} scanner plugins")
-
-# 3. Set target (any website)
-target = sys.argv[1] if len(sys.argv) > 1 else "http://example.com"
-engine.set_target(target)
+target = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:3000"
 print(f"[+] Target: {target}")
 
-# 4. Run all scanners
-results = engine.run_plugins()
-print(f"[+] Scanners completed: {len(results)} tools ran")
+report, paths = run_scan_pipeline(ScanRequest(target=target, mock_mode=True))
 
-# 5. Generate report
-report = engine.generate_report()
-
-# 6. Intelligence pipeline
-correlator = Correlator()
-correlator.correlate(report.all_findings)
-
-enricher = Enricher()
-enricher.enrich(report.all_findings)
-
-mapper = ComplianceMapper()
-mapper.map_findings(report.all_findings)
-
-# 7. Save report
-path = engine.save_report(report)
-
-# 8. Print summary
 print()
 print("=" * 50)
 print("        AUTOSECAUDIT SCAN REPORT")
@@ -77,5 +46,5 @@ for f in report.all_findings:
     print(f"             OWASP: {owasp} | Tool: {f.tool_name or 'N/A'}")
     print()
 
-print(f"Report saved to: {path}")
+print(f"Report saved to: {paths.json}")
 print("=" * 50)

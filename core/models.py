@@ -152,6 +152,7 @@ class Report:
     dev_environment: Optional[str] = None
     auth_status: Optional[str] = None
     throttled_requests: int = 0
+    report_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -165,6 +166,7 @@ class Report:
             "dev_environment": self.dev_environment,
             "auth_status": self.auth_status,
             "throttled_requests": self.throttled_requests,
+            "report_id": self.report_id,
         }
 
     @classmethod

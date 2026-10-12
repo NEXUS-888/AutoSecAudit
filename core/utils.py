@@ -122,6 +122,12 @@ def get_timestamp() -> str:
     return datetime.now().strftime(config.REPORT_TIMESTAMP_FORMAT)
 
 
+def generate_report_id() -> str:
+    """Generate a unique report ID in format <YYYYmmdd_HHMMSS>_<6 hex>."""
+    import secrets
+    return f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}"
+
+
 def get_severity_order(severity: str) -> int:
     """Return numeric value for severity sorting."""
     order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Info": 4}

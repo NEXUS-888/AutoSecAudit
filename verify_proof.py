@@ -1,7 +1,6 @@
 import sys
 from core.engine import Engine
 from core.models import Finding, Report
-from intelligence.correlator import Correlator
 from intelligence.enricher import Enricher
 from intelligence.compliance import ComplianceMapper
 from intelligence.remediation import enrich_with_remediation
@@ -34,19 +33,8 @@ print(f"Raw Findings Gathered (14 tools):{raw_count}")
 
 # 3. Post-Processing Intelligence Layer
 print("\n[PROOF 3: Intelligence, Deduplication & Compliance Mapping]")
-report = engine.generate_report()
-
-# Apply Intelligence Pipeline
-correlator = Correlator()
-report.all_findings = correlator.link_related(report.all_findings)
-
-enricher = Enricher()
-report.all_findings = enricher.enrich(report.all_findings)
-
-mapper = ComplianceMapper()
-report.all_findings = mapper.map_findings(report.all_findings)
-
-report.all_findings = enrich_with_remediation(report.all_findings)
+from core.pipeline import run_scan_pipeline, ScanRequest
+report, paths = run_scan_pipeline(ScanRequest(target="http://localhost:3000", mock_mode=True))
 
 print(f"Consolidated & Enriched Findings in Report: {len(report.all_findings)}")
 sqli_sample = next((f for f in report.all_findings if f.tool_name == "sqli_scanner"), None)

@@ -19,8 +19,8 @@ import core.auth as auth
 from core.engine import Engine
 from core.models import Report
 from core.utils import load_json, is_target_allowed, check_target_reachable
+from core.pipeline import run_scan_pipeline, ScanRequest, ScanCancelledError
 from reports.generator import ReportGenerator, _enrich_report_data
-from intelligence.correlator import Correlator
 from intelligence.enricher import Enricher
 from intelligence.compliance import ComplianceMapper
 
@@ -2601,139 +2601,46 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
     def check_cancelled():
         return job.get("status") == "error"
 
+    if check_cancelled():
+        logger.warning(f"Scan {scan_id} is already in error/cancelled state, aborting")
+        return
+
     try:
         job["status"] = "running"
 
-        # 1. Initialize
-        mode_label = "DEMO SIMULATION" if is_demo else "REAL ACTIVE SCAN"
-        emit("init", f"Initializing {mode_label} engine [{profile.upper()} profile]...", 5)
-        engine = Engine(mock_mode=is_demo, profile=profile)
-        engine.load_plugins()
+        req = ScanRequest(
+            target=target,
+            profile=profile,
+            mock_mode=is_demo,
+            skip_reachability=skip_reachability,
+            reachability_timeout=2.5,
+            login_user=login_user,
+            login_pass=login_pass,
+            login_url=login_url,
+            openapi_spec=openapi_path,
+            previous_report=previous_path,
+            progress_callback=emit,
+            cancel_check=check_cancelled,
+        )
 
-        # Target presence check ONLY in Real Mode (completely bypassed in Demo Mode)
-        if not is_demo and not skip_reachability:
-            reachable, reach_msg = check_target_reachable(target, timeout=2.5)
-            if not reachable:
-                emit("error", f"Target is offline or unreachable: {reach_msg}", 0, status="error")
-                raise ConnectionError(f"Target is offline: {reach_msg}")
-
-        if not engine.set_target(target):
-            raise ValueError("Invalid target URL")
-        emit("init", f"Target: {target} — {len(engine.plugins)} plugins loaded", 10)
-
-        if login_user and login_pass:
-            engine.set_auth_credentials(login_user, login_pass, login_url=login_url)
-            emit("auth", f"Attempting automated login to {target} as {login_user}...", 12)
-
-        if openapi_path:
-            from core.openapi import OpenAPIImporter
-            importer = OpenAPIImporter(openapi_path)
-            if importer.load_spec():
-                imported_eps = importer.get_endpoints()
-                engine.add_endpoints(imported_eps)
-                emit("init", f"Imported {len(imported_eps)} endpoints from OpenAPI spec", 13)
-
-        if previous_path:
-            engine.set_previous_report(previous_path)
-            emit("init", "Previous report loaded for delta comparison", 12)
-
-        if check_cancelled():
-            logger.warning(f"Scan {scan_id} cancelled or timed out before crawl; halting.")
+        try:
+            report, paths = run_scan_pipeline(req)
+            if not check_cancelled():
+                report_name = Path(paths.json).stem.replace("scan_", "").replace("report_", "")
+                job["report_name"] = report_name
+        except ScanCancelledError:
+            logger.warning(f"Scan {scan_id} cancelled or timed out; halting.")
             return
-
-        # 2. Crawling (happens inside run_plugins, but we show progress)
-        emit("crawling", "Crawling target for endpoints...", 15)
-
-        # 3. Run plugins
-        emit("scanning", "Starting plugin execution...", 20)
-        engine.run_plugins()
-
-        if check_cancelled():
-            logger.warning(f"Scan {scan_id} cancelled or timed out after plugins; halting.")
-            return
-
-        # If automated auth was attempted, emit status
-        if engine.auth_result:
-            if engine.auth_result.success:
-                emit("auth", f"Authenticated! Captured session ({len(engine.auth_result.cookies)} cookies).", 25)
-            else:
-                emit("auth", f"Auth note: {engine.auth_result.message}. Scanned public surface.", 25)
-
-        # Report crawler results
-        if engine.crawl_result:
-            cr = engine.crawl_result
-            emit("crawling", f"Discovered {len(cr.endpoints)} endpoints, {len(cr.forms)} forms", 30,
-                 f"Visited {cr.pages_visited} pages")
-
-        # Report plugin results  
-        total_findings = sum(len(sr.findings) for sr in engine.scan_results)
-        emit("scanning", f"All {len(engine.scan_results)} plugins complete — {total_findings} raw findings", 55)
-
-        # 4. Generate report
-        emit("processing", "Generating report...", 60)
-        report = engine.generate_report()
-
-        if check_cancelled():
-            return
-
-        # 5. Delta analysis
-        if previous_path and engine.previous_report:
-            emit("processing", "Running delta analysis...", 65)
-            from intelligence.delta import DeltaAnalyzer
-            previous_data = load_json(previous_path)
-            if previous_data:
-                from core.models import Finding
-                import dataclasses
-                _valid_fields = {fld.name for fld in dataclasses.fields(Finding)}
-                prev_findings = [Finding(**{k: v for k, v in f.items() if k in _valid_fields}) for f in previous_data.get("all_findings", [])]
-                prev_report = Report(
-                    target=previous_data.get("target", ""),
-                    timestamp=previous_data.get("timestamp", ""),
-                    all_findings=prev_findings
-                )
-                delta = DeltaAnalyzer().compare(report, prev_report)
-                report.delta = delta
-
-        # 6. Intelligence pipeline
-        emit("enriching", "Correlating findings...", 70)
-        correlator = Correlator()
-        report.all_findings = correlator.link_related(report.all_findings)
-
-        emit("enriching", "Enriching with CVE data...", 75)
-        enricher_obj = Enricher()
-        report.all_findings = enricher_obj.enrich(report.all_findings)
-
-        emit("enriching", "Mapping compliance standards...", 80)
-        mapper = ComplianceMapper()
-        report.all_findings = mapper.map_findings(report.all_findings)
-
-        emit("enriching", "Adding remediation suggestions...", 85)
-        from intelligence.remediation import enrich_with_remediation
-        report.all_findings = enrich_with_remediation(report.all_findings)
-
-        report.summary = engine._generate_summary(report.all_findings)
-
-        if check_cancelled():
-            return
-
-        # 7. Save
-        emit("saving", "Saving report...", 90)
-        json_path = engine.save_report(report)
-
-        emit("saving", "Generating HTML report...", 95)
-        generator = ReportGenerator()
-        generator.generate_report(report)
-
-        report_name = Path(json_path).stem.replace("scan_", "")
-        job["report_name"] = report_name
-        emit("done", f"Scan complete — {len(report.all_findings)} findings", 100, report_name, status="done")
 
     except Exception as e:
+        if check_cancelled():
+            logger.warning(f"Scan {scan_id} already marked error or cancelled: {e}")
+            return
         logger.error(f"Async scan failed: {e}")
         job["error"] = str(e)
         emit("error", f"Scan failed: {str(e)}", 0, status="error")
     finally:
-        if job.get("status") in ("starting", "running"):
+        if job.get("status") in ("starting", "running") and not check_cancelled():
             job["error"] = "Scan terminated unexpectedly"
             emit("error", "Scan terminated unexpectedly", 0, status="error")
         for tmp_path in [previous_path, openapi_path]:

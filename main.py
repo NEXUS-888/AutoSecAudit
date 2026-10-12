@@ -4,17 +4,14 @@ import logging
 import sys
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple, Dict, Any
 
 import config
 from core.engine import Engine
 from core.models import Report, Finding
 from core.utils import load_json, validate_target, is_target_allowed, check_target_reachable
 from reports.generator import ReportGenerator
-from intelligence.correlator import Correlator
-from intelligence.enricher import Enricher
-from intelligence.compliance import ComplianceMapper
-from intelligence.delta import DeltaAnalyzer
+from core.pipeline import run_scan_pipeline, ScanRequest
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -65,6 +62,21 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
     logger.info(f"Starting scan for target: {target} [{mode_label}] (profile: {profile})")
     print(f"\n[ENGINE] Target: {target} | Execution Mode: {mode_label} | Profile: {profile.upper()}")
     
+    # Password prompt/env resolution for CLI
+    if login_user and not login_pass:
+        login_pass = os.environ.get("AUTOSEC_LOGIN_PASS")
+        if not login_pass:
+            import getpass
+            try:
+                login_pass = getpass.getpass(f"Enter password for {login_user}: ")
+            except (EOFError, KeyboardInterrupt):
+                print("\nPassword prompt cancelled.")
+                return 1
+
+    if login_pass and any(arg.startswith("--login-pass") for arg in sys.argv):
+        print("[WARNING] Passing --login-pass via CLI arguments exposes secrets in the process table. Use AUTOSEC_LOGIN_PASS or interactive prompt.")
+        logger.warning("Passing --login-pass via CLI arguments exposes secrets in the process table.")
+
     if not validate_target(target):
         logger.error(f"Invalid target: {target}")
         print(f"Error: Invalid target '{target}'. Please provide a valid URL or IP address.")
@@ -90,97 +102,47 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
         print(f"[PRE-FLIGHT] Target online: {reach_msg}")
     elif is_demo:
         print(f"[DEMO MODE] Target presence check bypassed — running offline simulation.\n")
-    
-    # Process custom headers
-    header_dict = {}
-    if headers:
-        for h in headers.split(";"):
-            if ":" in h:
-                k, v = h.split(":", 1)
-                header_dict[k.strip()] = v.strip()
 
-    engine = Engine(mock_mode=is_demo, profile=profile)
-    if header_dict:
-        engine.set_custom_headers(header_dict)
-    if login_user and login_pass:
-        engine.set_auth_credentials(login_user, login_pass, login_url=login_url)
-        print(f"[AUTH] Configured automated login for user '{login_user}'")
+    req = ScanRequest(
+        target=target,
+        profile=profile,
+        mock_mode=is_demo,
+        skip_reachability=True,
+        login_user=login_user,
+        login_pass=login_pass,
+        login_url=login_url,
+        openapi_spec=openapi,
+        previous_report=previous_report,
+        output_json=output_json,
+        output_html=output_html,
+        headers=headers,
+        webhook=webhook,
+        treat_dev_artifacts_as_info=treat_dev_artifacts_as_info,
+    )
 
-    loaded = engine.load_plugins()
-    print(f"Loaded {loaded} plugin(s) for profile '{profile}'")
-    
-    if not engine.set_target(target):
+    try:
+        report, paths = run_scan_pipeline(
+            req,
+            engine_cls=Engine,
+            generator_cls=ReportGenerator,
+        )
+    except (ValueError, ConnectionError, PermissionError) as e:
+        logger.error(f"Scan pipeline error: {e}")
+        print(f"\n[ERROR] {e}\n")
         return 1
 
-    # OpenAPI import if specified
-    if openapi:
-        from core.openapi import OpenAPIImporter
-        importer = OpenAPIImporter(openapi, headers=header_dict)
-        if importer.load_spec():
-            imported_eps = importer.get_endpoints()
-            print(f"Imported {len(imported_eps)} endpoint(s) from OpenAPI spec")
-            engine.add_endpoints(imported_eps)
-    
-    if previous_report:
-        if engine.set_previous_report(previous_report):
-            print(f"Loaded previous report: {previous_report}")
-        else:
-            print(f"Warning: Could not load previous report")
-    
-    print(f"Running scan on {engine.target}...")
-    engine.run_plugins()
-    report = engine.generate_report()
-    
-    print(f"\nApplying intelligence layer...")
-    
-    correlator = Correlator()
-    report.all_findings = correlator.link_related(report.all_findings)
-    
-    enricher = Enricher()
-    report.all_findings = enricher.enrich(report.all_findings)
-    
-    mapper = ComplianceMapper()
-    report.all_findings = mapper.map_findings(report.all_findings)
-    
-    if engine.previous_report:
-        previous_data = engine.previous_report
-        if "all_findings" in previous_data:
-            from core.models import Finding
-            import dataclasses
-            _valid_fields = {fld.name for fld in dataclasses.fields(Finding)}
-            prev_findings = [Finding(**{k: v for k, v in f.items() if k in _valid_fields}) for f in previous_data.get("all_findings", [])]
-            prev_report = Report(
-                target=previous_data.get("target", ""),
-                timestamp=previous_data.get("timestamp", ""),
-                all_findings=prev_findings
-            )
-            delta = DeltaAnalyzer().compare(report, prev_report)
-            report.delta = delta
-    
-    report.summary = engine._generate_summary(report.all_findings)
-    
-    json_path = engine.save_report(report, output_json)
-    print(f"JSON report saved: {json_path}")
-    
-    generator = ReportGenerator()
-    html_path = generator.generate_report(report)
-    print(f"HTML report saved: {html_path}")
-    
-    # Webhook Notification
-    if webhook:
-        from core.notifications import WebhookNotifier
-        notifier = WebhookNotifier(webhook)
-        notifier.send_notification(report.summary, report.target)
+    json_path = paths.json
+    html_path = paths.html
 
     print(f"\n{'='*50}")
     print(f"Scan Complete! [{mode_label}]")
     print(f"{'='*50}")
-    print(f"Target: {report.target}")
-    print(f"Total Findings: {report.summary['total']}")
-    print(f"  Critical: {report.summary['critical']}")
-    print(f"  High: {report.summary['high']}")
-    print(f"  Medium: {report.summary['medium']}")
-    print(f"  Low: {report.summary['low']}")
+    summary = report.summary or {}
+    print(f"Total Findings: {summary.get('total', len(report.all_findings))}")
+    print(f"  Critical: {summary.get('critical', 0)}")
+    print(f"  High: {summary.get('high', 0)}")
+    print(f"  Medium: {summary.get('medium', 0)}")
+    print(f"  Low: {summary.get('low', 0)}")
     
     if report.delta:
         print(f"\nDelta Analysis:")
@@ -229,17 +191,37 @@ def list_plugins():
     print()
 
 
+def _compute_menu_counts() -> Tuple[int, int]:
+    """Compute discovered plugin and test counts dynamically."""
+    try:
+        eng = Engine(mock_mode=True)
+        plugin_count = eng.load_plugins()
+    except Exception:
+        plugin_count = 14
+
+    try:
+        import unittest
+        loader = unittest.TestLoader()
+        suite = loader.discover(".", pattern="test_*.py")
+        test_count = suite.countTestCases()
+    except Exception:
+        test_count = 80
+
+    return plugin_count, test_count
+
+
 def interactive_menu():
     """Interactive startup menu when run with no CLI arguments."""
+    plugin_count, test_count = _compute_menu_counts()
     while True:
         print("\n" + "=" * 60)
         print("    AutoSecAudit 2.0 — Interactive Security Console")
         print("=" * 60)
         print("  [1] Start Web Dashboard Server (http://localhost:5000)")
         print("  [2] Run CLI Target Security Scan")
-        print("  [3] List Discovered Scanner Plugins (14 Plugins)")
+        print(f"  [3] List Discovered Scanner Plugins ({plugin_count} Plugins)")
         print("  [4] Run Automated Verification Proof (verify_proof.py)")
-        print("  [5] Run Full Test Suite (80 Automated Tests)")
+        print(f"  [5] Run Full Test Suite ({test_count} Automated Tests)")
         print("  [6] Exit")
         print("=" * 60)
         
@@ -297,11 +279,6 @@ def main():
         description="AutoSecAudit 2.0 - Intelligent Security Auditing Framework",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    
-    # Global mode flags
-    mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument("--real", action="store_true", help="Force REAL active scanning mode (requires target online)")
-    mode_group.add_argument("--mock", "--demo", dest="mock", action="store_true", help="Force MOCK demo mode (offline simulation, no live target needed)")
     
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
     

@@ -14,6 +14,7 @@ from core.utils import (
     validate_target,
     normalize_target,
     get_timestamp,
+    generate_report_id,
     save_json,
     check_target_reachable,
     is_target_allowed,
@@ -440,6 +441,9 @@ class Engine:
 
         throttled = self.http_client.throttled_count if hasattr(self, "http_client") else 0
 
+        rep_id = getattr(self, "report_id", None) or generate_report_id()
+        self.report_id = rep_id
+
         report = Report(
             target=self.target,
             timestamp=get_timestamp(),
@@ -450,6 +454,7 @@ class Engine:
             dev_environment=self.dev_environment,
             auth_status=auth_status,
             throttled_requests=throttled,
+            report_id=rep_id,
         )
 
         return report
@@ -477,8 +482,14 @@ class Engine:
     def save_report(self, report: Report, file_path: Optional[str] = None) -> str:
         """Save report to JSON file."""
         if file_path is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            file_path = f"{config.REPORTS_DIR}/scan_{timestamp}.json"
+            rep_id = getattr(report, "report_id", None)
+            if not rep_id or not isinstance(rep_id, str):
+                rep_id = getattr(self, "report_id", None)
+            if not rep_id or not isinstance(rep_id, str):
+                rep_id = generate_report_id()
+            if hasattr(report, "report_id"):
+                report.report_id = rep_id
+            file_path = f"{config.REPORTS_DIR}/scan_{rep_id}.json"
         
         save_json(report.to_dict(), str(file_path))
         logger.info(f"Report saved to {file_path}")
