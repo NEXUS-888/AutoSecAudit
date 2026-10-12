@@ -260,11 +260,14 @@ class BaseScanner(ABC):
         headers: Optional[Dict[str, str]] = None,
         timeout: Tuple[float, float] = (3.0, 8.0),
         allow_redirects: bool = True,
+        **kwargs: Any,
     ) -> Optional[requests.Response]:
         """
         Execute an HTTP request with politeness pacing, scope-checking, and backoff.
         Delegates to the shared ScanHttpClient while preserving exact signature.
         """
+        if json_data is None and "json" in kwargs:
+            json_data = kwargs.pop("json")
         client = self._get_http_client()
         return client.request(
             method=method,
@@ -275,6 +278,7 @@ class BaseScanner(ABC):
             headers=headers,
             timeout=timeout,
             allow_redirects=allow_redirects,
+            **kwargs,
         )
 
     def _verify_timing(

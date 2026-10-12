@@ -10,6 +10,7 @@ import requests
 
 from core.spa_detector import SPADetector
 from core.dev_detector import detect_dev_environment, tag_dev_artifact_finding
+from core.http_client import ScanHttpClient
 from plugins.base_plugin import BaseScanner
 from plugins.dirbuster_plugin import DirBruteScanner
 from plugins.secret_exposure_plugin import SecretExposureScanner, ENV_REGEX
@@ -124,12 +125,10 @@ class TestDirBruteIntegrity(unittest.TestCase):
             {"path": "/admin", "severity": "High", "category": "admin_panel"},
         ]
         with patch("plugins.dirbuster_plugin.DIRECTORY_WORDLIST", mini_wordlist), \
-             patch("requests.head") as mock_head, patch("requests.get") as mock_get:
+             patch.object(ScanHttpClient, "request") as mock_req:
             head_resp = MagicMock(status_code=200, headers={"Content-Type": "text/html"})
-            mock_head.return_value = head_resp
-
             get_resp = MagicMock(status_code=200, text=spa_html, headers={"Content-Type": "text/html"})
-            mock_get.return_value = get_resp
+            mock_req.side_effect = lambda method, *a, **kw: head_resp if method == "HEAD" else get_resp
 
             scanner.run()
             output = scanner.parse_output()
@@ -193,7 +192,7 @@ class TestAuthScannerHardening(unittest.TestCase):
         mock_resp = MagicMock(status_code=200, text=spa_html, headers={"Content-Type": "text/html; charset=utf-8"})
         mock_resp.json.side_effect = ValueError("Not JSON")
 
-        with patch("requests.get", return_value=mock_resp):
+        with patch.object(ScanHttpClient, "request", return_value=mock_resp):
             scanner._test_idor("http://localhost:5173")
             self.assertEqual(len(scanner.results), 0, "HTML with words 'user', 'id', 'name' must NOT be flagged as IDOR!")
 
@@ -206,7 +205,7 @@ class TestAuthScannerHardening(unittest.TestCase):
         mock_resp.json.return_value = user_json
         mock_resp.text = '{"user_id": 101, "email": "alice@example.com"}'
 
-        with patch("requests.get", return_value=mock_resp):
+        with patch.object(ScanHttpClient, "request", return_value=mock_resp):
             scanner._test_idor("http://localhost:5173")
             self.assertGreater(len(scanner.results), 0, "Valid JSON user object must be flagged as IDOR!")
 
@@ -214,9 +213,9 @@ class TestAuthScannerHardening(unittest.TestCase):
         scanner = AuthScanner(mock_mode=False)
         scanner.configure("http://localhost:5173")
 
-        with patch("requests.post") as mock_post:
+        with patch.object(ScanHttpClient, "request") as mock_req:
             # Pre-check returns 404 Not Found
-            mock_post.return_value = MagicMock(status_code=404, headers={"Content-Type": "text/html"})
+            mock_req.return_value = MagicMock(status_code=404, headers={"Content-Type": "text/html"})
             scanner._test_rate_limiting("http://localhost:5173")
 
             # Must NOT report missing rate limiting for non-existent endpoint!
@@ -262,7 +261,7 @@ class TestBOLAIDORHardening(unittest.TestCase):
         mock_resp = MagicMock(status_code=200, text=spa_html, headers={"Content-Type": "text/html"})
         mock_resp.json.side_effect = ValueError("Not JSON")
 
-        with patch.object(requests.Session, "get", return_value=mock_resp):
+        with patch.object(ScanHttpClient, "request", return_value=mock_resp):
             scanner.run()
             self.assertEqual(len(scanner.results), 0)
 
@@ -277,12 +276,12 @@ class TestBOLAIDORHardening(unittest.TestCase):
 
         probe_resp = MagicMock(status_code=404, text="Not Found", headers={"Content-Type": "text/plain"})
 
-        def mock_get(url, *args, **kwargs):
+        def mock_get(method, url, *args, **kwargs):
             if "autosec-probe" in url:
                 return probe_resp
             return user_resp
 
-        with patch.object(requests.Session, "get", side_effect=mock_get):
+        with patch.object(ScanHttpClient, "request", side_effect=mock_get):
             scanner.run()
             self.assertGreater(len(scanner.results), 0)
 
@@ -357,7 +356,7 @@ class TestRobotsTxtInformationalClassification(unittest.TestCase):
 
     def test_dirbuster_robots_txt_is_informational(self):
         scanner = DirBruteScanner(mock_mode=False)
-        scanner.configure("http://example.com")
+        scanner.configure("http://localhost:5173")
         scanner.results = [
             {
                 "path": "/robots.txt",
@@ -378,13 +377,13 @@ class TestRobotsTxtInformationalClassification(unittest.TestCase):
 
     def test_misconfig_robots_txt_is_informational(self):
         scanner = MisconfigScanner(mock_mode=False)
-        scanner.configure("http://example.com")
+        scanner.configure("http://localhost:5173")
 
         mock_resp = MagicMock(status_code=200, text="User-agent: *\nDisallow: /admin", headers={"Content-Type": "text/plain"})
-        with patch("requests.get", return_value=mock_resp), \
+        with patch.object(ScanHttpClient, "request", return_value=mock_resp), \
              patch.object(scanner, "is_soft_404", return_value=False):
             scanner.results = []
-            scanner._check_sensitive_files("http://example.com")
+            scanner._check_sensitive_files("http://localhost:5173")
 
             robots_findings = [f for f in scanner.results if "robots.txt" in f["title"]]
             self.assertEqual(len(robots_findings), 1)

@@ -123,18 +123,28 @@ class DirBruteScanner(BaseScanner):
             url = f"{base_url}{path}"
 
             try:
-                resp = requests.head(
-                    url, headers=HEADERS, timeout=REQUEST_TIMEOUT,
-                    allow_redirects=False, verify=False,
+                resp = self._safe_request(
+                    "HEAD",
+                    url,
+                    headers=HEADERS,
+                    timeout=REQUEST_TIMEOUT,
+                    allow_redirects=False,
                 )
+                if resp is None:
+                    continue
 
                 if resp.status_code in FOUND_CODES:
                     # For 200 responses, verify content isn't a generic 404 or SPA catch-all
                     if resp.status_code == 200:
-                        get_resp = requests.get(
-                            url, headers=HEADERS, timeout=REQUEST_TIMEOUT,
-                            allow_redirects=False, verify=False,
+                        get_resp = self._safe_request(
+                            "GET",
+                            url,
+                            headers=HEADERS,
+                            timeout=REQUEST_TIMEOUT,
+                            allow_redirects=False,
                         )
+                        if get_resp is None:
+                            continue
                         body = get_resp.text.lower()
                         # Skip generic "not found" pages disguised as 200
                         if any(marker in body for marker in [

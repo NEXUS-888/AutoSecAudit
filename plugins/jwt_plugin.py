@@ -61,10 +61,8 @@ class JWTScanner(BaseScanner):
             sources.append((endpoint.get("path", "/"), urllib.parse.urljoin(base.rstrip("/") + "/", endpoint.get("path", "/").lstrip("/"))))
         seen = set()
         for source, url in sources:
-            try:
-                response = requests.get(url, headers={"User-Agent": "AutoSecAudit/2.0"}, timeout=8, verify=False)
-            except requests.RequestException as exc:
-                logger.debug("JWT request failed: %s", exc)
+            response = self._safe_request("GET", url, timeout=(3.0, 8.0))
+            if response is None:
                 continue
             candidates = JWT_PATTERN.findall(" ".join([response.text, str(dict(response.headers)), str(response.cookies)]))
             for token in candidates:
@@ -93,9 +91,3 @@ class JWTScanner(BaseScanner):
             {"id": "JWT-002", "title": "JWT has no expiration claim", "severity": "Medium", "host": host, "port": port,
              "description": "A JWT was observed without an exp claim, allowing indefinite validity if accepted by the server.", "raw_output": "claims: {sub: 1}",
              "owasp_tag": "A02:2021 Cryptographic Failures", "tool_name": "jwt_scanner", "confidence": "medium"}]}
-
-    def _parse_target(self, target: str):
-        if not target.startswith(("http://", "https://")):
-            target = f"http://{target}"
-        parsed = urllib.parse.urlparse(target)
-        return f"{parsed.scheme}://{parsed.netloc}", parsed.hostname or "unknown", parsed.port or (443 if parsed.scheme == "https" else 80)

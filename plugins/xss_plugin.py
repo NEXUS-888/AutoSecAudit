@@ -97,17 +97,6 @@ class XSSScanner(BaseScanner):
     # Helpers
     # ------------------------------------------------------------------
     @staticmethod
-    def _parse_url(target: str):
-        """Return (base_url, host, port) from a target string."""
-        if not target.startswith(("http://", "https://")):
-            target = f"http://{target}"
-        parsed = urllib.parse.urlparse(target)
-        host = parsed.hostname or parsed.netloc
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        base_url = f"{parsed.scheme}://{parsed.netloc}"
-        return base_url, host, port
-
-    @staticmethod
     def _payload_reflected(payload: str, response_text: str) -> bool:
         """Check if the payload string appears un-encoded in the response body."""
         # Direct reflection
@@ -132,66 +121,63 @@ class XSSScanner(BaseScanner):
 
             # Phase 1: marker-based payloads (low false-positive)
             for payload in MARKER_PAYLOADS:
-                try:
-                    resp = requests.get(
-                        url,
-                        params={param: payload},
-                        headers=HEADERS,
-                        timeout=REQUEST_TIMEOUT,
-                        allow_redirects=True,
-                        verify=False,
+                resp = self._safe_request(
+                    "GET",
+                    url,
+                    params={param: payload},
+                    headers=HEADERS,
+                    timeout=REQUEST_TIMEOUT,
+                    allow_redirects=True,
+                )
+                if resp is None:
+                    break  # endpoint unreachable – skip remaining payloads
+                if self._payload_reflected(payload, resp.text):
+                    self.results.append({
+                        "endpoint": f"{path}?{param}=<payload>",
+                        "payload": payload,
+                        "status_code": resp.status_code,
+                        "evidence": resp.text[:300],
+                        "type": "reflected_xss",
+                        "confidence": "high",
+                    })
+                    logger.info(
+                        f"[XSS] Reflected payload at {path}?{param} "
+                        f"(marker-based, high confidence)"
                     )
-                    if self._payload_reflected(payload, resp.text):
+                    break  # One high-confidence hit per endpoint is enough
+
+            # Phase 2: standard payloads (broader coverage)
+            for payload in XSS_PAYLOADS[:6]:  # limit to first 6 for speed
+                resp = self._safe_request(
+                    "GET",
+                    url,
+                    params={param: payload},
+                    headers=HEADERS,
+                    timeout=REQUEST_TIMEOUT,
+                    allow_redirects=True,
+                )
+                if resp is None:
+                    break
+                if self._payload_reflected(payload, resp.text):
+                    # Avoid duplicate for same endpoint
+                    already = any(
+                        r["endpoint"] == f"{path}?{param}=<payload>"
+                        and r["type"] == "reflected_xss"
+                        for r in self.results
+                    )
+                    if not already:
                         self.results.append({
                             "endpoint": f"{path}?{param}=<payload>",
                             "payload": payload,
                             "status_code": resp.status_code,
                             "evidence": resp.text[:300],
                             "type": "reflected_xss",
-                            "confidence": "high",
+                            "confidence": "medium",
                         })
                         logger.info(
-                            f"[XSS] Reflected payload at {path}?{param} "
-                            f"(marker-based, high confidence)"
+                            f"[XSS] Reflected payload at {path}?{param}"
                         )
-                        break  # One high-confidence hit per endpoint is enough
-                except requests.RequestException as exc:
-                    logger.debug(f"Request to {url} failed: {exc}")
-                    break  # endpoint unreachable – skip remaining payloads
-
-            # Phase 2: standard payloads (broader coverage)
-            for payload in XSS_PAYLOADS[:6]:  # limit to first 6 for speed
-                try:
-                    resp = requests.get(
-                        url,
-                        params={param: payload},
-                        headers=HEADERS,
-                        timeout=REQUEST_TIMEOUT,
-                        allow_redirects=True,
-                        verify=False,
-                    )
-                    if self._payload_reflected(payload, resp.text):
-                        # Avoid duplicate for same endpoint
-                        already = any(
-                            r["endpoint"] == f"{path}?{param}=<payload>"
-                            and r["type"] == "reflected_xss"
-                            for r in self.results
-                        )
-                        if not already:
-                            self.results.append({
-                                "endpoint": f"{path}?{param}=<payload>",
-                                "payload": payload,
-                                "status_code": resp.status_code,
-                                "evidence": resp.text[:300],
-                                "type": "reflected_xss",
-                                "confidence": "medium",
-                            })
-                            logger.info(
-                                f"[XSS] Reflected payload at {path}?{param}"
-                            )
-                            break
-                except requests.RequestException:
-                    break
+                        break
 
     def _test_dom_xss_indicators(self, base_url: str) -> None:
         """Fetch the root page and look for DOM-XSS sinks in JavaScript."""
@@ -209,76 +195,72 @@ class XSSScanner(BaseScanner):
         ]
         pages_to_check = ["/", "/index.html", "/index.htm"]
         for page in pages_to_check:
-            try:
-                resp = requests.get(
-                    f"{base_url}{page}",
-                    headers=HEADERS,
-                    timeout=REQUEST_TIMEOUT,
-                    allow_redirects=True,
-                    verify=False,
-                )
-                if resp.status_code != 200:
-                    continue
-                for sink in dom_sinks:
-                    if re.search(sink, resp.text):
-                        self.results.append({
-                            "endpoint": page,
-                            "payload": f"DOM sink pattern: {sink}",
-                            "status_code": resp.status_code,
-                            "evidence": re.search(sink, resp.text).group()[:200],
-                            "type": "dom_xss_indicator",
-                            "confidence": "low",
-                        })
-                        logger.info(
-                            f"[XSS] DOM sink found on {page}: {sink}"
-                        )
-                        break  # one sink per page is enough for a finding
-            except requests.RequestException as exc:
-                logger.debug(f"[XSS] DOM sink request failed for {page}: {exc}")
-
-    def _test_security_headers(self, base_url: str) -> None:
-        """Check for missing XSS-related security headers on the root page."""
-        try:
-            resp = requests.get(
-                base_url,
+            resp = self._safe_request(
+                "GET",
+                f"{base_url}{page}",
                 headers=HEADERS,
                 timeout=REQUEST_TIMEOUT,
                 allow_redirects=True,
-                verify=False,
             )
-            resp_headers_lower = {k.lower(): v for k, v in resp.headers.items()}
-
-            for header, message in SECURITY_HEADERS.items():
-                if header.lower() not in resp_headers_lower:
+            if resp is None or resp.status_code != 200:
+                continue
+            for sink in dom_sinks:
+                if re.search(sink, resp.text):
                     self.results.append({
-                        "endpoint": "/",
-                        "payload": "N/A",
+                        "endpoint": page,
+                        "payload": f"DOM sink pattern: {sink}",
                         "status_code": resp.status_code,
-                        "evidence": f"Header '{header}' not present in response.",
-                        "type": "missing_header",
-                        "confidence": "high",
-                        "header_name": header,
+                        "evidence": re.search(sink, resp.text).group()[:200],
+                        "type": "dom_xss_indicator",
+                        "confidence": "low",
                     })
-                    logger.info(f"[XSS] {message}")
-                else:
-                    # Check for weak X-XSS-Protection (e.g. "0")
-                    if header == "X-XSS-Protection":
-                        val = resp_headers_lower[header.lower()]
-                        if val.strip().startswith("0"):
-                            self.results.append({
-                                "endpoint": "/",
-                                "payload": "N/A",
-                                "status_code": resp.status_code,
-                                "evidence": f"X-XSS-Protection is set to '{val}' (disabled).",
-                                "type": "weak_header",
-                                "confidence": "high",
-                                "header_name": header,
-                            })
-                            logger.info(
-                                f"[XSS] X-XSS-Protection disabled (value: {val})"
-                            )
-        except requests.RequestException as exc:
-            logger.debug(f"Header check on {base_url} failed: {exc}")
+                    logger.info(
+                        f"[XSS] DOM sink found on {page}: {sink}"
+                    )
+                    break  # one sink per page is enough for a finding
+
+    def _test_security_headers(self, base_url: str) -> None:
+        """Check for missing XSS-related security headers on the root page."""
+        resp = self._safe_request(
+            "GET",
+            base_url,
+            headers=HEADERS,
+            timeout=REQUEST_TIMEOUT,
+            allow_redirects=True,
+        )
+        if resp is None:
+            return
+        resp_headers_lower = {k.lower(): v for k, v in resp.headers.items()}
+
+        for header, message in SECURITY_HEADERS.items():
+            if header.lower() not in resp_headers_lower:
+                self.results.append({
+                    "endpoint": "/",
+                    "payload": "N/A",
+                    "status_code": resp.status_code,
+                    "evidence": f"Header '{header}' not present in response.",
+                    "type": "missing_header",
+                    "confidence": "high",
+                    "header_name": header,
+                })
+                logger.info(f"[XSS] {message}")
+            else:
+                # Check for weak X-XSS-Protection (e.g. "0")
+                if header == "X-XSS-Protection":
+                    val = resp_headers_lower[header.lower()]
+                    if val.strip().startswith("0"):
+                        self.results.append({
+                            "endpoint": "/",
+                            "payload": "N/A",
+                            "status_code": resp.status_code,
+                            "evidence": f"X-XSS-Protection is set to '{val}' (disabled).",
+                            "type": "weak_header",
+                            "confidence": "high",
+                            "header_name": header,
+                        })
+                        logger.info(
+                            f"[XSS] X-XSS-Protection disabled (value: {val})"
+                        )
 
     def _test_hash_fragment_endpoints(self, base_url: str) -> None:
         """Test Angular/SPA hash-fragment based endpoints for reflection.
@@ -292,36 +274,35 @@ class XSSScanner(BaseScanner):
         ]
         for frag_path in fragment_paths:
             for payload in [f'<script>alert("{XSS_MARKER}")</script>', '<img src=x onerror=alert(1)>']:
-                try:
-                    # Server only sees path before "#", but some mis-configured
-                    # servers treat the full URL as path. We send the payload as
-                    # a normal query param as a fallback test.
-                    url = f"{base_url}{frag_path}{urllib.parse.quote(payload)}"
-                    resp = requests.get(
-                        url,
-                        headers=HEADERS,
-                        timeout=REQUEST_TIMEOUT,
-                        allow_redirects=True,
-                        verify=False,
-                    )
-                    if self._payload_reflected(payload, resp.text):
-                        self.results.append({
-                            "endpoint": frag_path,
-                            "payload": payload,
-                            "status_code": resp.status_code,
-                            "evidence": resp.text[:300],
-                            "type": "reflected_xss",
-                            "confidence": "medium",
-                        })
-                        break
-                except requests.RequestException:
+                # Server only sees path before "#", but some mis-configured
+                # servers treat the full URL as path. We send the payload as
+                # a normal query param as a fallback test.
+                url = f"{base_url}{frag_path}{urllib.parse.quote(payload)}"
+                resp = self._safe_request(
+                    "GET",
+                    url,
+                    headers=HEADERS,
+                    timeout=REQUEST_TIMEOUT,
+                    allow_redirects=True,
+                )
+                if resp is None:
+                    break
+                if self._payload_reflected(payload, resp.text):
+                    self.results.append({
+                        "endpoint": frag_path,
+                        "payload": payload,
+                        "status_code": resp.status_code,
+                        "evidence": resp.text[:300],
+                        "type": "reflected_xss",
+                        "confidence": "medium",
+                    })
                     break
 
     # ------------------------------------------------------------------
     # run() – main entry point
     # ------------------------------------------------------------------
     def run(self) -> None:
-        base_url, host, port = self._parse_url(self.target)
+        base_url, host, port = self._parse_target(self.target)
         logger.info(f"[XSSScanner] Starting scan on {base_url}")
         self.results = []
 
@@ -356,7 +337,7 @@ class XSSScanner(BaseScanner):
     # parse_output()
     # ------------------------------------------------------------------
     def parse_output(self) -> Dict[str, Any]:
-        _, host, port = self._parse_url(self.target)
+        _, host, port = self._parse_target(self.target)
         findings: List[Dict[str, Any]] = []
 
         for idx, result in enumerate(self.results, start=1):
@@ -424,7 +405,7 @@ class XSSScanner(BaseScanner):
     # _get_mock_output()
     # ------------------------------------------------------------------
     def _get_mock_output(self) -> Dict[str, Any]:
-        _, host, port = self._parse_url(self.target)
+        _, host, port = self._parse_target(self.target)
         findings = [
                 {
                     "id": "XSS-001",

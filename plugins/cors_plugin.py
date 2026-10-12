@@ -94,7 +94,9 @@ class CORSScanner(BaseScanner):
     def _test_wildcard(self, url: str, path: str) -> None:
         """Check if Access-Control-Allow-Origin is set to *."""
         try:
-            resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT, verify=False)
+            resp = self._safe_request("GET", url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+            if resp is None:
+                return
             acao = resp.headers.get("Access-Control-Allow-Origin", "")
             if acao == "*":
                 self.results.append({
@@ -112,7 +114,9 @@ class CORSScanner(BaseScanner):
         """Check if the server reflects back an arbitrary Origin header."""
         try:
             headers = {**HEADERS, "Origin": evil_origin}
-            resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT, verify=False)
+            resp = self._safe_request("GET", url, headers=headers, timeout=REQUEST_TIMEOUT)
+            if resp is None:
+                return
             acao = resp.headers.get("Access-Control-Allow-Origin", "")
             acac = resp.headers.get("Access-Control-Allow-Credentials", "")
 
@@ -149,7 +153,9 @@ class CORSScanner(BaseScanner):
         fake_subdomain = f"https://evil.{target_domain}"
         try:
             headers = {**HEADERS, "Origin": fake_subdomain}
-            resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT, verify=False)
+            resp = self._safe_request("GET", url, headers=headers, timeout=REQUEST_TIMEOUT)
+            if resp is None:
+                return
             acao = resp.headers.get("Access-Control-Allow-Origin", "")
             if acao == fake_subdomain:
                 self.results.append({
@@ -167,12 +173,15 @@ class CORSScanner(BaseScanner):
     def _test_credentials_with_wildcard(self, url: str, path: str) -> None:
         """Check for credentials: true with wildcard (browser blocks but indicates misconfiguration)."""
         try:
-            resp = requests.options(
+            resp = self._safe_request(
+                "OPTIONS",
                 url,
                 headers={**HEADERS, "Origin": "https://test.com",
                          "Access-Control-Request-Method": "GET"},
-                timeout=REQUEST_TIMEOUT, verify=False,
+                timeout=REQUEST_TIMEOUT,
             )
+            if resp is None:
+                return
             acao = resp.headers.get("Access-Control-Allow-Origin", "")
             acac = resp.headers.get("Access-Control-Allow-Credentials", "")
             acam = resp.headers.get("Access-Control-Allow-Methods", "")

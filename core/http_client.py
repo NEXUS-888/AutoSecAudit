@@ -201,6 +201,8 @@ class ScanHttpClient:
         and automatic 429/503 exponential backoff. Never raises exceptions to plugins.
         """
         try:
+            if json_data is None and "json" in kwargs:
+                json_data = kwargs.pop("json")
             # 0. Initial scope check
             initial_check_url = url
             if self.target and not urllib.parse.urlparse(url).scheme:
@@ -286,6 +288,12 @@ class ScanHttpClient:
 
     def delete(self, url: str, **kwargs) -> Optional[requests.Response]:
         return self.request("DELETE", url, **kwargs)
+
+    def head(self, url: str, **kwargs) -> Optional[requests.Response]:
+        return self.request("HEAD", url, **kwargs)
+
+    def options(self, url: str, **kwargs) -> Optional[requests.Response]:
+        return self.request("OPTIONS", url, **kwargs)
 
     def _execute_with_redirects(
         self,

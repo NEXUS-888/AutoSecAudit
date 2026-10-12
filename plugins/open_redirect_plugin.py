@@ -65,9 +65,6 @@ class OpenRedirectScanner(BaseScanner):
                 if p and p not in test_endpoints:
                     test_endpoints.append(p)
 
-        session = requests.Session()
-        session.headers.update(HEADERS)
-
         for path in test_endpoints:
             parsed_path = urlparse(path)
             clean_path = parsed_path.path
@@ -82,7 +79,9 @@ class OpenRedirectScanner(BaseScanner):
                     test_url = f"{urljoin(base_url, clean_path)}?{query_str}"
 
                     try:
-                        resp = session.get(test_url, timeout=REQUEST_TIMEOUT, verify=False, allow_redirects=False)
+                        resp = self._safe_request("GET", test_url, headers=HEADERS, timeout=REQUEST_TIMEOUT, allow_redirects=False)
+                        if resp is None:
+                            continue
                         if resp.status_code in (301, 302, 303, 307, 308):
                             loc = resp.headers.get("Location", "")
                             if "example.com" in loc:

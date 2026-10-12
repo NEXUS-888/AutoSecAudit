@@ -84,14 +84,16 @@ class AuthScanner(BaseScanner):
             url = f"{base_url}{path}"
             for creds in self.DEFAULT_CREDENTIALS:
                 try:
-                    resp = requests.post(
+                    resp = self._safe_request(
+                        "POST",
                         url,
-                        json=creds,
+                        json_data=creds,
                         headers=self.HEADERS,
                         timeout=self.REQUEST_TIMEOUT,
                         allow_redirects=False,
-                        verify=False,
                     )
+                    if resp is None:
+                        continue
 
                     # Reject SPA catch-all false positives
                     if self.is_soft_404(resp):
@@ -145,12 +147,14 @@ class AuthScanner(BaseScanner):
         for path in self.IDOR_PATHS:
             url = f"{base_url}{path}"
             try:
-                resp = requests.get(
+                resp = self._safe_request(
+                    "GET",
                     url,
                     headers=self.HEADERS,
                     timeout=self.REQUEST_TIMEOUT,
-                    verify=False,
                 )
+                if resp is None:
+                    continue
 
                 if resp.status_code == 200:
                     # 1. Reject SPA soft-404 responses
@@ -227,13 +231,15 @@ class AuthScanner(BaseScanner):
 
         for payload in weak_payloads:
             try:
-                resp = requests.post(
+                resp = self._safe_request(
+                    "POST",
                     register_url,
-                    json=payload,
+                    json_data=payload,
                     headers=self.HEADERS,
                     timeout=self.REQUEST_TIMEOUT,
-                    verify=False,
                 )
+                if resp is None:
+                    continue
 
                 if resp.status_code in (200, 201):
                     self.results.append(
@@ -263,12 +269,14 @@ class AuthScanner(BaseScanner):
         for path in self.ADMIN_PATHS:
             url = f"{base_url}{path}"
             try:
-                resp = requests.get(
+                resp = self._safe_request(
+                    "GET",
                     url,
                     headers=self.HEADERS,
                     timeout=self.REQUEST_TIMEOUT,
-                    verify=False,
                 )
+                if resp is None:
+                    continue
 
                 if resp.status_code == 200:
                     if self.is_soft_404(resp):
@@ -310,16 +318,15 @@ class AuthScanner(BaseScanner):
             "admin@juice-sh.op",        # likely exists
             "nonexistent_user_xyz_42@fake.invalid",  # should not exist
         ]
-
         responses: Dict[str, Optional[requests.Response]] = {}
         for email in test_emails:
             try:
-                resp = requests.post(
+                resp = self._safe_request(
+                    "POST",
                     reset_url,
-                    json={"email": email},
+                    json_data={"email": email},
                     headers=self.HEADERS,
                     timeout=self.REQUEST_TIMEOUT,
-                    verify=False,
                 )
                 responses[email] = resp
             except requests.RequestException as exc:
@@ -367,13 +374,15 @@ class AuthScanner(BaseScanner):
 
         # Step 1: Pre-probe once to verify this is a valid/active auth endpoint
         try:
-            pre_check = requests.post(
+            pre_check = self._safe_request(
+                "POST",
                 login_url,
-                json=payload,
+                json_data=payload,
                 headers=self.HEADERS,
                 timeout=self.REQUEST_TIMEOUT,
-                verify=False,
             )
+            if pre_check is None:
+                return
             # If endpoint doesn't exist (404/405), returns HTML/SPA or soft-404, do not test rate limiting
             if pre_check.status_code in (404, 405):
                 logger.debug(f"[AuthScanner] Login endpoint {login_url} not found (HTTP {pre_check.status_code}). Skipping rate limit test.")
@@ -397,15 +406,15 @@ class AuthScanner(BaseScanner):
         start = time.time()
         for _ in range(total_attempts):
             try:
-                resp = requests.post(
+                resp = self._safe_request(
+                    "POST",
                     login_url,
-                    json=payload,
+                    json_data=payload,
                     headers=self.HEADERS,
                     timeout=self.REQUEST_TIMEOUT,
-                    verify=False,
                 )
                 # If the server keeps responding (not 429), it lacks limiting
-                if resp.status_code != 429:
+                if resp is not None and resp.status_code != 429:
                     success_count += 1
             except requests.RequestException as exc:
                 logger.debug(f"[AuthScanner] Rate-limit probe failed on attempt {success_count+1} to {login_url}: {exc}")

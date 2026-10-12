@@ -29,13 +29,6 @@ class SSRFScanner(BaseScanner):
     def _get_tool_name(self) -> str:
         return "python-requests"
 
-    @staticmethod
-    def _parse_target(target: str):
-        if not target.startswith(("http://", "https://")):
-            target = f"http://{target}"
-        parsed = urllib.parse.urlparse(target)
-        return f"{parsed.scheme}://{parsed.netloc}", parsed.hostname or "unknown", parsed.port or (443 if parsed.scheme == "https" else 80)
-
     def run(self) -> None:
         base_url, _, _ = self._parse_target(self.target)
         endpoints = self.discovered_endpoints or DEFAULT_ENDPOINTS
@@ -49,13 +42,14 @@ class SSRFScanner(BaseScanner):
                 continue
             url = f"{base_url}{endpoint['path']}"
             for payload in payloads:
-                try:
-                    response = requests.request(endpoint.get("method", "GET"), url,
-                                                params={param: payload}, json={param: payload},
-                                                headers={"User-Agent": "AutoSecAudit/2.0"}, timeout=(3.0, 8.0),
-                                                allow_redirects=False, verify=False)
-                except requests.RequestException as exc:
-                    logger.debug("SSRF request failed: %s", exc)
+                response = self._safe_request(
+                    endpoint.get("method", "GET"),
+                    url,
+                    params={param: payload},
+                    json_data={param: payload},
+                    allow_redirects=False,
+                )
+                if response is None:
                     continue
                 body = response.text.lower()
                 evidence = any(marker in body for marker in ("instance-id", "ami-id", "metadata", "127.0.0.1", "localhost"))

@@ -61,13 +61,12 @@ class CSRFScanner(BaseScanner):
                 if p and p not in test_paths:
                     test_paths.append(p)
 
-        session = requests.Session()
-        session.headers.update(HEADERS)
-
         for path in test_paths:
             url = urljoin(base_url, path)
             try:
-                resp = session.get(url, timeout=REQUEST_TIMEOUT, verify=False, allow_redirects=True)
+                resp = self._safe_request("GET", url, headers=HEADERS, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+                if resp is None:
+                    continue
                 # Check 1: HTML forms without CSRF tokens
                 self._check_html_forms(url, path, resp.text)
                 # Check 2: Cookie SameSite attributes

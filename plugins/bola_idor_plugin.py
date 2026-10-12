@@ -69,17 +69,21 @@ class BOLAIdorScanner(BaseScanner):
                     if re.search(pattern, p, re.IGNORECASE) and p not in test_endpoints:
                         test_endpoints.append(p)
 
-        session = requests.Session()
-        session.headers.update(HEADERS)
-
         for path in test_endpoints[:10]:
             url = urljoin(base_url, path)
             try:
                 # Test 1: Unauthenticated direct access to resource
-                resp = session.get(url, timeout=REQUEST_TIMEOUT, verify=False)
+                resp = self._safe_request(
+                    "GET",
+                    url,
+                    headers=HEADERS,
+                    timeout=REQUEST_TIMEOUT,
+                )
+                if resp is None:
+                    continue
                 if resp.status_code == 200:
                     # 1. Reject SPA soft-404 responses
-                    if self.is_soft_404(resp, session=session):
+                    if self.is_soft_404(resp):
                         continue
 
                     # 2. Reject HTML responses

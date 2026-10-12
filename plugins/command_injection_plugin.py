@@ -33,22 +33,11 @@ class CommandInjectionScanner(BaseScanner):
     def _get_tool_name(self) -> str:
         return "python-requests"
 
-    @staticmethod
-    def _parse_target(target: str):
-        if not target.startswith(("http://", "https://")):
-            target = f"http://{target}"
-        parsed = urllib.parse.urlparse(target)
-        return f"{parsed.scheme}://{parsed.netloc}", parsed.hostname or "unknown", parsed.port or (443 if parsed.scheme == "https" else 80)
-
     def _request(self, url: str, method: str, param: str, payload: str) -> Optional[requests.Response]:
-        try:
-            headers = {"User-Agent": "AutoSecAudit/2.0", "X-AutoSec-Test": payload}
-            if method.upper() == "POST":
-                return requests.post(url, json={param: payload}, headers=headers, timeout=(3.0, 8.0), verify=False)
-            return requests.get(url, params={param: payload}, headers=headers, timeout=(3.0, 8.0), verify=False)
-        except requests.RequestException as exc:
-            logger.debug("Command injection request failed: %s", exc)
-            return None
+        headers = {"X-AutoSec-Test": payload}
+        if method.upper() == "POST":
+            return self._safe_request("POST", url, json_data={param: payload}, headers=headers, timeout=(3.0, 8.0))
+        return self._safe_request("GET", url, params={param: payload}, headers=headers, timeout=(3.0, 8.0))
 
     def run(self) -> None:
         base_url, _, _ = self._parse_target(self.target)

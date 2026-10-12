@@ -114,17 +114,6 @@ class SQLiScanner(BaseScanner):
     # Helpers
     # ------------------------------------------------------------------
     @staticmethod
-    def _parse_url(target: str):
-        """Return (base_url, host, port) from a target string."""
-        if not target.startswith(("http://", "https://")):
-            target = f"http://{target}"
-        parsed = urllib.parse.urlparse(target)
-        host = parsed.hostname or parsed.netloc
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        base_url = f"{parsed.scheme}://{parsed.netloc}"
-        return base_url, host, port
-
-    @staticmethod
     def _check_sql_errors(text: str) -> Optional[str]:
         """Return the first matching SQL error signature found in *text*."""
         lower = text.lower()
@@ -146,46 +135,44 @@ class SQLiScanner(BaseScanner):
         baseline = self._get_baseline(url, param, headers=HEADERS, timeout=REQUEST_TIMEOUT)
 
         for payload in SQLI_PAYLOADS:
-            try:
-                resp = requests.get(
-                    url,
-                    params={param: payload},
-                    headers=HEADERS,
-                    timeout=REQUEST_TIMEOUT,
-                    allow_redirects=True,
-                    verify=False,
-                )
-                match = self._check_sql_errors(resp.text)
-                if match:
-                    # Verify against baseline to reduce false positives
-                    if baseline:
-                        is_verified, confidence = self._verify_against_baseline(baseline, resp)
-                    else:
-                        # No baseline available — trust the SQL error signature
-                        is_verified, confidence = True, "medium"
+            resp = self._safe_request(
+                "GET",
+                url,
+                params={param: payload},
+                headers=HEADERS,
+                timeout=REQUEST_TIMEOUT,
+                allow_redirects=True,
+            )
+            if resp is None:
+                continue
+            match = self._check_sql_errors(resp.text)
+            if match:
+                if baseline:
+                    is_verified, confidence = self._verify_against_baseline(baseline, resp)
+                else:
+                    # No baseline available — trust the SQL error signature
+                    is_verified, confidence = True, "medium"
 
-                    if is_verified:
-                        self.results.append({
-                            "endpoint": f"{path}?{param}=<payload>",
-                            "payload": payload,
-                            "matched_signature": match,
-                            "status_code": resp.status_code,
-                            "evidence": resp.text[:300],
-                            "type": "error_based",
-                            "verified": True,
-                            "confidence": confidence,
-                        })
-                        logger.info(
-                            f"[SQLi] Verified injection at {path}?{param} "
-                            f"with payload: {payload!r} (confidence: {confidence})"
-                        )
-                        return
-                    else:
-                        logger.debug(
-                            f"[SQLi] SQL error found but baseline unchanged at {path}?{param} — skipping"
-                        )
-            except requests.RequestException as exc:
-                logger.debug(f"Request to {url} failed: {exc}")
+                if is_verified:
+                    self.results.append({
+                        "endpoint": f"{path}?{param}=<payload>",
+                        "payload": payload,
+                        "matched_signature": match,
+                        "status_code": resp.status_code,
+                        "evidence": resp.text[:300],
+                        "type": "error_based",
+                        "verified": True,
+                        "confidence": confidence,
+                    })
+                    logger.info(
+                        f"[SQLi] Verified injection at {path}?{param} "
+                        f"with payload: {payload!r} (confidence: {confidence})"
+                    )
+                    return
+                else:
+                    logger.debug(
+                        f"[SQLi] SQL error found but baseline unchanged at {path}?{param} — skipping"
+                    )
 
     def _test_login_endpoints(self, base_url: str) -> None:
         """POST common login forms with SQL injection payloads."""
@@ -198,47 +185,46 @@ class SQLiScanner(BaseScanner):
                     {"user": payload, "pass": "password"},
                 ]
                 for body in bodies:
-                    try:
-                        resp = requests.post(
-                            url,
-                            json=body,
-                            headers={**HEADERS, "Content-Type": "application/json"},
-                            timeout=REQUEST_TIMEOUT,
-                            allow_redirects=True,
-                            verify=False,
+                    resp = self._safe_request(
+                        "POST",
+                        url,
+                        json_data=body,
+                        headers={**HEADERS, "Content-Type": "application/json"},
+                        timeout=REQUEST_TIMEOUT,
+                        allow_redirects=True,
+                    )
+                    if resp is None:
+                        continue
+                    match = self._check_sql_errors(resp.text)
+                    if match:
+                        self.results.append({
+                            "endpoint": login_path,
+                            "payload": payload,
+                            "matched_signature": match,
+                            "status_code": resp.status_code,
+                            "evidence": resp.text[:300],
+                            "type": "login_bypass",
+                        })
+                        logger.info(
+                            f"[SQLi] Possible login bypass at {login_path} "
+                            f"with payload: {payload!r}"
                         )
-                        match = self._check_sql_errors(resp.text)
-                        if match:
-                            self.results.append({
-                                "endpoint": login_path,
-                                "payload": payload,
-                                "matched_signature": match,
-                                "status_code": resp.status_code,
-                                "evidence": resp.text[:300],
-                                "type": "login_bypass",
-                            })
-                            logger.info(
-                                f"[SQLi] Possible login bypass at {login_path} "
-                                f"with payload: {payload!r}"
-                            )
-                            return  # one hit per login endpoint
-                        # Heuristic: if we got HTTP 200 with a short JSON body
-                        # that contains "token" or "auth", might be a bypass
-                        if resp.status_code == 200 and (
-                            "token" in resp.text.lower()
-                            or "authentication" in resp.text.lower()
-                        ):
-                            self.results.append({
-                                "endpoint": login_path,
-                                "payload": payload,
-                                "matched_signature": "authentication_bypass_heuristic",
-                                "status_code": resp.status_code,
-                                "evidence": resp.text[:300],
-                                "type": "login_bypass",
-                            })
-                            return
-                    except requests.RequestException as exc:
-                        logger.debug(f"Login test to {url} failed: {exc}")
+                        return  # one hit per login endpoint
+                    # Heuristic: if we got HTTP 200 with a short JSON body
+                    # that contains "token" or "auth", might be a bypass
+                    if resp.status_code == 200 and (
+                        "token" in resp.text.lower()
+                        or "authentication" in resp.text.lower()
+                    ):
+                        self.results.append({
+                            "endpoint": login_path,
+                            "payload": payload,
+                            "matched_signature": "authentication_bypass_heuristic",
+                            "status_code": resp.status_code,
+                            "evidence": resp.text[:300],
+                            "type": "login_bypass",
+                        })
+                        return
 
     def _test_url_path_injection(self, base_url: str) -> None:
         """Try path-based injection on REST-style numeric IDs."""
@@ -246,27 +232,26 @@ class SQLiScanner(BaseScanner):
         for path in paths:
             for payload in ["1 OR 1=1", "1' OR '1'='1", "1 AND 1=CONVERT(int,@@version)--"]:
                 url = f"{base_url}{path}{urllib.parse.quote(payload)}"
-                try:
-                    resp = requests.get(
-                        url,
-                        headers=HEADERS,
-                        timeout=REQUEST_TIMEOUT,
-                        allow_redirects=True,
-                        verify=False,
-                    )
-                    match = self._check_sql_errors(resp.text)
-                    if match:
-                        self.results.append({
-                            "endpoint": f"{path}<id>",
-                            "payload": payload,
-                            "matched_signature": match,
-                            "status_code": resp.status_code,
-                            "evidence": resp.text[:300],
-                            "type": "path_injection",
-                        })
-                        return
-                except requests.RequestException as exc:
-                    logger.debug(f"[SQLi] Path injection probe to {url} failed: {exc}")
+                resp = self._safe_request(
+                    "GET",
+                    url,
+                    headers=HEADERS,
+                    timeout=REQUEST_TIMEOUT,
+                    allow_redirects=True,
+                )
+                if resp is None:
+                    continue
+                match = self._check_sql_errors(resp.text)
+                if match:
+                    self.results.append({
+                        "endpoint": f"{path}<id>",
+                        "payload": payload,
+                        "matched_signature": match,
+                        "status_code": resp.status_code,
+                        "evidence": resp.text[:300],
+                        "type": "path_injection",
+                    })
+                    return
 
     def _test_time_based_sqli(self, base_url: str, ep: Dict[str, Any]) -> None:
         """Test time-based blind SQLi using two-phase statistical verification."""
@@ -337,7 +322,7 @@ class SQLiScanner(BaseScanner):
     # run() – main entry point
     # ------------------------------------------------------------------
     def run(self) -> None:
-        base_url, host, port = self._parse_url(self.target)
+        base_url, host, port = self._parse_target(self.target)
         logger.info(f"[SQLiScanner] Starting scan on {base_url}")
         self.results = []
 
@@ -374,7 +359,7 @@ class SQLiScanner(BaseScanner):
     # parse_output()
     # ------------------------------------------------------------------
     def parse_output(self) -> Dict[str, Any]:
-        _, host, port = self._parse_url(self.target)
+        _, host, port = self._parse_target(self.target)
         findings: List[Dict[str, Any]] = []
 
         for idx, result in enumerate(self.results, start=1):
@@ -428,7 +413,7 @@ class SQLiScanner(BaseScanner):
     # _get_mock_output()
     # ------------------------------------------------------------------
     def _get_mock_output(self) -> Dict[str, Any]:
-        _, host, port = self._parse_url(self.target)
+        _, host, port = self._parse_target(self.target)
         return {
             "tool_name": "sqli_scanner",
             "findings": [

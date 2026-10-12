@@ -67,16 +67,15 @@ class SecretExposureScanner(BaseScanner):
         logger.info(f"[SecretExposure] Scanning for leaked sensitive files on {base_url}")
         self.results = []
 
-        session = requests.Session()
-        session.headers.update(HEADERS)
-
         for path, name, sev, signatures in SENSITIVE_FILES:
             url = urljoin(base_url, path)
             try:
-                resp = session.get(url, timeout=REQUEST_TIMEOUT, verify=False, allow_redirects=False)
+                resp = self._safe_request("GET", url, headers=HEADERS, timeout=REQUEST_TIMEOUT, allow_redirects=False)
+                if resp is None:
+                    continue
                 if resp.status_code == 200 and len(resp.text) > 5:
                     # 1. Soft-404 / SPA catch-all check
-                    if self.is_soft_404(resp, session=session):
+                    if self.is_soft_404(resp):
                         continue
 
                     # 2. Reject HTML immediately — sensitive config/secret files are never HTML

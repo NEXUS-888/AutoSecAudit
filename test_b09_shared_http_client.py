@@ -485,17 +485,20 @@ class TestB09SharedHttpClient(unittest.TestCase):
             self.assertEqual(len(arrivals), 6)
             sorted_arrivals = sorted(arrivals)
             gaps = [sorted_arrivals[i + 1] - sorted_arrivals[i] for i in range(len(sorted_arrivals) - 1)]
+            interval = engine.http_client.politeness.request_interval_ms / 1000.0
+            min_allowed_gap = interval * 0.5
+            mean_allowed_gap = interval * 0.75
             for idx, gap in enumerate(gaps):
                 self.assertGreaterEqual(
                     gap,
-                    0.035,
-                    f"Gap between request {idx} and {idx+1} was too small: {gap*1000:.1f}ms < 35ms",
+                    min_allowed_gap,
+                    f"Gap between request {idx} and {idx+1} was too small: {gap*1000:.1f}ms < {min_allowed_gap*1000:.1f}ms",
                 )
             mean_gap = sum(gaps) / len(gaps)
             self.assertGreaterEqual(
                 mean_gap,
-                0.045,
-                f"Mean gap across requests was too small: {mean_gap*1000:.1f}ms < 45ms",
+                mean_allowed_gap,
+                f"Mean gap across requests was too small: {mean_gap*1000:.1f}ms < {mean_allowed_gap*1000:.1f}ms",
             )
         finally:
             server.shutdown()

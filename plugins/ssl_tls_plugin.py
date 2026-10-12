@@ -56,8 +56,11 @@ class SSLTLSScanner(BaseScanner):
         # Check 1: Plaintext HTTP check
         if parsed.scheme == "http" and host not in ("localhost", "127.0.0.1"):
             try:
-                resp = requests.get(f"http://{host}:{port}/", headers=HEADERS, timeout=REQUEST_TIMEOUT, allow_redirects=False)
-                if resp.status_code not in (301, 302, 308) or not resp.headers.get("Location", "").startswith("https://"):
+                resp = self._safe_request("GET", f"http://{host}:{port}/", headers=HEADERS, timeout=REQUEST_TIMEOUT, allow_redirects=False)
+                if resp is not None and (
+                    resp.status_code not in (301, 302, 308)
+                    or not resp.headers.get("Location", "").startswith("https://")
+                ):
                     self.results.append({
                         "type": "plaintext_http_no_redirect",
                         "severity": "Medium",
@@ -69,24 +72,25 @@ class SSLTLSScanner(BaseScanner):
         # Check 2: HTTPS Handshake & HSTS check
         if parsed.scheme == "https" or port == 443:
             try:
-                resp = requests.get(f"https://{host}:{port}/", headers=HEADERS, timeout=REQUEST_TIMEOUT, verify=False)
-                hsts = resp.headers.get("Strict-Transport-Security")
-                if not hsts:
-                    self.results.append({
-                        "type": "missing_hsts",
-                        "severity": "Medium",
-                        "detail": "The server does not send a Strict-Transport-Security (HSTS) header on HTTPS connections."
-                    })
-                elif "max-age" in hsts.lower():
-                    # Check if max-age is too low (< 6 months / 15768000s)
-                    import re
-                    m = re.search(r"max-age=(\d+)", hsts, re.IGNORECASE)
-                    if m and int(m.group(1)) < 15768000:
+                resp = self._safe_request("GET", f"https://{host}:{port}/", headers=HEADERS, timeout=REQUEST_TIMEOUT)
+                if resp is not None:
+                    hsts = resp.headers.get("Strict-Transport-Security")
+                    if not hsts:
                         self.results.append({
-                            "type": "weak_hsts_duration",
-                            "severity": "Low",
-                            "detail": f"HSTS max-age is set to {m.group(1)}s, which is below the recommended minimum of 1 year (31536000s)."
+                            "type": "missing_hsts",
+                            "severity": "Medium",
+                            "detail": "The server does not send a Strict-Transport-Security (HSTS) header on HTTPS connections."
                         })
+                    elif "max-age" in hsts.lower():
+                        # Check if max-age is too low (< 6 months / 15768000s)
+                        import re
+                        m = re.search(r"max-age=(\d+)", hsts, re.IGNORECASE)
+                        if m and int(m.group(1)) < 15768000:
+                            self.results.append({
+                                "type": "weak_hsts_duration",
+                                "severity": "Low",
+                                "detail": f"HSTS max-age is set to {m.group(1)}s, which is below the recommended minimum of 1 year (31536000s)."
+                            })
             except Exception as e:
                 logger.debug(f"[SSL/TLS] HTTPS check error: {e}")
 

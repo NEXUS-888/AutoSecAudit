@@ -240,47 +240,41 @@ class APIAbuseScanner(BaseScanner):
     def _safe_get(
         self, url: str, **kwargs
     ) -> Optional[requests.Response]:
-        """GET with blanket exception handling."""
-        try:
-            return requests.get(
-                url, headers=DEFAULT_HEADERS, timeout=REQUEST_TIMEOUT, **kwargs
-            )
-        except requests.RequestException as exc:
-            logger.debug(f"GET {url} failed: {exc}")
-            return None
+        """GET with blanket exception handling via shared client."""
+        headers = kwargs.pop("headers", DEFAULT_HEADERS)
+        timeout = kwargs.pop("timeout", REQUEST_TIMEOUT)
+        return self._safe_request("GET", url, headers=headers, timeout=timeout, **kwargs)
 
     def _safe_post(
         self, url: str, data: Any = None, json_body: Any = None, **kwargs
     ) -> Optional[requests.Response]:
-        """POST with blanket exception handling."""
-        try:
-            return requests.post(
-                url,
-                headers=DEFAULT_HEADERS,
-                timeout=REQUEST_TIMEOUT,
-                data=data,
-                json=json_body,
-                **kwargs,
-            )
-        except requests.RequestException as exc:
-            logger.debug(f"POST {url} failed: {exc}")
-            return None
+        """POST with blanket exception handling via shared client."""
+        headers = kwargs.pop("headers", DEFAULT_HEADERS)
+        timeout = kwargs.pop("timeout", REQUEST_TIMEOUT)
+        return self._safe_request(
+            "POST",
+            url,
+            data=data,
+            json_data=json_body,
+            headers=headers,
+            timeout=timeout,
+            **kwargs,
+        )
 
     def _safe_put(
         self, url: str, json_body: Any = None, **kwargs
     ) -> Optional[requests.Response]:
-        """PUT with blanket exception handling."""
-        try:
-            return requests.put(
-                url,
-                headers=DEFAULT_HEADERS,
-                timeout=REQUEST_TIMEOUT,
-                json=json_body,
-                **kwargs,
-            )
-        except requests.RequestException as exc:
-            logger.debug(f"PUT {url} failed: {exc}")
-            return None
+        """PUT with blanket exception handling via shared client."""
+        headers = kwargs.pop("headers", DEFAULT_HEADERS)
+        timeout = kwargs.pop("timeout", REQUEST_TIMEOUT)
+        return self._safe_request(
+            "PUT",
+            url,
+            json_data=json_body,
+            headers=headers,
+            timeout=timeout,
+            **kwargs,
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers – URL / target parsing

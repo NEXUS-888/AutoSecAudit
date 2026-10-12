@@ -136,12 +136,14 @@ class MisconfigScanner(BaseScanner):
         host, port = self._extract_host_port(base_url)
 
         try:
-            resp = requests.get(
+            resp = self._safe_request(
+                "GET",
                 base_url,
                 headers=self.HEADERS,
                 timeout=self.REQUEST_TIMEOUT,
-                verify=False,
             )
+            if resp is None:
+                return
         except requests.RequestException as exc:
             logger.warning(f"Security-header check failed: {exc}")
             return
@@ -174,12 +176,14 @@ class MisconfigScanner(BaseScanner):
 
         try:
             cors_headers = {**self.HEADERS, "Origin": evil_origin}
-            resp = requests.get(
+            resp = self._safe_request(
+                "GET",
                 base_url,
                 headers=cors_headers,
                 timeout=self.REQUEST_TIMEOUT,
-                verify=False,
             )
+            if resp is None:
+                return
         except requests.RequestException as exc:
             logger.debug(f"CORS check failed: {exc}")
             return
@@ -232,12 +236,14 @@ class MisconfigScanner(BaseScanner):
         for entry in self.SENSITIVE_FILES:
             url = f"{base_url}{entry['path']}"
             try:
-                resp = requests.get(
+                resp = self._safe_request(
+                    "GET",
                     url,
                     headers=self.HEADERS,
                     timeout=self.REQUEST_TIMEOUT,
-                    verify=False,
                 )
+                if resp is None:
+                    continue
 
                 if resp.status_code == 200 and len(resp.text.strip()) > 0:
                     # 1. Reject SPA soft-404 catch-alls
@@ -311,12 +317,14 @@ class MisconfigScanner(BaseScanner):
         for path in self.DIRECTORY_PATHS:
             url = f"{base_url}{path}/"
             try:
-                resp = requests.get(
+                resp = self._safe_request(
+                    "GET",
                     url,
                     headers=self.HEADERS,
                     timeout=self.REQUEST_TIMEOUT,
-                    verify=False,
                 )
+                if resp is None:
+                    continue
 
                 if resp.status_code == 200:
                     body_lower = resp.text.lower()
@@ -347,12 +355,14 @@ class MisconfigScanner(BaseScanner):
         url = f"{base_url}/autosec_nonexistent_path_404_test"
 
         try:
-            resp = requests.get(
+            resp = self._safe_request(
+                "GET",
                 url,
                 headers=self.HEADERS,
                 timeout=self.REQUEST_TIMEOUT,
-                verify=False,
             )
+            if resp is None:
+                return
         except requests.RequestException as exc:
             logger.debug(f"Verbose-error check failed: {exc}")
             return
@@ -388,12 +398,14 @@ class MisconfigScanner(BaseScanner):
         host, port = self._extract_host_port(base_url)
 
         try:
-            resp = requests.options(
+            resp = self._safe_request(
+                "OPTIONS",
                 base_url,
                 headers=self.HEADERS,
                 timeout=self.REQUEST_TIMEOUT,
-                verify=False,
             )
+            if resp is None:
+                return
         except requests.RequestException as exc:
             logger.debug(f"HTTP methods check failed: {exc}")
             return
@@ -433,12 +445,14 @@ class MisconfigScanner(BaseScanner):
         host, port = self._extract_host_port(base_url)
 
         try:
-            resp = requests.get(
+            resp = self._safe_request(
+                "GET",
                 base_url,
                 headers=self.HEADERS,
                 timeout=self.REQUEST_TIMEOUT,
-                verify=False,
             )
+            if resp is None:
+                return
         except requests.RequestException as exc:
             logger.debug(f"Info-disclosure check failed: {exc}")
             return
