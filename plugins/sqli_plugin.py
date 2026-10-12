@@ -148,7 +148,7 @@ class SQLiScanner(BaseScanner):
             match = self._check_sql_errors(resp.text)
             if match:
                 if baseline:
-                    is_verified, confidence = self._verify_against_baseline(baseline, resp)
+                    is_verified, confidence = self._verify_against_baseline(baseline, resp, payload=payload)
                 else:
                     # No baseline available — trust the SQL error signature
                     is_verified, confidence = True, "medium"

@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Tuple, List, Callable, Union
 import logging
 import shutil
+import difflib
 import requests
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -165,41 +166,109 @@ class BaseScanner(ABC):
     # Baseline verification helpers
     # ------------------------------------------------------------------
 
-    def _get_baseline(self, url: str, param: str, method: str = "GET",
-                      headers: Optional[Dict] = None, timeout: Any = 10) -> Optional[Dict[str, Any]]:
+    def _get_baseline(
+        self,
+        url: str,
+        param: str,
+        method: str = "GET",
+        headers: Optional[Dict] = None,
+        timeout: Any = 10,
+    ) -> Optional[Dict[str, Any]]:
         """
-        Fetch a baseline (safe) response for an endpoint.
+        Fetch baseline responses (at least 2 samples + 1 control request) for an endpoint.
+        Measures natural variance (status stability and length spread).
         Caches results so we only hit each endpoint once.
-        Delegates to _safe_request / shared HTTP layer.
+        Delegates to _safe_request / shared HTTP layer with auth.
         """
         cache_key = f"{method}:{url}:{param}"
         if cache_key in self._baseline_cache:
             return self._baseline_cache[cache_key]
 
-        safe_value = "test123"
+        safe_value = "safe123"
+        control_value = f"ctrl_{int(time.time() * 1000) % 100000}"
         if isinstance(timeout, tuple):
             req_timeout = timeout
         else:
             req_timeout = (3.0, float(timeout))
 
+        # Sample 1 (safe baseline)
         if method.upper() == "GET":
-            resp = self._safe_request(
+            resp1 = self._safe_request(
                 "GET", url, params={param: safe_value},
                 headers=headers, timeout=req_timeout, allow_redirects=True,
             )
         else:
-            resp = self._safe_request(
+            resp1 = self._safe_request(
                 "POST", url, json_data={param: safe_value},
                 headers=headers, timeout=req_timeout, allow_redirects=True,
             )
 
-        if resp is None:
+        if resp1 is None:
             return None
 
+        # Sample 2 (safe baseline for natural variance)
+        if method.upper() == "GET":
+            resp2 = self._safe_request(
+                "GET", url, params={param: safe_value},
+                headers=headers, timeout=req_timeout, allow_redirects=True,
+            )
+        else:
+            resp2 = self._safe_request(
+                "POST", url, json_data={param: safe_value},
+                headers=headers, timeout=req_timeout, allow_redirects=True,
+            )
+
+        # Control request (benign random value)
+        if method.upper() == "GET":
+            resp_ctrl = self._safe_request(
+                "GET", url, params={param: control_value},
+                headers=headers, timeout=req_timeout, allow_redirects=True,
+            )
+        else:
+            resp_ctrl = self._safe_request(
+                "POST", url, json_data={param: control_value},
+                headers=headers, timeout=req_timeout, allow_redirects=True,
+            )
+
+        text1 = resp1.text or ""
+        text2 = (resp2.text if resp2 is not None else text1) or ""
+        ctrl_text = (resp_ctrl.text if resp_ctrl is not None else text1) or ""
+
+        status1 = resp1.status_code
+        status2 = resp2.status_code if resp2 is not None else status1
+        ctrl_status = resp_ctrl.status_code if resp_ctrl is not None else status1
+
+        len1 = len(text1)
+        len2 = len(text2)
+        ctrl_len = len(ctrl_text)
+
+        lengths = [len1, len2]
+        length_spread = abs(len1 - len2)
+        variance_ratio = length_spread / max(1, min(lengths))
+
+        sample_similarity = difflib.SequenceMatcher(None, text1[:2000], text2[:2000]).ratio()
+
         baseline = {
-            "status_code": resp.status_code,
-            "length": len(resp.text),
-            "content": resp.text[:500],
+            "status_code": status1,
+            "length": len1,
+            "content": text1[:2000],
+            "safe_value": safe_value,
+            "control_value": control_value,
+            "control_status": ctrl_status,
+            "control_length": ctrl_len,
+            "control_content": ctrl_text[:2000],
+            "status_codes": [status1, status2],
+            "lengths": lengths,
+            "length_spread": length_spread,
+            "variance_ratio": variance_ratio,
+            "sample_similarity": sample_similarity,
+            "samples": [
+                {"status_code": status1, "length": len1, "content": text1[:2000]},
+                {"status_code": status2, "length": len2, "content": text2[:2000]},
+            ],
+            "url": url,
+            "param": param,
+            "method": method,
         }
         self._baseline_cache[cache_key] = baseline
         return baseline
@@ -208,46 +277,132 @@ class BaseScanner(ABC):
     def _verify_against_baseline(
         baseline: Dict[str, Any],
         malicious_response: requests.Response,
+        payload: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """
-        Compare a malicious response against the baseline.
+        Compare a malicious response against baseline using statistical variance,
+        control difference, reflected input discounting, and sequence similarity.
 
         Returns (is_verified, confidence):
         - is_verified: True if behavior actually changed (likely real vulnerability)
         - confidence: 'high' if strong evidence, 'medium' if moderate, 'low' if weak
         """
-        mal_status = malicious_response.status_code
-        mal_length = len(malicious_response.text)
-        base_status = baseline["status_code"]
-        base_length = baseline["length"]
+        mal_status = getattr(malicious_response, "status_code", 200)
+        mal_text = getattr(malicious_response, "text", "") or ""
+        mal_length = len(mal_text)
 
-        # Status code changed significantly (e.g. 200 → 500)
-        status_changed = mal_status != base_status
+        base_status = baseline.get("status_code", 200)
+        base_length = baseline.get("length", len(baseline.get("content", "")))
+        base_content = baseline.get("content", "")
 
-        # Response length changed by more than 20%
-        if base_length > 0:
-            length_ratio = abs(mal_length - base_length) / base_length
+        status_codes = baseline.get("status_codes") or [base_status]
+        lengths = baseline.get("lengths") or [base_length]
+
+        # Calculate natural variance in baseline
+        if len(lengths) > 1:
+            min_len = min(lengths)
+            max_len = max(lengths)
+            observed_variance = (max_len - min_len) / max(1, min_len)
         else:
-            length_ratio = 1.0 if mal_length > 0 else 0.0
-        length_changed = length_ratio > 0.20
+            observed_variance = baseline.get("variance_ratio", 0.0)
 
-        # Both changed = high confidence the payload caused a real effect
+        # Baseline internal sample similarity
+        sample_similarity = baseline.get("sample_similarity")
+        if sample_similarity is None and baseline.get("samples") and len(baseline["samples"]) > 1:
+            s1 = baseline["samples"][0].get("content") or baseline["samples"][0].get("text") or ""
+            s2 = baseline["samples"][1].get("content") or baseline["samples"][1].get("text") or ""
+            sample_similarity = difflib.SequenceMatcher(None, s1[:2000], s2[:2000]).ratio()
+        if sample_similarity is None:
+            sample_similarity = 1.0
+
+        # Control response data
+        ctrl_status = baseline.get("control_status")
+        ctrl_len = baseline.get("control_length")
+        ctrl_content = baseline.get("control_content")
+
+        # Status change check: A status change counts only if not in status_codes and != control_status
+        status_changed = (mal_status not in status_codes) and (ctrl_status is None or mal_status != ctrl_status)
+
+        # Reflected input discounting
+        discounted_mal_text = mal_text
+        discounted_mal_length = mal_length
+        safe_val = str(baseline.get("safe_value", "safe123"))
+
+        reflected = False
+        if payload and str(payload) in mal_text:
+            p_str = str(payload)
+            reflected = True
+            discounted_mal_text = mal_text.replace(p_str, safe_val)
+            discounted_mal_length = len(discounted_mal_text)
+
+        # Check pure reflection against baseline text and control text
+        if reflected and not status_changed:
+            is_pure_reflection = False
+            if base_content:
+                ref_sim = difflib.SequenceMatcher(None, base_content[:2000], discounted_mal_text[:2000]).ratio()
+                if ref_sim >= 0.95 or discounted_mal_length == base_length:
+                    is_pure_reflection = True
+            elif discounted_mal_length == base_length:
+                is_pure_reflection = True
+
+            if is_pure_reflection:
+                return False, "low"
+
+        # Compare against control request:
+        # Reject on the control only when the probe is close to the control in content (is_close_to_control)
+        if ctrl_status is not None:
+            ctrl_sim = difflib.SequenceMatcher(None, ctrl_content[:2000], discounted_mal_text[:2000]).ratio() if ctrl_content else 0.0
+            ctrl_len_val = ctrl_len if ctrl_len is not None else (len(ctrl_content) if ctrl_content else 0)
+            ctrl_diff = abs(discounted_mal_length - ctrl_len_val)
+            ctrl_margin = max(10, int(ctrl_len_val * max(0.10, observed_variance)))
+            is_close_to_control = (ctrl_diff <= ctrl_margin) or (ctrl_sim >= 0.85)
+
+            if is_close_to_control and (mal_status == ctrl_status or not status_changed):
+                return False, "low"
+
+        # 1. 500+ server error: verified only if genuinely changed from baseline and control
+        if mal_status >= 500:
+            if mal_status in status_codes or mal_status == ctrl_status:
+                return False, "low"
+            return True, "high"
+
+        # Natural variance & sequence similarity comparison against baseline
+        if base_length > 0:
+            raw_length_ratio = abs(discounted_mal_length - base_length) / base_length
+        else:
+            raw_length_ratio = 1.0 if discounted_mal_length > 0 else 0.0
+
+        significance_threshold = max(0.20, observed_variance)
+        length_changed = raw_length_ratio > significance_threshold
+
+        # SequenceMatcher on bounded prefix between discounted probe and baseline
+        prefix_base = base_content[:2000]
+        prefix_mal = discounted_mal_text[:2000]
+        if prefix_base and prefix_mal:
+            probe_base_sim = difflib.SequenceMatcher(None, prefix_base, prefix_mal).ratio()
+        else:
+            probe_base_sim = 1.0 if prefix_base == prefix_mal else 0.0
+
+        # Divergence from baseline: similarity is below baseline samples' own similarity by margin
+        sim_margin = max(0.05, 1.0 - sample_similarity)
+        similarity_diverged = probe_base_sim < (sample_similarity - sim_margin)
+
+        # If status unchanged and either within natural length variance or not diverged in similarity
+        if not status_changed and (raw_length_ratio <= significance_threshold or not similarity_diverged):
+            return False, "low"
+
+        # Verdict
         if status_changed and length_changed:
             return True, "high"
 
-        # Only status changed (e.g. 200 → 500 = server error from payload)
-        if status_changed and mal_status >= 500:
-            return True, "high"
-
-        # Only length changed significantly
-        if length_changed and length_ratio > 0.50:
-            return True, "medium"
-
-        # Minor changes — could be noise
-        if status_changed or length_changed:
+        if status_changed:
             return True, "low"
 
-        # No meaningful change — likely false positive
+        if length_changed and similarity_diverged:
+            if raw_length_ratio > max(0.50, significance_threshold * 1.5):
+                return True, "medium"
+            return True, "low"
+
         return False, "low"
 
     def _safe_request(

@@ -21,6 +21,7 @@ from core.utils import (
 from core.crawler import WebCrawler
 from core.http_client import ScanHttpClient
 from core.politeness import PolitenessEngine, DEFAULT_REQUEST_INTERVAL_MS
+from core.timing import global_timing_controller
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +51,12 @@ class Engine:
         else:
             client_politeness = PolitenessEngine(request_interval_ms=DEFAULT_REQUEST_INTERVAL_MS)
 
+        self.timing_controller = global_timing_controller
         self.http_client = ScanHttpClient(
             target=self.target,
             mock_mode=self.mock_mode,
             politeness=client_politeness,
+            timing_controller=self.timing_controller,
         )
         self.scan_timeout: Optional[int] = None
         self.previous_report: Optional[Dict[str, Any]] = None

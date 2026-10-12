@@ -24,6 +24,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from core.politeness import PolitenessEngine
 from core.utils import is_target_allowed
+from core.timing import global_timing_controller
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ class ScanHttpClient:
         mock_mode: bool = False,
         request_interval_ms: Optional[int] = None,
         pacing_ms: Optional[int] = None,
+        timing_controller: Optional[Any] = None,
         **kwargs: Any,
     ):
         self.target: str = target or ""
@@ -75,6 +77,7 @@ class ScanHttpClient:
         self.mock_mode: bool = mock_mode
         self._lock = threading.Lock()
         self._throttled_count: int = 0
+        self.timing_controller = timing_controller or global_timing_controller
 
         self.politeness = politeness or PolitenessEngine()
         pacing_val = pacing_ms if pacing_ms is not None else request_interval_ms
@@ -230,22 +233,26 @@ class ScanHttpClient:
             while True:
                 if self.deadline is not None and time.monotonic() > self.deadline:
                     return None
+                # Wait if another thread is currently running serialized timing verification
+                self.timing_controller.wait_if_timing_active()
+
                 # 1. Pacing delay
                 self.politeness.pace_request()
 
-                # 2. Execute request with manual hop-by-hop redirects
+                # 2. Execute request with manual hop-by-hop redirects within in-flight tracking
                 try:
-                    resp = self._execute_with_redirects(
-                        method=method,
-                        url=url,
-                        params=params,
-                        json_data=json_data,
-                        data=data,
-                        headers=headers,
-                        timeout=req_timeout,
-                        allow_redirects=allow_redirects,
-                        **kwargs,
-                    )
+                    with self.timing_controller.track_in_flight():
+                        resp = self._execute_with_redirects(
+                            method=method,
+                            url=url,
+                            params=params,
+                            json_data=json_data,
+                            data=data,
+                            headers=headers,
+                            timeout=req_timeout,
+                            allow_redirects=allow_redirects,
+                            **kwargs,
+                        )
                 except requests.RequestException as exc:
                     logger.debug(f"[ScanHttpClient] Request failed for {url}: {exc}")
                     return None
