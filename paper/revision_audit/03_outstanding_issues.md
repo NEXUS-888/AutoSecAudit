@@ -43,7 +43,7 @@ The task forbade modifying application code, so these are **reported, not fixed*
 2. A single benchmark with benchmark-specific plugin inputs (DirBrute paths, Auth credentials) invites an overfitting objection.
 3. No head-to-head comparison with ZAP/Burp/Nuclei; novelty rests on integration, not on measured superiority.
 4. Safety guardrail is bypassable by DNS names; a security venue may object to calling it "validation".
-5. The IJARCCE template compliance (fonts, column layout) was not re-checked: the DOCX is a custom build (`python-docx`), not the supplied `IJARCCE-Paper-Format.docx` template; the PDF has A4 pages with margins of 0.8".
+5. IJARCCE template: the DOCX is built on the supplied template (styles, numbering, footer). The running header was removed at the authors' request (it held the journal's Vol./Issue/DOI placeholders); the footer (licence line and page number) remains, although the template's text says headers and footers must not be used, so confirm with the editors whether the footer should also go. Table text is 10 pt as the template specifies.
 6. Page count rose from 9 to 11; confirm the venue's limit.
 
 ## 5. Optional improvements

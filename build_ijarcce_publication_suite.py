@@ -1,12 +1,18 @@
+import copy
 import os
+import re
 import shutil
 import docx
 from docx.shared import Inches, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn, nsdecls
 import win32com.client
+
+TEMPLATE_PATH = os.path.abspath('paper/IJARCCE-Paper-Format.docx')  # official IJARCCE template
+H2_ABSTRACT = 5   # abstractNum behind the template's 'IEEE Heading 2' list (A., B., ...)
+CELL_PT = 10      # template: table cell text is 10 pt
 
 def set_cell_margins(cell, top=70, bottom=70, left=90, right=90):
     """Set padding for a table cell in dxa (1 pt = 20 dxa)"""
@@ -24,20 +30,14 @@ def set_cell_shading(cell, color_hex):
     shading = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{color_hex}"/>')
     cell._tc.get_or_add_tcPr().append(shading)
 
-def set_table_borders(table, color="B8C0CC", sz="4", val="single"):
-    """Set clean borders for table"""
+def set_table_borders(table, color="000000", sz="4", val="single"):
+    """Full black grid, as in the template's own table."""
     tblPr = table._tbl.tblPr
-    borders = parse_xml(
-        f'<w:tblBorders {nsdecls("w")}>'
-        f'  <w:top w:val="{val}" w:sz="{sz}" w:space="0" w:color="{color}"/>'
-        f'  <w:bottom w:val="{val}" w:sz="{sz}" w:space="0" w:color="{color}"/>'
-        f'  <w:left w:val="none"/>'
-        f'  <w:right w:val="none"/>'
-        f'  <w:insideH w:val="{val}" w:sz="{sz}" w:space="0" w:color="{color}"/>'
-        f'  <w:insideV w:val="none"/>'
-        f'</w:tblBorders>'
+    sides = "".join(
+        f'<w:{n} w:val="{val}" w:sz="{sz}" w:space="0" w:color="{color}"/>'
+        for n in ("top", "left", "bottom", "right", "insideH", "insideV")
     )
-    tblPr.append(borders)
+    tblPr.append(parse_xml(f'<w:tblBorders {nsdecls("w")}>{sides}</w:tblBorders>'))
 
 def build_paper():
     docx_path = os.path.abspath('paper/AutoSecAudit_Research_Paper_IJARCCE.docx')
@@ -45,129 +45,132 @@ def build_paper():
     root_docx = os.path.abspath('AutoSecAudit_Research_Paper_IJARCCE.docx')
     root_pdf = os.path.abspath('AutoSecAudit_Research_Paper_IJARCCE.pdf')
 
-    doc = docx.Document()
+    # ---------------------------------------------------------------------------
+    # Start from the official IJARCCE template (styles, numbering, header, footer).
+    # The template body is discarded; its first section (A4, 0.8" margins, IJARCCE
+    # header and footer) becomes the only section of the paper.
+    # ---------------------------------------------------------------------------
+    doc = docx.Document(TEMPLATE_PATH)
+    body = doc.element.body
+    first_sect = copy.deepcopy(next(body.iter(qn('w:sectPr'))))
+    # No running header: the template's journal header carries placeholders (Vol./Issue/DOI) that
+    # the journal fills in, and the template's own rules say headers must not be used.
+    for ref in first_sect.findall(qn('w:headerReference')):
+        first_sect.remove(ref)
+    for child in list(body):
+        body.remove(child)
+    body.append(first_sect)
 
-    # Configure A4 page with strict 0.8" margins (IJARCCE Standard: 20.32mm)
-    section = doc.sections[0]
-    section.page_width = Inches(8.27)
-    section.page_height = Inches(11.69)
-    section.top_margin = Inches(0.8)
-    section.bottom_margin = Inches(0.8)
-    section.left_margin = Inches(0.8)
-    section.right_margin = Inches(0.8)
+    numbering = doc.part.numbering_part.element
+    state = {"h2_num": None}
 
-    # Base normal font
-    normal_style = doc.styles['Normal']
-    normal_style.font.name = 'Times New Roman'
-    normal_style.font.size = Pt(10)
-    normal_style.font.color.rgb = RGBColor(15, 23, 42)
+    # Level-1 numerals ("III.") are wider than the template's 0.2" tab, which glued them to the heading
+    # text; use a space after the number instead (numbering definition only, style unchanged).
+    for abs_num in numbering.findall(qn('w:abstractNum')):
+        if abs_num.get(qn('w:abstractNumId')) == '0':
+            lvl0 = abs_num.find(qn('w:lvl'))
+            if lvl0 is not None and lvl0.find(qn('w:suff')) is None:
+                suff = OxmlElement('w:suff')
+                suff.set(qn('w:val'), 'space')
+                lvl0.find(qn('w:pStyle')).addnext(suff)
+
+    def style_of(name):
+        return doc.styles[name]
+
+    def new_h2_list():
+        """Create a list instance of the template's level-2 heading numbering that restarts at A."""
+        used = [int(n.get(qn('w:numId'))) for n in numbering.findall(qn('w:num'))]
+        num_id = max(used) + 1
+        num = parse_xml(
+            f'<w:num {nsdecls("w")} w:numId="{num_id}"><w:abstractNumId w:val="{H2_ABSTRACT}"/>'
+            f'<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>'
+        )
+        numbering.append(num)
+        return num_id
+
+    def set_num(p, num_id):
+        numPr = p._p.get_or_add_pPr().get_or_add_numPr()
+        numPr.get_or_add_ilvl().val = 0
+        numPr.get_or_add_numId().val = num_id
+
+    def add_field(p, instr, cached, size=None):
+        """Simple field (e.g. SEQ) with its cached result, as used by the template captions."""
+        fld = OxmlElement('w:fldSimple')
+        fld.set(qn('w:instr'), instr)
+        r = OxmlElement('w:r')
+        rPr = OxmlElement('w:rPr')
+        if size:
+            sz = OxmlElement('w:sz')
+            sz.set(qn('w:val'), str(int(size * 2)))
+            rPr.append(sz)
+        r.append(rPr)
+        t = OxmlElement('w:t')
+        t.text = cached
+        r.append(t)
+        fld.append(r)
+        p._p.append(fld)
 
     def add_title(text):
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_before = Pt(0)
-        p.paragraph_format.space_after = Pt(10)
-        p.paragraph_format.line_spacing = 1.12
-        run = p.add_run(text)
-        run.font.name = 'Times New Roman'
-        run.font.size = Pt(21)
-        run.font.bold = True
-        run.font.color.rgb = RGBColor(15, 23, 42)
+        p = doc.add_paragraph(style=style_of('IEEE Title'))
+        p.add_run(text)
+        doc.add_paragraph(style=style_of('IEEE Title'))  # blank line, as in the template
         return p
 
     def add_author_block():
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_before = Pt(2)
-        p.paragraph_format.space_after = Pt(2)
-        r_auth = p.add_run("Kodi Vishruth Aithal, Thilak N, Vinaya Kumar B, Vishal Gowda B, Ranjitha R*")
-        r_auth.font.name = 'Times New Roman'
-        r_auth.font.size = Pt(11)
-        r_auth.font.bold = True
+        p = doc.add_paragraph(style=style_of('IEEE Title'))
+        r = p.add_run("Kodi Vishruth Aithal, Thilak N, Vinaya Kumar B, Vishal Gowda B, Ranjitha R*")
+        r.font.size = Pt(11)  # template: author name 11 pt Regular
 
-        p_aff = doc.add_paragraph()
-        p_aff.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_aff.paragraph_format.space_before = Pt(0)
-        p_aff.paragraph_format.space_after = Pt(2)
-        r_aff = p_aff.add_run("Department of Computer Science and Engineering, Don Bosco Institute of Technology, Bangalore, Karnataka, India")
-        r_aff.font.name = 'Times New Roman'
-        r_aff.font.size = Pt(10)
-        r_aff.font.italic = True
-
-        p_em = doc.add_paragraph()
-        p_em.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_em.paragraph_format.space_before = Pt(0)
-        p_em.paragraph_format.space_after = Pt(2)
-        r_em = p_em.add_run("Emails: {aithalvishruth, gowdathilakn, bvinaykumar70, vishalgb2005}@gmail.com, *ranjitha.r@dbit.co.in")
-        r_em.font.name = 'Times New Roman'
-        r_em.font.size = Pt(9.5)
-        r_em.font.italic = True
-
-        p_cor = doc.add_paragraph()
-        p_cor.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_cor.paragraph_format.space_before = Pt(0)
-        p_cor.paragraph_format.space_after = Pt(10)
-        r_cor = p_cor.add_run("(*Corresponding Author & Faculty Mentor)")
-        r_cor.font.name = 'Times New Roman'
-        r_cor.font.size = Pt(9)
-        r_cor.font.bold = True
+        for line in (
+            "Department of Computer Science and Engineering, Don Bosco Institute of Technology, Bangalore, Karnataka, India",
+            "Emails: {aithalvishruth, gowdathilakn, bvinaykumar70, vishalgb2005}@gmail.com, *ranjitha.r@dbit.co.in",
+            "(*Corresponding Author & Faculty Mentor)",
+        ):
+            q = doc.add_paragraph(style=style_of('IEEE Author Affiliation'))
+            q.add_run(line)
+        doc.add_paragraph(style=style_of('Normal'))
 
     def add_abstract(text, keywords):
-        p_abs = doc.add_paragraph()
-        p_abs.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        p_abs.paragraph_format.space_before = Pt(3)
-        p_abs.paragraph_format.space_after = Pt(3)
-        p_abs.paragraph_format.line_spacing = 1.05
+        p_abs = doc.add_paragraph(style=style_of('IEEE Abtract'))
+        r_h = p_abs.add_run("Abstract")
+        r_h.font.size = Pt(10)
+        r_h.font.bold = True
+        r_c = p_abs.add_run(": ")
+        r_c.font.size = Pt(10)
+        r_c.font.bold = False
+        r_b = p_abs.add_run(text)
+        r_b.font.size = Pt(10)
+        r_b.font.bold = False
 
-        r_hdr = p_abs.add_run("Abstract— ")
-        r_hdr.font.name = 'Times New Roman'
-        r_hdr.font.size = Pt(10)
-        r_hdr.font.bold = True
-
-        r_body = p_abs.add_run(text)
-        r_body.font.name = 'Times New Roman'
-        r_body.font.size = Pt(10)
-
-        p_kw = doc.add_paragraph()
+        p_kw = doc.add_paragraph(style=style_of('Normal'))
         p_kw.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        p_kw.paragraph_format.space_before = Pt(2)
-        p_kw.paragraph_format.space_after = Pt(10)
-        p_kw.paragraph_format.line_spacing = 1.05
-
-        r_kwh = p_kw.add_run("Keywords: ")
-        r_kwh.font.name = 'Times New Roman'
-        r_kwh.font.size = Pt(10)
-        r_kwh.font.bold = True
-        r_kwh.font.italic = True
-
-        r_kwt = p_kw.add_run(keywords)
-        r_kwt.font.name = 'Times New Roman'
-        r_kwt.font.size = Pt(10)
-        r_kwt.font.italic = True
+        r_kh = p_kw.add_run("Keywords")
+        r_kh.font.size = Pt(10)
+        r_kh.font.bold = True
+        r_kc = p_kw.add_run(": ")
+        r_kc.font.size = Pt(10)
+        r_kt = p_kw.add_run(keywords)
+        r_kt.font.size = Pt(10)
+        doc.add_paragraph(style=style_of('Normal'))
 
     def add_h1(text):
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_before = Pt(10)
-        p.paragraph_format.space_after = Pt(3)
+        """Level-1 heading in the template style. Numbering (I., II., ...) comes from the style."""
+        numbered = re.match(r'^[IVX]+\.\s+', text) is not None
+        p = doc.add_paragraph(style=style_of('IEEE Heading 1'))
         p.paragraph_format.keep_with_next = True
-        run = p.add_run(text)
-        run.font.name = 'Times New Roman'
-        run.font.size = Pt(10.5)
+        run = p.add_run(re.sub(r'^[IVX]+\.\s+', '', text))
         run.font.bold = True
+        if numbered:
+            state["h2_num"] = new_h2_list()  # level-2 letters restart in every numbered section
+        else:
+            set_num(p, 0)  # ACKNOWLEDGMENT, REFERENCES, BIOGRAPHY are not numbered
         return p
 
     def add_h2(text):
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        p.paragraph_format.space_before = Pt(7)
-        p.paragraph_format.space_after = Pt(2)
+        p = doc.add_paragraph(style=style_of('IEEE Heading 2'))
         p.paragraph_format.keep_with_next = True
-        run = p.add_run(text)
-        run.font.name = 'Times New Roman'
-        run.font.size = Pt(10)
-        run.font.bold = True
-        run.font.italic = True
+        set_num(p, state["h2_num"])
+        p.add_run(re.sub(r'^[A-H]\.\s+', '', text))
         return p
 
     def add_p(text, bold_prefix=None, indent=True):
@@ -179,119 +182,87 @@ def build_paper():
                 q.alignment = WD_ALIGN_PARAGRAPH.LEFT
                 q.paragraph_format.left_indent = Inches(0.25)
             return first
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        p.paragraph_format.space_before = Pt(1.5)
-        p.paragraph_format.space_after = Pt(2)
-        p.paragraph_format.line_spacing = 1.05
-        if indent:
-            p.paragraph_format.first_line_indent = Inches(0.18)
-        if bold_prefix:
+        p = doc.add_paragraph(style=style_of('IEEE Paragraph'))
+        if not indent:
+            p.paragraph_format.first_line_indent = Inches(0)
+        if bold_prefix:  # level-3 / run-in heading: italic, ends with a colon (template)
             r_pre = p.add_run(bold_prefix)
-            r_pre.font.name = 'Times New Roman'
-            r_pre.font.size = Pt(10)
-            r_pre.font.bold = True
-        run = p.add_run(text)
-        run.font.name = 'Times New Roman'
-        run.font.size = Pt(10)
+            r_pre.font.italic = True
+        p.add_run(text)
         return p
 
     def add_algo_box(title, text):
-        p_hdr = doc.add_paragraph()
+        p_hdr = doc.add_paragraph(style=style_of('IEEE Paragraph'))
         p_hdr.paragraph_format.space_before = Pt(6)
         p_hdr.paragraph_format.space_after = Pt(2)
+        p_hdr.paragraph_format.first_line_indent = Inches(0)
         p_hdr.paragraph_format.keep_with_next = True
-        r_h = p_hdr.add_run(title)
-        r_h.font.name = 'Times New Roman'
-        r_h.font.size = Pt(9.5)
-        r_h.font.bold = True
+        p_hdr.add_run(title).font.bold = True
 
-        p_box = doc.add_paragraph()
+        p_box = doc.add_paragraph(style=style_of('IEEE Paragraph'))
         p_box.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        p_box.paragraph_format.first_line_indent = Inches(0)
         p_box.paragraph_format.left_indent = Inches(0.15)
         p_box.paragraph_format.right_indent = Inches(0.15)
-        p_box.paragraph_format.space_before = Pt(1)
         p_box.paragraph_format.space_after = Pt(6)
-        p_box.paragraph_format.line_spacing = 1.01
         r_b = p_box.add_run(text)
-        r_b.font.name = 'Courier New'
+        r_b.font.name = 'Courier New'  # template allows other fonts for special purposes
         r_b.font.size = Pt(8.5)
+        p_box.paragraph_format.keep_together = True
 
     def add_figure(img_path, caption, width_in=5.4):
-        if os.path.exists(img_path):
-            p_img = doc.add_paragraph()
-            p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            p_img.paragraph_format.space_before = Pt(6)
-            p_img.paragraph_format.space_after = Pt(2)
-            p_img.paragraph_format.keep_with_next = True
-            r_img = p_img.add_run()
-            r_img.add_picture(img_path, width=Inches(width_in))
+        if not os.path.exists(img_path):
+            return
+        p_img = doc.add_paragraph(style=style_of('IEEE Figure'))
+        p_img.paragraph_format.space_before = Pt(6)
+        p_img.paragraph_format.keep_with_next = True
+        p_img.add_run().add_picture(img_path, width=Inches(width_in))
 
-            p_cap = doc.add_paragraph()
-            p_cap.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            p_cap.paragraph_format.space_before = Pt(1.5)
-            p_cap.paragraph_format.space_after = Pt(6)
-            p_cap.paragraph_format.line_spacing = 1.01
-            r_cap = p_cap.add_run(caption)
-            r_cap.font.name = 'Times New Roman'
-            r_cap.font.size = Pt(9)
+        m = re.match(r'^Fig\.\s+(\d+)\.\s+(.*)$', caption, re.S)
+        p_cap = doc.add_paragraph(style=style_of('IEEE Figure Caption Multi-Lines'))
+        if len(m.group(2)) < 95:
+            p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER  # template: one-line captions centred
+        p_cap.add_run("Fig. ").font.size = Pt(10)
+        add_field(p_cap, ' SEQ Fig. \\* ARABIC \\* MERGEFORMAT ', m.group(1), size=10)
+        p_cap.add_run(".  " + m.group(2)).font.size = Pt(10)
 
     def add_table_data(caption, headers, rows, highlight_row=None, highlight_col=None, widths=None):
-        p_cap = doc.add_paragraph()
-        p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_cap.paragraph_format.space_before = Pt(8)
-        p_cap.paragraph_format.space_after = Pt(2.5)
+        m = re.match(r'^TABLE\s+([IVX]+)\s+(.*)$', caption, re.S)
+        p_cap = doc.add_paragraph(style=style_of('IEEE Table Caption'))
         p_cap.paragraph_format.keep_with_next = True
-        r_cap = p_cap.add_run(caption)
-        r_cap.font.name = 'Times New Roman'
-        r_cap.font.size = Pt(9.5)
-        r_cap.font.bold = True
+        p_cap.add_run("TABLE ").font.size = Pt(10)
+        add_field(p_cap, ' SEQ TABLE \\* ROMAN \\* MERGEFORMAT ', m.group(1), size=10)
+        p_cap.add_run("   " + m.group(2)).font.size = Pt(10)
 
         tbl = doc.add_table(rows=len(rows) + 1, cols=len(headers))
         tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
         set_table_borders(tbl)
         for tr in tbl.rows:
-            trPr = tr._tr.get_or_add_trPr()
-            trPr.append(OxmlElement('w:cantSplit'))
+            tr._tr.get_or_add_trPr().append(OxmlElement('w:cantSplit'))
         if widths:
             tbl.autofit = False
             for tr in tbl.rows:
                 for c_i, w_in in enumerate(widths):
                     tr.cells[c_i].width = Inches(w_in)
 
-        # Header
-        hdr_row = tbl.rows[0]
         for c_idx, title in enumerate(headers):
-            cell = hdr_row.cells[c_idx]
-            cell.text = title
+            cell = tbl.rows[0].cells[c_idx]
             p_cell = cell.paragraphs[0]
-            p_cell.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            set_cell_margins(cell, top=65, bottom=65, left=80, right=80)
-            set_cell_shading(cell, "E2E8F0")
-            r_c = p_cell.runs[0]
-            r_c.font.name = 'Times New Roman'
-            r_c.font.size = Pt(8.5)
-            r_c.font.bold = True
+            p_cell.style = style_of('IEEE Table Header Centered')
+            p_cell.add_run(title).font.size = Pt(CELL_PT)
+            set_cell_margins(cell, top=40, bottom=40, left=70, right=70)
 
-        # Data rows
         for r_idx, row_data in enumerate(rows):
             row = tbl.rows[r_idx + 1]
             for c_idx, val in enumerate(row_data):
                 cell = row.cells[c_idx]
-                cell.text = str(val)
                 p_cell = cell.paragraphs[0]
-                set_cell_margins(cell, top=55, bottom=55, left=80, right=80)
-                r_c = p_cell.runs[0]
-                r_c.font.name = 'Times New Roman'
-                r_c.font.size = Pt(8.5)
-                
-                # Alignments
+                p_cell.style = style_of('IEEE Table Cell')
+                r_c = p_cell.add_run(str(val))
+                r_c.font.size = Pt(CELL_PT)
+                set_cell_margins(cell, top=30, bottom=30, left=70, right=70)
                 if c_idx > 0 and len(headers) > 3:
                     p_cell.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                else:
-                    p_cell.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-                # Shading / Highlights
                 if highlight_row is not None and r_idx == highlight_row:
                     set_cell_shading(cell, "FEF3C7")
                     r_c.font.bold = True
@@ -304,9 +275,10 @@ def build_paper():
                 for para in cell.paragraphs:
                     para.paragraph_format.keep_with_next = True
 
-        p_spacer = doc.add_paragraph()
-        p_spacer.paragraph_format.space_before = Pt(1)
-        p_spacer.paragraph_format.space_after = Pt(3)
+        p_spacer = doc.add_paragraph(style=style_of('IEEE Paragraph'))
+        p_spacer.paragraph_format.first_line_indent = Inches(0)
+        p_spacer.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        p_spacer.paragraph_format.line_spacing = Pt(6)
 
     # ---------------------------------------------------------------------------
     # DOCUMENT SECTIONS
@@ -544,7 +516,7 @@ def build_paper():
         ["autosec_get_fix_recipe", "finding_title (required), framework", "Returns static recipes (nodejs, python, nginx, waf) and a Markdown ticket for a title keyword.", "Keyword lookup; seven finding classes plus a generic fallback."],
         ["autosec_verify_fix", "target (required), vulnerability_type (required)", "Re-runs a scan and counts findings whose title matches the type; reports RESOLVED or STILL_VULNERABLE.", "Scan runs in mock mode, so the live target is not re-tested."]
     ]
-    add_table_data("TABLE II   AUTOSECAUDIT MCP TOOLS AND THEIR CURRENT LIMITATIONS", t2_headers, t2_rows, widths=[1.3, 1.4, 2.0, 2.0])
+    add_table_data("TABLE II   AUTOSECAUDIT MCP TOOLS AND THEIR CURRENT LIMITATIONS", t2_headers, t2_rows, widths=[1.6, 1.35, 1.9, 1.8])
 
     add_p(
         "The server therefore supports recipe delivery and scan access for an AI assistant. It does not edit source files, and this paper does not demonstrate that a recipe or an agent-applied patch removes a vulnerability or avoids regressions; no patch-success rate is reported."
@@ -668,14 +640,8 @@ def build_paper():
         "[19] DefectDojo, \"About Deduplication\" and \"Reimport,\" DefectDojo documentation. Available: https://docs.defectdojo.com/"
     ]
     for r in refs:
-        p_ref = doc.add_paragraph()
-        p_ref.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        p_ref.paragraph_format.space_before = Pt(1)
-        p_ref.paragraph_format.space_after = Pt(1.5)
-        p_ref.paragraph_format.line_spacing = 1.01
-        run_r = p_ref.add_run(r)
-        run_r.font.name = 'Times New Roman'
-        run_r.font.size = Pt(8)
+        p_ref = doc.add_paragraph(style=style_of('IEEE Reference Item'))
+        p_ref.add_run(re.sub(r'^\[\d+\]\s*', '', r))  # [n] label comes from the style's numbering
 
     # 12. BIOGRAPHY
     add_h1("BIOGRAPHY")
@@ -694,7 +660,7 @@ def build_paper():
     try:
         wdoc = word.Documents.Open(docx_path)
         wdoc.SaveAs(pdf_path, FileFormat=17) # 17 = wdFormatPDF
-        wdoc.Close()
+        wdoc.Close(SaveChanges=0)  # keep the python-docx file as built; do not let Word re-save it
         shutil.copy(pdf_path, root_pdf)
         print(f"Generated clean PDF: {pdf_path}")
         print(f"PDF size: {os.path.getsize(pdf_path)} bytes")

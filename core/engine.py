@@ -20,6 +20,7 @@ from core.utils import (
     is_target_allowed,
 )
 from core.crawler import WebCrawler
+from core.spa_detector import SPADetector
 from core.http_client import ScanHttpClient
 from core.politeness import PolitenessEngine, DEFAULT_REQUEST_INTERVAL_MS
 from core.timing import global_timing_controller
@@ -42,6 +43,7 @@ class Engine:
         self.plugins: List[Any] = []
         self.scan_results: List[ScanResult] = []
         self.target: str = ""
+        self.spa_detector: Optional[SPADetector] = None
 
         if politeness is not None:
             client_politeness = politeness
@@ -201,6 +203,25 @@ class Engine:
                 plugin.set_http_client(self.http_client)
             if hasattr(plugin, "set_auth"):
                 plugin.set_auth(headers=combined_headers, cookies=auth_cookies)
+            if self.spa_detector and hasattr(plugin, "set_spa_detector"):
+                plugin.set_spa_detector(self.spa_detector)
+
+    def calibrate_spa_detector(self, target: Optional[str] = None) -> Optional[SPADetector]:
+        """Calibrate SPA soft-404 detector once for target and inject into loaded plugins."""
+        tgt = target or self.target
+        if not tgt:
+            return None
+        try:
+            base_url = tgt.split("?")[0].rstrip("/")
+            session = self.http_client.session if self.http_client else None
+            self.spa_detector = SPADetector(base_url=base_url, session=session)
+            for plugin in self.plugins:
+                if hasattr(plugin, "set_spa_detector"):
+                    plugin.set_spa_detector(self.spa_detector)
+            return self.spa_detector
+        except Exception as e:
+            logger.debug(f"[Engine] SPA calibration failed for {tgt}: {e}")
+            return None
 
     def set_previous_report(self, report_path: str) -> bool:
         """Load a previous scan report for delta comparison."""
@@ -288,12 +309,18 @@ class Engine:
                         "method": m,
                     })
 
+        # Calibrate SPA soft-404 detector once in real mode and share across plugins
+        if not self.mock_mode and self.target and not self.spa_detector:
+            self.calibrate_spa_detector()
+
         # Configure and inject shared HTTP client, auth, discovered endpoints, and dev environment
         self.setup_shared_http_client(auth_headers=auth_headers, auth_cookies=auth_cookies)
         for plugin in self.plugins:
             plugin.set_discovered_endpoints(all_endpoints)
             if self.dev_environment and hasattr(plugin, "set_dev_environment"):
                 plugin.set_dev_environment(self.dev_environment)
+            if self.spa_detector and hasattr(plugin, "set_spa_detector"):
+                plugin.set_spa_detector(self.spa_detector)
 
         timeout = getattr(config, "SCAN_TIMEOUT", 300) if self.scan_timeout is None else self.scan_timeout
         if self.http_client:

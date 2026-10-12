@@ -74,6 +74,10 @@ class BaseScanner(ABC):
         client = self._get_http_client()
         return client.session
 
+    def set_spa_detector(self, spa_detector: SPADetector) -> None:
+        """Set shared SPADetector calibrated by Engine."""
+        self._spa_detector = spa_detector
+
     def get_spa_detector(self, session: Optional[requests.Session] = None) -> SPADetector:
         """Lazily initialize and return the SPADetector for the target."""
         if self._spa_detector is None:

@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 import re
@@ -11,12 +12,78 @@ from core.models import Finding
 logger = logging.getLogger(__name__)
 
 
-class Enricher:
-    """Enrich findings with CVE data from external APIs."""
+DEFAULT_CACHE_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "cve_cache.json"
+)
 
-    def __init__(self, mock_mode: Optional[bool] = None):
+
+class Enricher:
+    """Enrich findings with CVE data from external APIs with disk caching and TTL."""
+
+    def __init__(
+        self,
+        mock_mode: Optional[bool] = None,
+        cache_path: Optional[str] = DEFAULT_CACHE_PATH,
+        ttl_days: int = 30,
+    ):
         self.cve_cache: Dict[str, Dict[str, Any]] = {}
-        self.mock_mode = mock_mode if mock_mode is not None else getattr(config, 'MOCK_MODE', False)
+        self.mock_mode = (
+            bool(mock_mode) if mock_mode is not None else bool(getattr(config, "MOCK_MODE", False))
+        )
+        if cache_path and not os.path.isabs(cache_path):
+            self.cache_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), cache_path
+            )
+        else:
+            self.cache_path = cache_path
+        self.ttl_seconds = ttl_days * 86400
+        if self.cache_path:
+            self._load_disk_cache()
+
+    def _load_disk_cache(self) -> None:
+        """Load valid, unexpired CVE entries from disk cache."""
+        if not self.cache_path or not os.path.exists(self.cache_path):
+            return
+        try:
+            with open(self.cache_path, "r", encoding="utf-8") as f:
+                disk_data = json.load(f)
+            now = time.time()
+            for cve_id, entry in disk_data.items():
+                if isinstance(entry, dict) and "data" in entry:
+                    ts = entry.get("timestamp", 0)
+                    data = entry.get("data")
+                    if now - ts <= self.ttl_seconds and data and (data.get("cvss_score") is not None or data.get("references")):
+                        self.cve_cache[cve_id] = data
+                elif isinstance(entry, dict) and (entry.get("cvss_score") is not None or entry.get("references")):
+                    self.cve_cache[cve_id] = entry
+        except Exception as e:
+            logger.debug(f"[Enricher] Failed to load disk cache from {self.cache_path}: {e}")
+
+    def _save_disk_cache_entry(self, cve_id: str, cve_data: Dict[str, Any]) -> None:
+        """Persist a newly fetched CVE entry to disk cache with current timestamp."""
+        if not self.cache_path or not cve_data:
+            return
+        if cve_data.get("cvss_score") is None and not cve_data.get("references"):
+            return
+        try:
+            cache_dir = os.path.dirname(os.path.abspath(self.cache_path))
+            if cache_dir:
+                os.makedirs(cache_dir, exist_ok=True)
+            disk_data = {}
+            if os.path.exists(self.cache_path):
+                try:
+                    with open(self.cache_path, "r", encoding="utf-8") as f:
+                        disk_data = json.load(f)
+                except Exception:
+                    disk_data = {}
+            disk_data[cve_id] = {
+                "timestamp": time.time(),
+                "data": cve_data,
+            }
+            with open(self.cache_path, "w", encoding="utf-8") as f:
+                json.dump(disk_data, f, indent=2)
+        except Exception as e:
+            logger.debug(f"[Enricher] Failed to save disk cache to {self.cache_path}: {e}")
 
     def enrich(self, findings: List[Finding]) -> List[Finding]:
         """Enrich findings with CVE data."""
@@ -43,6 +110,10 @@ class Enricher:
         if cve_id in self.cve_cache:
             return self.cve_cache[cve_id]
 
+        # In mock mode, make zero HTTP calls
+        if self.mock_mode:
+            return None
+
         try:
             cve_data = self._fetch_from_nvd(cve_id)
             if cve_data:
@@ -64,12 +135,18 @@ class Enricher:
     def _fetch_from_nvd(self, cve_id: str) -> Optional[Dict[str, Any]]:
         url = f"{config.NVD_API_URL}?cveId={cve_id}"
         headers = {"Accept": "application/json"}
+        api_key = os.environ.get("NVD_API_KEY") or getattr(config, "NVD_API_KEY", None)
+        if api_key:
+            headers["apiKey"] = api_key
         
         try:
             response = requests.get(url, headers=headers, timeout=2)
             if response.status_code == 200:
                 data = response.json()
-                return self._parse_nvd_response(data)
+                parsed = self._parse_nvd_response(data)
+                if parsed:
+                    self._save_disk_cache_entry(cve_id, parsed)
+                return parsed
             logger.debug(f"NVD API returned HTTP {response.status_code} for {cve_id}")
         except requests.RequestException as e:
             logger.debug(f"NVD API network error for {cve_id}: {e}")
@@ -110,6 +187,9 @@ class Enricher:
                 if ref_url:
                     references.append(ref_url)
 
+            if cvss_score is None and not references:
+                return None
+
             return {
                 "cvss_score": cvss_score,
                 "cvss_vector": cvss_vector,
@@ -126,10 +206,16 @@ class Enricher:
             response = requests.get(url, timeout=2)
             if response.status_code == 200:
                 data = response.json()
-                return {
-                    "cvss_score": data.get("cvss"),
-                    "references": [data.get("id")] if data.get("id") else []
+                cvss = data.get("cvss") if isinstance(data, dict) else None
+                ref_id = data.get("id") if isinstance(data, dict) else None
+                if cvss is None and not ref_id:
+                    return None
+                parsed = {
+                    "cvss_score": cvss,
+                    "references": [ref_id] if ref_id else []
                 }
+                self._save_disk_cache_entry(cve_id, parsed)
+                return parsed
             logger.debug(f"CIRCL API returned HTTP {response.status_code} for {cve_id}")
         except requests.RequestException as e:
             logger.debug(f"CIRCL API network error for {cve_id}: {e}")

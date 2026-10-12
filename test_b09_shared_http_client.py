@@ -529,12 +529,12 @@ class TestB09SharedHttpClient(unittest.TestCase):
         with patch.object(Enricher, "_fetch_from_nvd", side_effect=mock_fetch), \
              patch.object(Enricher, "_fetch_from_circl", return_value=None):
             # First instance encounters transient network error
-            e1 = Enricher()
+            e1 = Enricher(mock_mode=False, cache_path=None)
             res1 = e1._fetch_cve_data("CVE-2021-99999")
             self.assertIsNone(res1)
 
             # Second instance (e.g. subsequent scan) must retry and return data, NOT cached None
-            e2 = Enricher()
+            e2 = Enricher(mock_mode=False, cache_path=None)
             res2 = e2._fetch_cve_data("CVE-2021-99999")
             self.assertIsNotNone(res2)
             self.assertEqual(res2.get("cvss_score"), 7.5)

@@ -29,13 +29,14 @@ Run: 2026-10-11. Scripts live in `paper/revision_audit/`; raw output of the last
 ## 3. Delta sequence (`verify_delta_sequence.py`: pass)
 Repository `DeltaAnalyzer` on a synthetic identifier sequence returns 3 NEW / 10 FIXED / 37 UNCHANGED, then 0 / 14 / 26. Edge cases reproduced: renumbered finding reported FIXED while still present; same id with different content reported UNCHANGED; empty id dropped.
 
-## 4. Document checks (`validate_final.py`: **69/69 pass**)
+## 4. Document checks (`validate_final.py`: **80/80 pass**)
 - Authors, affiliation, corresponding-author mark, emails, acknowledgment preserved.
 - 4 tables, 4 figures embedded (also 4 images in the PDF), all captions present, all figures referenced in text.
 - Table III and IV recomputed from the DOCX tables themselves; headline numbers present in abstract and conclusion.
 - References: 19 entries, every [1]–[19] cited in the body, none out of range.
 - Banned or negated claims absent: "false alarms are eliminated", "100 % classification", "Autonomous AI Remediation", "guarantee", unqualified "compound-key deduplication", "breadth-first", `autosec_list_scanners`, offline CVE dictionary, "weak HMAC secrets", "stored XSS", `3*sigma`.
 - Timing formula in paper matches code (ρ = 0.70, 0.35τ, σ unused); thread default (4) disclosed; Table II has exactly 4 tools.
+- IJARCCE template: built on `IJARCCE-Paper-Format.docx` (IEEE Title/Heading/Paragraph/Reference styles, automatic heading and reference numbering, SEQ caption fields, journal footer with PAGE field (no running header), one A4 section with 0.8 in margins); fonts Times New Roman except Courier New in algorithm boxes.
 - PDF: 11 pages, accented characters (Doupé) intact, no replacement characters.
 
 ## 5. Visual inspection of rendered pages (80 dpi)

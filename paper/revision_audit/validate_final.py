@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import docx
+from docx.oxml.ns import qn
 
 DOCX = "AutoSecAudit_Research_Paper_IJARCCE.docx"
 PDF = "AutoSecAudit_Research_Paper_IJARCCE.pdf"
@@ -19,12 +20,14 @@ def chk(name, ok, detail=""):
 
 
 d = docx.Document(DOCX)
-paras = [p.text for p in d.paragraphs]
+# paragraph text including field results (caption numbers are SEQ fields in the IJARCCE template)
+paras = [p._p.xpath("string(.)") for p in d.paragraphs]
+styles = [p.style.name for p in d.paragraphs]
 body = "\n".join(paras)
 idx_ref = next(i for i, t in enumerate(paras) if t.strip() == "REFERENCES")
 idx_bio = next(i for i, t in enumerate(paras) if t.strip() == "BIOGRAPHY")
 main_text = "\n".join(paras[:idx_ref])
-ref_text = paras[idx_ref + 1:idx_bio]
+ref_text = [t for t, st in zip(paras[idx_ref + 1:idx_bio], styles[idx_ref + 1:idx_bio]) if st == "IEEE Reference Item"]
 
 # ---- preserved front matter
 chk("author names preserved", "Kodi Vishruth Aithal, Thilak N, Vinaya Kumar B, Vishal Gowda B, Ranjitha R*" in body)
@@ -51,7 +54,7 @@ for m in re.finditer(r"\[(\d+(?:[,\s\-]+\d+)*)\]", cite_text):
             cited.add(int(part))
 for m in re.finditer(r"\[(\d+)\],\s*\[(\d+)\]", cite_text):
     cited.update({int(m.group(1)), int(m.group(2))})
-n_refs = len([r for r in ref_text if re.match(r"\[\d+\]", r.strip())])
+n_refs = len([r for r in ref_text if r.strip()])  # [n] labels come from the template list numbering
 chk("reference list size", n_refs == 19, str(n_refs))
 chk("all references 1..19 cited in body", set(range(1, 20)) <= cited, "missing: " + str(sorted(set(range(1, 20)) - cited)))
 chk("no citation beyond list", max(cited) <= n_refs, str(max(cited)))
@@ -84,7 +87,7 @@ chk("delta arithmetic 47-10+3=40, 40-14=26", 47 - 10 + 3 == 40 and 40 - 14 == 26
 
 # ---- cross-section agreement of headline numbers
 abstract = next(t for t in paras if t.startswith("Abstract"))
-concl_i = next(i for i, t in enumerate(paras) if t.strip().startswith("VI."))
+concl_i = next(i for i, t in enumerate(paras) if t.strip() == "CONCLUSION AND FUTURE WORK")
 conclusion = paras[concl_i + 1]
 for token in ("184.2", "64.8%", "2.84x", "76", "47", "97.9%", "88.5%", "52"):
     chk(f"abstract contains {token}", token in abstract)
@@ -110,6 +113,28 @@ chk("timing formula matches code (0.70, 0.35; no 3*sigma)", "rho = 0.70" in main
 chk("thread default disclosed (4)", "default 4" in main_text)
 chk("Table II lists exactly 4 MCP tools", len(d.tables[1].rows) == 5)
 
+# ---- IJARCCE template compliance (styles, numbering, header/footer, page setup)
+import zipfile
+from collections import Counter
+sty = Counter(styles)
+chk("built on the IJARCCE template styles", all(k in sty for k in ("IEEE Title", "IEEE Author Affiliation", "IEEE Abtract", "IEEE Heading 1", "IEEE Heading 2", "IEEE Paragraph", "IEEE Figure", "IEEE Table Caption", "IEEE Reference Item")), str(dict(sty)))
+chk("one IEEE Title for the title plus author line", paras[0].startswith("AutoSecAudit:") and styles[0] == "IEEE Title" and styles[2] == "IEEE Title")
+chk("6 numbered level-1 sections + Acknowledgment, References, Biography", sty["IEEE Heading 1"] == 9, str(sty["IEEE Heading 1"]))
+chk("no manual numerals in headings (numbering comes from styles)", not any(re.match(r"^([IVX]+|[A-H])\.\s", t) for t, st in zip(paras, styles) if st in ("IEEE Heading 1", "IEEE Heading 2")))
+chk("references use the template reference list style (19)", sty["IEEE Reference Item"] == 19, str(sty["IEEE Reference Item"]))
+chk("captions use template caption styles (4 + 4)", sty["IEEE Table Caption"] == 4 and sty["IEEE Figure Caption Multi-Lines"] == 4)
+sec = d.sections[0]
+chk("single A4 section, 0.8 inch margins", len(d.sections) == 1 and round(sec.page_width.inches, 2) == 8.27 and all(round(m.inches, 2) == 0.8 for m in (sec.left_margin, sec.right_margin, sec.top_margin, sec.bottom_margin)))
+zf = zipfile.ZipFile(DOCX)
+hdr = " ".join(zf.read(n).decode("utf8", "ignore") for n in zf.namelist() if n.startswith("word/header"))
+ftr = " ".join(zf.read(n).decode("utf8", "ignore") for n in zf.namelist() if n.startswith("word/footer"))
+chk("no running header (placeholders removed)", not d.sections[0]._sectPr.findall(qn("w:headerReference")) and "Vol. 15" not in re.sub(r"<[^>]+>", "", " ".join(zf.read(n).decode("utf8", "ignore") for n in zf.namelist() if n == "word/document.xml")))
+chk("IJARCCE footer licence line with PAGE field", "Creative Commons Attribution 4.0" in re.sub(r"<[^>]+>", "", ftr) and "PAGE" in ftr)
+fonts = Counter(r.font.name for p in d.paragraphs for r in p.runs if r.font.name)
+chk("fonts: Times New Roman (style default) plus Courier New only for code boxes", set(fonts) <= {"Courier New"}, str(dict(fonts)))
+sizes = {r.font.size.pt for p, st in zip(d.paragraphs, styles) if st in ("IEEE Heading 1", "IEEE Heading 2", "IEEE Paragraph") for r in p.runs if r.font.size and r.font.name != "Courier New"}
+chk("body/heading runs carry no size override (10 pt comes from styles)", sizes <= {10.0}, str(sizes))
+
 # ---- PDF
 out = subprocess.run(["pdfinfo", PDF], capture_output=True, text=True).stdout
 pages = int(re.search(r"Pages:\s+(\d+)", out).group(1))
@@ -119,7 +144,9 @@ for token in ("TABLE I ", "TABLE II ", "TABLE III ", "TABLE IV ", "Fig. 1.", "Fi
     chk(f"PDF text contains {token.strip()}", token in txt)
 chk("PDF has no replacement characters", "�" not in txt)
 imgs = subprocess.run(["pdfimages", "-list", PDF], capture_output=True, text=True).stdout.strip().splitlines()
-chk("PDF contains 4 figure images", len(imgs) - 2 == 4, str(len(imgs) - 2))
+# the IJARCCE header repeats a small logo on every page; figures are the wide images
+figs = [l for l in imgs[2:] if int(l.split()[3]) >= 500]
+chk("PDF contains 4 figure images", len(figs) == 4, str(len(figs)))
 
 print(f"\n{sum(results)}/{len(results)} checks passed")
 sys.exit(0 if all(results) else 1)

@@ -187,7 +187,7 @@ def _extract_query_params(url: str) -> List[str]:
 # API endpoint patterns detected in JavaScript
 # ---------------------------------------------------------------------------
 _API_PATTERN = re.compile(
-    r"""(?:fetch|axios|\.get|\.post|\.put|\.delete|XMLHttpRequest|\.ajax)\s*\(\s*['"`]([/][^'"`\s\?#]{2,})(?:\?([^'"`\s#]+))?['"`]""",
+    r"""(?:(fetch|axios|XMLHttpRequest|\.ajax)|\.(get|post|put|delete))\s*\(\s*['"`]([/][^'"`\s\?#]{2,})(?:\?([^'"`\s#]+))?['"`]""",
     re.IGNORECASE,
 )
 
@@ -205,19 +205,26 @@ _HREF_PATTERN = re.compile(
 def extract_js_endpoints(text: str, source_path: str = "") -> List[DiscoveredEndpoint]:
     """
     Extract API endpoints and parameter names from raw JavaScript code or HTML scripts.
+    Detects implied HTTP methods (.post, .put, .delete, .get, fetch).
     """
     discovered: List[DiscoveredEndpoint] = []
     seen = set()
+    seen_paths = set()
 
     # Match explicit fetch/axios/ajax calls
     for match in _API_PATTERN.finditer(text):
-        path = match.group(1)
-        query = match.group(2) or ""
+        method_group = match.group(2)
+        method = method_group.upper() if method_group else "GET"
+        path = match.group(3)
+        query = match.group(4) or ""
         params = [p.split("=")[0] for p in query.split("&") if p and "=" in p]
-        if path not in seen:
-            seen.add(path)
+        key = (method, path)
+        if key not in seen:
+            seen.add(key)
+            seen_paths.add(path)
             discovered.append(DiscoveredEndpoint(
                 path=path,
+                method=method,
                 params=params,
                 endpoint_type="api",
                 source=source_path,
@@ -226,10 +233,11 @@ def extract_js_endpoints(text: str, source_path: str = "") -> List[DiscoveredEnd
     # Match implicit REST API path literals (e.g. '/api/users/list')
     for match in _REST_PATH_PATTERN.finditer(text):
         path = match.group(1)
-        if path not in seen and not path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".woff", ".ico")):
-            seen.add(path)
+        if path not in seen_paths and not path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".woff", ".ico")):
+            seen_paths.add(path)
             discovered.append(DiscoveredEndpoint(
                 path=path,
+                method="GET",
                 endpoint_type="api",
                 source=source_path,
             ))
@@ -297,7 +305,7 @@ class WebCrawler:
             return bool(self.deny_regex.search(url_or_path))
 
     def crawl(self, target: str) -> CrawlResult:
-        """Crawl the target and return discovered endpoints."""
+        """Crawl the target and return discovered endpoints using BFS."""
         if self.mock_mode:
             return self._get_mock_result(target)
 
@@ -308,9 +316,215 @@ class WebCrawler:
         logger.info(f"[Crawler] Starting crawl on {target} (max {self.max_pages} pages, depth {self.max_depth})")
 
         self._visited.clear()
-        self._crawl_page(target, result, depth=0)
+        self._visited_scripts: Set[str] = set()
 
-        # Deduplicate
+        from collections import deque
+        queue = deque([(target, 0)])
+
+        while queue and result.pages_visited < self.max_pages:
+            url, depth = queue.popleft()
+            if depth > self.max_depth:
+                continue
+            if self._is_denied(url):
+                logger.debug(f"[Crawler] Skipping denied URL: {url}")
+                continue
+
+            normalized = url.split("?")[0].split("#")[0].rstrip("/")
+            if normalized in self._visited:
+                continue
+            self._visited.add(normalized)
+
+            try:
+                resp = self._session.get(url, timeout=CRAWL_TIMEOUT, allow_redirects=True)
+            except requests.RequestException as e:
+                logger.debug(f"[Crawler] Failed to fetch {url}: {e}")
+                continue
+
+            # Check if redirect left the target origin (scheme + host + port)
+            target_parsed = urllib.parse.urlparse(result.target)
+            resp_parsed = urllib.parse.urlparse(resp.url)
+            target_port = target_parsed.port or (443 if target_parsed.scheme.lower() == "https" else 80)
+            resp_port = resp_parsed.port or (443 if resp_parsed.scheme.lower() == "https" else 80)
+            target_origin = (target_parsed.scheme.lower(), (target_parsed.hostname or "").lower(), target_port)
+            resp_origin = (resp_parsed.scheme.lower(), (resp_parsed.hostname or "").lower(), resp_port)
+            if target_origin != resp_origin:
+                logger.debug(f"[Crawler] Discarding response from off-origin redirect: {resp.url}")
+                continue
+
+            # Check if final URL or redirect chain hit a denied URL
+            if self._is_denied(resp.url) or any(self._is_denied(r.url) for r in getattr(resp, "history", [])):
+                logger.debug(f"[Crawler] Discarding response from denied redirect: {resp.url}")
+                continue
+
+            result.pages_visited += 1
+            content_type = resp.headers.get("content-type", "")
+
+            # Only parse HTML
+            if "text/html" not in content_type.lower():
+                path = _extract_path(url)
+                params = _extract_query_params(url)
+                result.endpoints.append(DiscoveredEndpoint(
+                    path=path, params=params, endpoint_type="resource", source=url
+                ))
+                continue
+
+            # Parse HTML for links, forms, and scripts
+            parser = _LinkFormParser()
+            try:
+                parser.feed(resp.text)
+            except Exception as e:
+                logger.warning(f"[Crawler] HTML parse error on {url}: {e}")
+
+            current_path = _extract_path(url)
+
+            # Process discovered forms
+            for form in parser.forms:
+                action = form["action"] or current_path
+                if self._is_denied(action):
+                    continue
+                resolved = _normalize_url(url, action)
+                if resolved:
+                    if self._is_denied(resolved):
+                        continue
+                    form_path = _extract_path(resolved)
+                    if self._is_denied(form_path):
+                        continue
+                    result.forms.append(DiscoveredEndpoint(
+                        path=form_path,
+                        method=form["method"],
+                        params=form["inputs"],
+                        endpoint_type="form",
+                        source=current_path,
+                    ))
+
+            # Process links and enqueue for BFS
+            for href in parser.links:
+                if self._is_denied(href):
+                    continue
+                resolved = _normalize_url(url, href)
+                if resolved:
+                    if self._is_denied(resolved):
+                        continue
+                    link_path = _extract_path(resolved)
+                    if self._is_denied(link_path):
+                        continue
+                    result.links.append(resolved)
+                    params = _extract_query_params(resolved)
+                    result.endpoints.append(DiscoveredEndpoint(
+                        path=link_path,
+                        method="GET",
+                        params=params,
+                        endpoint_type="link",
+                        source=current_path,
+                    ))
+                    norm_link = resolved.split("?")[0].split("#")[0].rstrip("/")
+                    if norm_link not in self._visited and depth + 1 <= self.max_depth:
+                        queue.append((resolved, depth + 1))
+
+            # Fetch same-origin <script src> files (size cap 2 MB, max 10 files)
+            for script_src in parser.scripts:
+                if len(self._visited_scripts) >= 10:
+                    break
+                if self._is_denied(script_src):
+                    continue
+                resolved_script = _normalize_url(url, script_src)
+                if not resolved_script:
+                    continue
+                if self._is_denied(resolved_script):
+                    continue
+                norm_script = resolved_script.split("?")[0].split("#")[0].rstrip("/")
+                if norm_script in self._visited_scripts:
+                    continue
+                self._visited_scripts.add(norm_script)
+
+                script_path = _extract_path(resolved_script)
+                s_resp = None
+                try:
+                    s_resp = self._session.get(
+                        resolved_script,
+                        timeout=CRAWL_TIMEOUT,
+                        allow_redirects=True,
+                        stream=True,
+                    )
+
+                    # Check if redirect left target origin (scheme + host + port)
+                    if _normalize_url(result.target, s_resp.url) is None:
+                        logger.debug(f"[Crawler] Discarding script from off-origin redirect: {s_resp.url}")
+                        continue
+
+                    # Check Content-Length header if present
+                    max_size = 2 * 1024 * 1024
+                    cl_str = s_resp.headers.get("Content-Length")
+                    if cl_str and str(cl_str).isdigit() and int(cl_str) > max_size:
+                        logger.debug(f"[Crawler] Skipping oversized script (Content-Length {cl_str} bytes): {resolved_script}")
+                        continue
+
+                    chunks = []
+                    total_read = 0
+                    oversized = False
+                    if hasattr(s_resp, "iter_content") and callable(s_resp.iter_content):
+                        for chunk in s_resp.iter_content(chunk_size=65536):
+                            if chunk:
+                                total_read += len(chunk)
+                                if total_read > max_size:
+                                    oversized = True
+                                    break
+                                chunks.append(chunk)
+
+                    # Fallback for mocks providing .content without iter_content chunks
+                    if not chunks and not oversized and getattr(s_resp, "content", None):
+                        if len(s_resp.content) > max_size:
+                            oversized = True
+                        else:
+                            chunks = [s_resp.content]
+
+                    if oversized:
+                        logger.debug(f"[Crawler] Skipping oversized script (> {max_size} bytes): {resolved_script}")
+                        continue
+
+                    encoding = getattr(s_resp, "encoding", None) or "utf-8"
+                    try:
+                        s_text = b"".join(chunks).decode(encoding, errors="replace")
+                    except Exception:
+                        s_text = b"".join(chunks).decode("utf-8", errors="replace")
+
+                    js_eps = extract_js_endpoints(s_text, script_path)
+                    existing_keys = {(ep.method, ep.path) for ep in result.endpoints}
+                    for j_ep in js_eps:
+                        if self._is_denied(j_ep.path):
+                            continue
+                        if (j_ep.method, j_ep.path) not in existing_keys:
+                            existing_keys.add((j_ep.method, j_ep.path))
+                            result.endpoints.append(j_ep)
+                except Exception as ex:
+                    logger.debug(f"[Crawler] Failed to fetch script {resolved_script}: {ex}")
+                finally:
+                    if s_resp is not None and hasattr(s_resp, "close") and callable(s_resp.close):
+                        s_resp.close()
+
+            # Look for API endpoints and parameters in inline JS
+            js_endpoints = extract_js_endpoints(resp.text, current_path)
+            existing_keys = {(ep.method, ep.path) for ep in result.endpoints}
+            for j_ep in js_endpoints:
+                if self._is_denied(j_ep.path):
+                    continue
+                if (j_ep.method, j_ep.path) not in existing_keys:
+                    existing_keys.add((j_ep.method, j_ep.path))
+                    result.endpoints.append(j_ep)
+
+            for match in _HREF_PATTERN.findall(resp.text):
+                if self._is_denied(match):
+                    continue
+                if ("GET", match) not in existing_keys:
+                    existing_keys.add(("GET", match))
+                    result.endpoints.append(DiscoveredEndpoint(
+                        path=match,
+                        method="GET",
+                        endpoint_type="link",
+                        source=current_path,
+                    ))
+
+        # Deduplicate links
         result.links = list(set(result.links))
         logger.info(
             f"[Crawler] Finished — visited {result.pages_visited} pages, "
@@ -318,136 +532,6 @@ class WebCrawler:
         )
         self._session.close()
         return result
-
-    def _crawl_page(self, url: str, result: CrawlResult, depth: int) -> None:
-        """Recursively crawl a single page."""
-        if depth > self.max_depth:
-            return
-        if result.pages_visited >= self.max_pages:
-            return
-        if self._is_denied(url):
-            logger.debug(f"[Crawler] Skipping denied URL: {url}")
-            return
-
-        # Normalize and skip if visited
-        normalized = url.split("?")[0].split("#")[0].rstrip("/")
-        if normalized in self._visited:
-            return
-        self._visited.add(normalized)
-
-        try:
-            resp = self._session.get(url, timeout=CRAWL_TIMEOUT, allow_redirects=True)
-        except requests.RequestException as e:
-            logger.debug(f"[Crawler] Failed to fetch {url}: {e}")
-            return
-
-        # Check if redirect left the target origin (scheme + host + port)
-        target_parsed = urllib.parse.urlparse(result.target)
-        resp_parsed = urllib.parse.urlparse(resp.url)
-        target_port = target_parsed.port or (443 if target_parsed.scheme.lower() == "https" else 80)
-        resp_port = resp_parsed.port or (443 if resp_parsed.scheme.lower() == "https" else 80)
-        target_origin = (target_parsed.scheme.lower(), (target_parsed.hostname or "").lower(), target_port)
-        resp_origin = (resp_parsed.scheme.lower(), (resp_parsed.hostname or "").lower(), resp_port)
-        if target_origin != resp_origin:
-            logger.debug(f"[Crawler] Discarding response from off-origin redirect: {resp.url}")
-            return
-
-        # Check if final URL or redirect chain hit a denied URL
-        if self._is_denied(resp.url) or any(self._is_denied(r.url) for r in getattr(resp, "history", [])):
-            logger.debug(f"[Crawler] Discarding response from denied redirect: {resp.url}")
-            return
-
-        result.pages_visited += 1
-        content_type = resp.headers.get("content-type", "")
-
-        # Only parse HTML
-        if "text/html" not in content_type.lower():
-            # Still record as a discovered endpoint
-            path = _extract_path(url)
-            params = _extract_query_params(url)
-            result.endpoints.append(DiscoveredEndpoint(
-                path=path, params=params, endpoint_type="resource", source=url
-            ))
-            return
-
-        # Parse HTML for links and forms
-        parser = _LinkFormParser()
-        try:
-            parser.feed(resp.text)
-        except Exception as e:
-            logger.warning(f"[Crawler] HTML parse error on {url}: {e}")
-
-        current_path = _extract_path(url)
-
-        # Process discovered forms
-        for form in parser.forms:
-            action = form["action"] or current_path
-            if self._is_denied(action):
-                continue
-            resolved = _normalize_url(url, action)
-            if resolved:
-                if self._is_denied(resolved):
-                    continue
-                form_path = _extract_path(resolved)
-                if self._is_denied(form_path):
-                    continue
-                result.forms.append(DiscoveredEndpoint(
-                    path=form_path,
-                    method=form["method"],
-                    params=form["inputs"],
-                    endpoint_type="form",
-                    source=current_path,
-                ))
-
-        # Process links
-        urls_to_visit = []
-        for href in parser.links:
-            if self._is_denied(href):
-                continue
-            resolved = _normalize_url(url, href)
-            if resolved:
-                if self._is_denied(resolved):
-                    continue
-                link_path = _extract_path(resolved)
-                if self._is_denied(link_path):
-                    continue
-                result.links.append(resolved)
-                params = _extract_query_params(resolved)
-                result.endpoints.append(DiscoveredEndpoint(
-                    path=link_path,
-                    params=params,
-                    endpoint_type="link",
-                    source=current_path,
-                ))
-                urls_to_visit.append(resolved)
-
-        # Look for API endpoints and parameters in inline/external JS
-        js_endpoints = extract_js_endpoints(resp.text, current_path)
-        existing_paths = {ep.path for ep in result.endpoints}
-        for j_ep in js_endpoints:
-            if self._is_denied(j_ep.path):
-                continue
-            if j_ep.path not in existing_paths:
-                existing_paths.add(j_ep.path)
-                result.endpoints.append(j_ep)
-
-        for match in _HREF_PATTERN.findall(resp.text):
-            if self._is_denied(match):
-                continue
-            if match not in existing_paths:
-                existing_paths.add(match)
-                result.endpoints.append(DiscoveredEndpoint(
-                    path=match,
-                    endpoint_type="link",
-                    source=current_path,
-                ))
-
-        # Recurse into discovered links
-        for next_url in urls_to_visit:
-            if self._is_denied(next_url):
-                continue
-            if result.pages_visited < self.max_pages:
-                self._crawl_page(next_url, result, depth + 1)
 
     # ------------------------------------------------------------------
     # Mock output for demo/testing

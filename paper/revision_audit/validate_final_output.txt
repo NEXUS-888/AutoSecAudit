@@ -56,6 +56,17 @@ PASS  no 'stored XSS' claim
 PASS  timing formula matches code (0.70, 0.35; no 3*sigma)
 PASS  thread default disclosed (4)
 PASS  Table II lists exactly 4 MCP tools
+PASS  built on the IJARCCE template styles :: {'IEEE Title': 3, 'IEEE Author Affiliation': 3, 'Normal': 3, 'IEEE Abtract': 1, 'IEEE Heading 1': 9, 'IEEE Paragraph': 60, 'IEEE Heading 2': 12, 'IEEE Table Caption': 4, 'IEEE Figure': 4, 'IEEE Figure Caption Multi-Lines': 4, 'IEEE Reference Item': 19}
+PASS  one IEEE Title for the title plus author line
+PASS  6 numbered level-1 sections + Acknowledgment, References, Biography :: 9
+PASS  no manual numerals in headings (numbering comes from styles)
+PASS  references use the template reference list style (19) :: 19
+PASS  captions use template caption styles (4 + 4)
+PASS  single A4 section, 0.8 inch margins
+PASS  no running header (placeholders removed)
+PASS  IJARCCE footer licence line with PAGE field
+PASS  fonts: Times New Roman (style default) plus Courier New only for code boxes :: {'Courier New': 2}
+PASS  body/heading runs carry no size override (10 pt comes from styles) :: set()
 PASS  PDF page count :: 11
 PASS  PDF text contains TABLE I
 PASS  PDF text contains TABLE II
@@ -63,9 +74,9 @@ PASS  PDF text contains TABLE III
 PASS  PDF text contains TABLE IV
 PASS  PDF text contains Fig. 1.
 PASS  PDF text contains Fig. 4.
-PASS  PDF text contains DoupÃ©
+PASS  PDF text contains Doupé
 PASS  PDF text contains [19] DefectDojo
 PASS  PDF has no replacement characters
 PASS  PDF contains 4 figure images :: 4
 
-69/69 checks passed
+80/80 checks passed
