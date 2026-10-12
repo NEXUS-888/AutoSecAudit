@@ -7,6 +7,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import config
 from core.politeness import PolitenessEngine
+from core.http_client import ScanHttpClient
 from core.timing import TimingVerifier
 from core.fuzzer import generate_json_fuzz_mutations, extract_json_leaf_paths, mutate_json_at_path
 from core.spa_detector import SPADetector
@@ -30,6 +31,25 @@ class BaseScanner(ABC):
         self.dev_environment: Optional[str] = None
         self.auth_headers: Dict[str, str] = {}
         self.auth_cookies: Dict[str, str] = {}
+        self.http: Optional[ScanHttpClient] = None
+
+    def set_http_client(self, client: Any) -> None:
+        """Set shared ScanHttpClient instance."""
+        self.http = client
+        if client and hasattr(client, "politeness"):
+            self.politeness = client.politeness
+
+    def _get_http_client(self) -> ScanHttpClient:
+        """Lazily initialize or return the shared ScanHttpClient."""
+        if self.http is None:
+            self.http = ScanHttpClient(
+                target=self.target,
+                politeness=self.politeness,
+                auth_headers=self.auth_headers,
+                auth_cookies=self.auth_cookies,
+                mock_mode=self.mock_mode,
+            )
+        return self.http
 
     def set_discovered_endpoints(self, endpoints: list) -> None:
         """Set discovered endpoints from the web crawler."""
@@ -45,17 +65,13 @@ class BaseScanner(ABC):
             self.auth_headers.update(headers)
         if cookies:
             self.auth_cookies.update(cookies)
+        if self.http:
+            self.http.set_auth(headers=headers, cookies=cookies)
 
     def get_authenticated_session(self) -> requests.Session:
         """Return a requests.Session pre-loaded with authentication credentials."""
-        session = requests.Session()
-        session.headers.update({"User-Agent": f"AutoSecAudit/2.0 {self.__class__.__name__}"})
-        if self.auth_headers:
-            session.headers.update(self.auth_headers)
-        if self.auth_cookies:
-            session.cookies.update(self.auth_cookies)
-        session.verify = False
-        return session
+        client = self._get_http_client()
+        return client.session
 
     def get_spa_detector(self, session: Optional[requests.Session] = None) -> SPADetector:
         """Lazily initialize and return the SPADetector for the target."""
@@ -154,41 +170,39 @@ class BaseScanner(ABC):
         """
         Fetch a baseline (safe) response for an endpoint.
         Caches results so we only hit each endpoint once.
+        Delegates to _safe_request / shared HTTP layer.
         """
         cache_key = f"{method}:{url}:{param}"
         if cache_key in self._baseline_cache:
             return self._baseline_cache[cache_key]
 
-        try:
-            safe_value = "test123"
-            if isinstance(timeout, tuple):
-                req_timeout = timeout
-            else:
-                req_timeout = (3.0, float(timeout))
-            if method.upper() == "GET":
-                resp = requests.get(
-                    url, params={param: safe_value},
-                    headers=headers or {"User-Agent": "AutoSecAudit/2.0"},
-                    timeout=req_timeout, allow_redirects=True, verify=False,
-                )
-            else:
-                resp = requests.post(
-                    url, json={param: safe_value},
-                    headers=headers or {"User-Agent": "AutoSecAudit/2.0",
-                                        "Content-Type": "application/json"},
-                    timeout=req_timeout, allow_redirects=True, verify=False,
-                )
+        safe_value = "test123"
+        if isinstance(timeout, tuple):
+            req_timeout = timeout
+        else:
+            req_timeout = (3.0, float(timeout))
 
-            baseline = {
-                "status_code": resp.status_code,
-                "length": len(resp.text),
-                "content": resp.text[:500],
-            }
-            self._baseline_cache[cache_key] = baseline
-            return baseline
-        except requests.RequestException as exc:
-            logger.debug(f"[BaseScanner] Baseline probe for {url} ({param}) failed: {exc}")
+        if method.upper() == "GET":
+            resp = self._safe_request(
+                "GET", url, params={param: safe_value},
+                headers=headers, timeout=req_timeout, allow_redirects=True,
+            )
+        else:
+            resp = self._safe_request(
+                "POST", url, json_data={param: safe_value},
+                headers=headers, timeout=req_timeout, allow_redirects=True,
+            )
+
+        if resp is None:
             return None
+
+        baseline = {
+            "status_code": resp.status_code,
+            "length": len(resp.text),
+            "content": resp.text[:500],
+        }
+        self._baseline_cache[cache_key] = baseline
+        return baseline
 
     @staticmethod
     def _verify_against_baseline(
@@ -248,43 +262,20 @@ class BaseScanner(ABC):
         allow_redirects: bool = True,
     ) -> Optional[requests.Response]:
         """
-        Execute an HTTP request with politeness pacing and rate-limit backoff.
+        Execute an HTTP request with politeness pacing, scope-checking, and backoff.
+        Delegates to the shared ScanHttpClient while preserving exact signature.
         """
-        self.politeness.pace_request()
-        req_headers = self.politeness.get_polite_headers(headers)
-
-        try:
-            if method.upper() == "GET":
-                resp = requests.get(
-                    url, params=params, headers=req_headers,
-                    timeout=timeout, allow_redirects=allow_redirects, verify=False,
-                )
-            elif method.upper() == "POST":
-                resp = requests.post(
-                    url, params=params, json=json_data, data=data, headers=req_headers,
-                    timeout=timeout, allow_redirects=allow_redirects, verify=False,
-                )
-            elif method.upper() == "PUT":
-                resp = requests.put(
-                    url, params=params, json=json_data, data=data, headers=req_headers,
-                    timeout=timeout, allow_redirects=allow_redirects, verify=False,
-                )
-            elif method.upper() == "DELETE":
-                resp = requests.delete(
-                    url, params=params, json=json_data, headers=req_headers,
-                    timeout=timeout, allow_redirects=allow_redirects, verify=False,
-                )
-            else:
-                resp = requests.request(
-                    method, url, params=params, json=json_data, data=data, headers=req_headers,
-                    timeout=timeout, allow_redirects=allow_redirects, verify=False,
-                )
-
-            self.politeness.handle_response_status(resp.status_code)
-            return resp
-        except requests.RequestException as exc:
-            logger.debug(f"[BaseScanner] Safe request failed for {url}: {exc}")
-            return None
+        client = self._get_http_client()
+        return client.request(
+            method=method,
+            url=url,
+            params=params,
+            json_data=json_data,
+            data=data,
+            headers=headers,
+            timeout=timeout,
+            allow_redirects=allow_redirects,
+        )
 
     def _verify_timing(
         self,

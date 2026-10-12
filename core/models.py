@@ -62,6 +62,7 @@ class Report:
     previous_report_path: Optional[str] = None
     dev_environment: Optional[str] = None
     auth_status: Optional[str] = None
+    throttled_requests: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -73,5 +74,6 @@ class Report:
             "delta": self.delta,
             "previous_report_path": self.previous_report_path,
             "dev_environment": self.dev_environment,
-            "auth_status": self.auth_status
+            "auth_status": self.auth_status,
+            "throttled_requests": self.throttled_requests,
         }

@@ -17,6 +17,8 @@ from core.utils import (
     is_target_allowed,
 )
 from core.crawler import WebCrawler
+from core.http_client import ScanHttpClient
+from core.politeness import PolitenessEngine, DEFAULT_REQUEST_INTERVAL_MS
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +26,33 @@ logger = logging.getLogger(__name__)
 class Engine:
     """Core scanning engine that orchestrates plugin execution."""
 
-    def __init__(self, mock_mode: Optional[bool] = None, profile: str = "full"):
+    def __init__(
+        self,
+        mock_mode: Optional[bool] = None,
+        profile: str = "full",
+        request_interval_ms: Optional[int] = None,
+        politeness: Optional[PolitenessEngine] = None,
+    ):
         self.mock_mode = mock_mode if mock_mode is not None else config.MOCK_MODE
         self.profile = profile.lower() if profile else "full"
         self.plugins: List[Any] = []
         self.scan_results: List[ScanResult] = []
         self.target: str = ""
+
+        if politeness is not None:
+            client_politeness = politeness
+            if request_interval_ms is not None:
+                client_politeness.request_interval_ms = request_interval_ms
+        elif request_interval_ms is not None:
+            client_politeness = PolitenessEngine(request_interval_ms=request_interval_ms)
+        else:
+            client_politeness = PolitenessEngine(request_interval_ms=DEFAULT_REQUEST_INTERVAL_MS)
+
+        self.http_client = ScanHttpClient(
+            target=self.target,
+            mock_mode=self.mock_mode,
+            politeness=client_politeness,
+        )
         self.previous_report: Optional[Dict[str, Any]] = None
         self.crawl_result = None  # populated by run_plugins
         self.crawler_data: Dict[str, Any] = {}  # populated by OpenAPI importer
@@ -128,8 +151,27 @@ class Engine:
                 return False
 
         self.target = normalized
+        self.http_client.set_target(self.target)
         logger.info(f"Target set: {self.target}")
         return True
+
+    def setup_shared_http_client(
+        self,
+        auth_headers: Optional[Dict[str, str]] = None,
+        auth_cookies: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """Configure shared ScanHttpClient and inject into all loaded plugins."""
+        self.http_client.set_target(self.target)
+        combined_headers = dict(self.custom_headers)
+        if auth_headers:
+            combined_headers.update(auth_headers)
+        self.http_client.set_auth(headers=combined_headers, cookies=auth_cookies)
+
+        for plugin in self.plugins:
+            if hasattr(plugin, "set_http_client"):
+                plugin.set_http_client(self.http_client)
+            if hasattr(plugin, "set_auth"):
+                plugin.set_auth(headers=combined_headers, cookies=auth_cookies)
 
     def set_previous_report(self, report_path: str) -> bool:
         """Load a previous scan report for delta comparison."""
@@ -200,13 +242,12 @@ class Engine:
             except Exception as exc:
                 logger.debug(f"Dev environment detection failed: {exc}")
 
-        # Pass discovered endpoints, dev environment, and auth context to all plugins
+        # Configure and inject shared HTTP client, auth, discovered endpoints, and dev environment
+        self.setup_shared_http_client(auth_headers=auth_headers, auth_cookies=auth_cookies)
         for plugin in self.plugins:
             plugin.set_discovered_endpoints(discovered)
             if self.dev_environment and hasattr(plugin, "set_dev_environment"):
                 plugin.set_dev_environment(self.dev_environment)
-            if hasattr(plugin, "set_auth"):
-                plugin.set_auth(headers=auth_headers, cookies=auth_cookies)
 
         logger.info(f"Running {len(self.plugins)} plugins on {self.target}")
 
@@ -305,6 +346,10 @@ class Engine:
             findings.append(finding)
         return findings
 
+    @property
+    def throttled_requests(self) -> int:
+        return self.http_client.throttled_count if hasattr(self, "http_client") else 0
+
     def generate_report(self) -> Report:
         """Generate the final aggregated report."""
         all_findings = []
@@ -319,6 +364,8 @@ class Engine:
         elif self.custom_headers:
             auth_status = "Custom Headers"
 
+        throttled = self.http_client.throttled_count if hasattr(self, "http_client") else 0
+
         report = Report(
             target=self.target,
             timestamp=get_timestamp(),
@@ -327,20 +374,23 @@ class Engine:
             summary=summary,
             previous_report_path=None,
             dev_environment=self.dev_environment,
-            auth_status=auth_status
+            auth_status=auth_status,
+            throttled_requests=throttled,
         )
 
         return report
 
     def _generate_summary(self, findings: List[Finding]) -> Dict[str, int]:
         """Generate summary statistics from findings."""
+        throttled = self.http_client.throttled_count if hasattr(self, "http_client") else 0
         summary = {
             "total": len(findings),
             "critical": 0,
             "high": 0,
             "medium": 0,
             "low": 0,
-            "info": 0
+            "info": 0,
+            "throttled_requests": throttled,
         }
         
         for f in findings:
