@@ -52,7 +52,8 @@ def prompt_mode_selection(default_mock: bool = True) -> bool:
 def run_scan(target: str, previous_report: str = None, output_json: str = None, output_html: str = None,
              fail_on: str = None, webhook: str = None, openapi: str = None, headers: str = None,
              mock_mode: Optional[bool] = None, profile: str = "full", skip_reachability: bool = False,
-             login_user: str = None, login_pass: str = None, login_url: str = None):
+             login_user: str = None, login_pass: str = None, login_url: str = None,
+             treat_dev_artifacts_as_info: bool = False):
     
     if mock_mode is not None:
         config.MOCK_MODE = mock_mode
@@ -198,11 +199,20 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
         if threshold in severities:
             threshold_idx = severities.index(threshold)
             failed = False
-            for sev, count in report.summary.items():
-                if count > 0 and sev in severities:
-                    if severities.index(sev) >= threshold_idx:
+            if report.all_findings:
+                for f in report.all_findings:
+                    sev = (f.severity or "info").lower()
+                    if getattr(f, "original_severity", None) and not treat_dev_artifacts_as_info:
+                        sev = f.original_severity.lower()
+                    if sev in severities and severities.index(sev) >= threshold_idx:
                         failed = True
                         break
+            else:
+                for sev, count in report.summary.items():
+                    if count > 0 and sev in severities:
+                        if severities.index(sev) >= threshold_idx:
+                            failed = True
+                            break
             if failed:
                 print(f"\n[CI/CD GATING] Scan failed: Found findings meeting or exceeding threshold '{fail_on}'")
                 return 1
@@ -309,6 +319,7 @@ def main():
     scan_parser.add_argument("--login-url", help="Explicit login URL path (auto-detected if omitted)")
     scan_parser.add_argument("--profile", choices=["full", "owasp", "api", "recon"], default="full", help="Select scan profile: full (all), owasp (OWASP Top 10), api (API Security), recon (Passive Recon)")
     scan_parser.add_argument("--skip-reachability-check", action="store_true", help="Skip pre-flight target reachability check")
+    scan_parser.add_argument("--treat-dev-artifacts-as-info", action="store_true", help="Treat dev environment artifact findings as Informational in CI/CD gating")
     scan_mode_group = scan_parser.add_mutually_exclusive_group()
     scan_mode_group.add_argument("--real", action="store_true", help="Force REAL active scanning mode (requires target online)")
     scan_mode_group.add_argument("--mock", "--demo", dest="mock", action="store_true", help="Force MOCK demo mode (offline simulation, no live target needed)")
@@ -357,7 +368,8 @@ def main():
             profile=profile, skip_reachability=skip_reach,
             login_user=getattr(args, "login_user", None),
             login_pass=getattr(args, "login_pass", None),
-            login_url=getattr(args, "login_url", None)
+            login_url=getattr(args, "login_url", None),
+            treat_dev_artifacts_as_info=getattr(args, "treat_dev_artifacts_as_info", False)
         )
 
     elif args.command == "plugins":

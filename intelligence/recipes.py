@@ -10,19 +10,43 @@ import logging
 from typing import Dict, Any
 
 from intelligence.danger_engine import analyze_real_danger
+from intelligence.taxonomy import get_taxonomy, infer_taxonomy_from_text
 
 logger = logging.getLogger(__name__)
 
 
-def get_fix_recipes(finding: Dict[str, Any]) -> Dict[str, str]:
+def get_fix_recipes(finding: Any) -> Dict[str, str]:
     """
     Generate framework-specific code snippets and WAF defense rules for a finding.
     Returns a dictionary with keys: 'nodejs', 'python', 'nginx', 'waf'.
     """
+    if isinstance(finding, str):
+        finding = {"title": finding}
+    elif not isinstance(finding, dict):
+        if hasattr(finding, "to_dict"):
+            finding = finding.to_dict()
+        elif hasattr(finding, "__dict__"):
+            finding = finding.__dict__
+        else:
+            finding = {}
+
     title = (finding.get("title") or "").lower()
     tool = (finding.get("tool_name") or finding.get("tool") or "").lower()
     param = finding.get("parameter") or "input"
     url = finding.get("url") or finding.get("endpoint") or "/api/endpoint"
+
+    recipe_key = None
+    vuln_type = finding.get("vuln_type")
+    if vuln_type:
+        tax = get_taxonomy(vuln_type)
+        if tax:
+            recipe_key = tax.recipe_key
+
+    if not recipe_key:
+        text = f"{title} {tool}"
+        tax = infer_taxonomy_from_text(text)
+        if tax:
+            recipe_key = tax.recipe_key
 
     # Default generic recipes
     nodejs_code = (
@@ -67,7 +91,7 @@ def get_fix_recipes(finding: Dict[str, Any]) -> Dict[str, str]:
     }
 
     # 1. SQL Injection Recipes
-    if "sql injection" in title or "sqli" in title:
+    if recipe_key == "sqli":
         nodejs_code = (
             "// Node.js (pg / mysql2): Use Parameterized Queries ($1 / ?)\n"
             "// NEVER concatenate strings into SQL queries!\n\n"
@@ -100,7 +124,7 @@ def get_fix_recipes(finding: Dict[str, Any]) -> Dict[str, str]:
         }
 
     # 2. CORS Wildcard Recipes
-    elif "cors" in title:
+    elif recipe_key == "cors":
         nodejs_code = (
             "// Node.js Express: Strict CORS Whitelist Configuration\n"
             "const cors = require('cors');\n\n"
@@ -151,7 +175,7 @@ def get_fix_recipes(finding: Dict[str, Any]) -> Dict[str, str]:
         }
 
     # 3. Missing Security Headers / CSP / Clickjacking
-    elif "header" in title or "csp" in title or "frame" in title or "clickjacking" in title or "hsts" in title:
+    elif recipe_key in ("misconfig", "ssl_tls", "info_disclosure"):
         nodejs_code = (
             "// Node.js Express: 1-Line Helmet Middleware Injection\n"
             "// Install: npm install helmet\n"
@@ -208,7 +232,7 @@ def get_fix_recipes(finding: Dict[str, Any]) -> Dict[str, str]:
         }
 
     # 4. Sensitive Path / Directory Listing / Secret Exposure
-    elif "directory listing" in title or "dirbrute" in title or ".git" in title or ".env" in title or "secret" in title:
+    elif recipe_key in ("dir_brute", "secret_exposure", "path_traversal"):
         nodejs_code = (
             "// Node.js Express: Disable dotfiles and directory listing\n"
             "const express = require('express');\n\n"
@@ -248,7 +272,7 @@ def get_fix_recipes(finding: Dict[str, Any]) -> Dict[str, str]:
         }
 
     # 5. CSRF (Cross-Site Request Forgery)
-    elif "csrf" in title or "cross-site request forgery" in title:
+    elif recipe_key == "csrf":
         nodejs_code = (
             "// Node.js Express: Anti-CSRF Token Protection (csurf / csrf-csrf)\n"
             "// Install: npm install csurf cookie-parser\n"
@@ -279,7 +303,7 @@ def get_fix_recipes(finding: Dict[str, Any]) -> Dict[str, str]:
         }
 
     # 6. Open Redirect
-    elif "redirect" in title:
+    elif recipe_key == "open_redirect":
         nodejs_code = (
             "// Node.js Express: Safe URL Redirection Allowlist\n"
             "function safeRedirect(req, res, targetUrl) {\n"
@@ -314,7 +338,7 @@ def get_fix_recipes(finding: Dict[str, Any]) -> Dict[str, str]:
         }
 
     # 7. BOLA / IDOR (Broken Object Level Authorization)
-    elif "bola" in title or "idor" in title or "broken object" in title:
+    elif recipe_key in ("idor", "bola_idor"):
         nodejs_code = (
             "// Node.js Express: Enforce Tenant / User Ownership Boundary\n"
             "app.get('/api/users/:userId', async (req, res) => {\n"

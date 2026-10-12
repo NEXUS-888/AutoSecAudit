@@ -9,6 +9,7 @@ human-readable fix suggestions. The Enricher or Engine can call
 import logging
 from typing import Optional, List
 from core.models import Finding
+from intelligence.taxonomy import get_taxonomy, infer_taxonomy_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +187,161 @@ TOOL_REMEDIATIONS = {
         "4. Encrypt sensitive data both at rest and in transit.\n"
         "5. Audit API responses regularly for data leaks."
     ),
+    # Canonical default mappings keyed by tool_name:remediation_key
+    "sqli_scanner:sqli": (
+        "1. Replace string concatenation in SQL queries with parameterized queries.\n"
+        "2. Use an ORM (SQLAlchemy, Django ORM, Sequelize) instead of raw SQL.\n"
+        "3. Suppress database error messages in production responses.\n"
+        "4. Apply input validation — reject special characters in search/filter parameters.\n"
+        "5. Use a Web Application Firewall (WAF) as an additional defense layer."
+    ),
+    "xss_scanner:xss": (
+        "1. Encode all user-controlled output using context-appropriate encoding (HTML, JS, URL).\n"
+        "2. Use a templating engine with auto-escaping enabled (Jinja2, React JSX).\n"
+        "3. Set Content-Security-Policy header to restrict inline scripts.\n"
+        "4. Validate input — reject or strip HTML tags from user input.\n"
+        "5. Use HttpOnly and Secure flags on cookies to limit XSS impact."
+    ),
+    "auth_scanner:auth": (
+        "1. Implement account lockout after 5 consecutive failed attempts.\n"
+        "2. Add exponential backoff (increasing delay between retries).\n"
+        "3. Use CAPTCHA after 3 failed login attempts.\n"
+        "4. Implement IP-based rate limiting on authentication endpoints.\n"
+        "5. Alert on brute-force patterns in your monitoring system."
+    ),
+    "auth_scanner:idor": (
+        "1. Implement object-level authorization checks on every data access.\n"
+        "2. Use indirect reference maps (UUIDs) instead of sequential IDs.\n"
+        "3. Verify the authenticated user owns or has access to the requested resource.\n"
+        "4. Log all unauthorized access attempts.\n"
+        "5. Use automated IDOR testing in your security test suite."
+    ),
+    "misconfig_scanner:misconfig": (
+        "1. Remove or obfuscate Server, X-Powered-By, and X-AspNet-Version headers.\n"
+        "2. In Nginx: add 'server_tokens off;' to your config.\n"
+        "3. In Apache: set 'ServerTokens Prod' and 'ServerSignature Off'.\n"
+        "4. In Express.js: use helmet() middleware.\n"
+        "5. Remove framework-specific default error pages."
+    ),
+    "api_abuse_scanner:api_abuse": (
+        "1. Implement rate limiting on all API endpoints (e.g., 100 req/min).\n"
+        "2. Use API keys or tokens to track and limit usage per client.\n"
+        "3. Return HTTP 429 Too Many Requests with Retry-After header.\n"
+        "4. Use a reverse proxy (Nginx, API Gateway) for rate limiting.\n"
+        "5. Implement circuit breakers for downstream services."
+    ),
+}
+
+# ---------------------------------------------------------------------------
+# Direct remediation advice database keyed by taxonomy remediation_key
+# ---------------------------------------------------------------------------
+REMEDIATION_KEY_DATABASE = {
+    "sqli": (
+        "1. Replace string concatenation in SQL queries with parameterized queries.\n"
+        "2. Use an ORM (SQLAlchemy, Django ORM, Sequelize) instead of raw SQL.\n"
+        "3. Suppress database error messages in production responses.\n"
+        "4. Apply input validation — reject special characters in search/filter parameters.\n"
+        "5. Use a Web Application Firewall (WAF) as an additional defense layer."
+    ),
+    "xss": (
+        "1. Encode all user-controlled output using context-appropriate encoding (HTML, JS, URL).\n"
+        "2. Use a templating engine with auto-escaping enabled (Jinja2, React JSX).\n"
+        "3. Set Content-Security-Policy header to restrict inline scripts.\n"
+        "4. Validate input — reject or strip HTML tags from user input.\n"
+        "5. Use HttpOnly and Secure flags on cookies to limit XSS impact."
+    ),
+    "command_injection": (
+        "1. Never pass unsanitized input to shell execution functions (system, exec, popen).\n"
+        "2. Use parameter arrays instead of shell command strings.\n"
+        "3. Use allowlists for permitted commands and input values.\n"
+        "4. Run web processes with minimal system privileges."
+    ),
+    "ssrf": (
+        "1. Validate and sanitize all client-supplied URLs.\n"
+        "2. Restrict outbound connections using a network allowlist.\n"
+        "3. Block private and local IP ranges (127.0.0.1, 10.x, 192.168.x).\n"
+        "4. Disable URL redirects where possible.\n"
+        "5. Enforce firewall rules to limit outbound server requests."
+    ),
+    "ssti": (
+        "1. Never concatenate user input directly into template strings.\n"
+        "2. Pass user input as context variables into pre-compiled templates.\n"
+        "3. Use sandboxed template execution environments.\n"
+        "4. Enforce strict Content-Security-Policy."
+    ),
+    "idor": (
+        "1. Implement object-level authorization checks on every data access.\n"
+        "2. Use indirect reference maps (UUIDs) instead of sequential IDs.\n"
+        "3. Verify the authenticated user owns or has access to the requested resource.\n"
+        "4. Log all unauthorized access attempts.\n"
+        "5. Use automated IDOR testing in your security test suite."
+    ),
+    "csrf": (
+        "1. Implement anti-CSRF tokens for all state-changing POST/PUT/DELETE endpoints.\n"
+        "2. Set SameSite=Lax or SameSite=Strict on session cookies.\n"
+        "3. Verify Origin and Referer headers on incoming requests."
+    ),
+    "open_redirect": (
+        "1. Validate target redirect URLs against a strict whitelist of internal domains.\n"
+        "2. Enforce relative path redirects starting with a single '/' (not '//').\n"
+        "3. Avoid using user-supplied parameters directly in redirect targets."
+    ),
+    "path_traversal": (
+        "1. Validate file paths against an allowlist of permitted files.\n"
+        "2. Use os.path.basename or equivalent to strip directory traversal sequences.\n"
+        "3. Resolve canonical paths and verify they stay within the base directory."
+    ),
+    "dir_brute": (
+        "1. Disable directory listing on the web server.\n"
+        "2. Block public access to sensitive paths, configuration files, and backups.\n"
+        "3. Return generic 404 responses for restricted paths."
+    ),
+    "secret_exposure": (
+        "1. Immediately rotate any credentials or keys exposed publicly.\n"
+        "2. Deny public HTTP access to configuration and dotfiles (.env, .git, .aws).\n"
+        "3. Use environment variables and secrets managers instead of committed files."
+    ),
+    "misconfig": (
+        "1. Remove or obfuscate Server, X-Powered-By, and X-AspNet-Version headers.\n"
+        "2. In Nginx: add 'server_tokens off;' to your config.\n"
+        "3. In Apache: set 'ServerTokens Prod' and 'ServerSignature Off'.\n"
+        "4. In Express.js: use helmet() middleware.\n"
+        "5. Remove framework-specific default error pages."
+    ),
+    "info_disclosure": (
+        "1. Suppress verbose error messages and stack traces in production.\n"
+        "2. Configure custom error pages for 404, 500, and other HTTP errors.\n"
+        "3. Strip internal IP addresses, system paths, and debugging comments from responses."
+    ),
+    "cors": (
+        "1. Restrict Access-Control-Allow-Origin to trusted explicit origins (never '*').\n"
+        "2. Never combine wildcard origin with Access-Control-Allow-Credentials: true.\n"
+        "3. Verify incoming Origin header against a server-side allowlist."
+    ),
+    "ssl_tls": (
+        "1. Enforce HTTPS across all endpoints with Strict-Transport-Security (HSTS).\n"
+        "2. Disable deprecated TLS 1.0/1.1 protocols and weak ciphers.\n"
+        "3. Use automated certificate renewal with valid trusted CAs."
+    ),
+    "auth": (
+        "1. Implement account lockout after 5 consecutive failed attempts.\n"
+        "2. Add exponential backoff (increasing delay between retries).\n"
+        "3. Use CAPTCHA after 3 failed login attempts.\n"
+        "4. Implement IP-based rate limiting on authentication endpoints.\n"
+        "5. Alert on brute-force patterns in your monitoring system."
+    ),
+    "jwt": (
+        "1. Strictly verify JWT signatures using secure cryptographic algorithms (RS256/ES256).\n"
+        "2. Reject tokens with 'alg: none' and enforce expiration timestamps.\n"
+        "3. Store tokens in HttpOnly Secure cookies to prevent script access."
+    ),
+    "api_abuse": (
+        "1. Implement rate limiting on all API endpoints (e.g., 100 req/min).\n"
+        "2. Use API keys or tokens to track and limit usage per client.\n"
+        "3. Return HTTP 429 Too Many Requests with Retry-After header.\n"
+        "4. Use a reverse proxy (Nginx, API Gateway) for rate limiting.\n"
+        "5. Implement circuit breakers for downstream services."
+    ),
 }
 
 
@@ -197,27 +353,68 @@ def get_remediation(finding: Finding) -> Optional[str]:
     Look up remediation advice for a finding.
 
     Priority:
-    1. Tool-specific + finding-type key (most specific)
-    2. OWASP tag (generic but useful)
-    3. None (no advice available)
+    1. Tool-specific + remediation_key (e.g. sqli_scanner:sqli) or sub-type refinement
+    2. Taxonomy remediation_key database lookup (REMEDIATION_KEY_DATABASE)
+    3. Taxonomy OWASP mapping from vuln_type
+    4. Explicit OWASP tag on finding
+    5. Taxonomy text inference
     """
-    # Try tool-specific lookup first
-    if finding.tool_name and finding.description:
-        # Extract type from description (e.g., "Type: error_based")
-        finding_type = _extract_finding_type(finding.description)
-        if finding_type:
-            key = f"{finding.tool_name}:{finding_type}"
-            if key in TOOL_REMEDIATIONS:
-                return TOOL_REMEDIATIONS[key]
+    tax = get_taxonomy(finding.vuln_type) if finding.vuln_type else None
+    rem_key = tax.remediation_key if tax else finding.vuln_type
 
-    # Fall back to OWASP tag
+    # 1. Tool-specific lookup using sub-type refinement or remediation_key
+    if finding.tool_name:
+        # Check sub-type refinement from description (e.g. "Type: error_based" for sqli_scanner)
+        # Checked before tool default so specific advice takes precedence.
+        if finding.description:
+            sub_type = _extract_finding_type(finding.description)
+            if sub_type:
+                key = f"{finding.tool_name}:{sub_type}"
+                if key in TOOL_REMEDIATIONS:
+                    # Enforce family consistency against sub_type alone if rem_key is set
+                    FAMILY_SUBTYPES = {
+                        "sqli": {"error_based", "login_bypass", "sqli"},
+                        "xss": {"reflected_xss", "dom_xss_indicator", "missing_header", "xss"},
+                        "auth": {"brute_force", "default_credentials", "auth"},
+                        "idor": {"idor"},
+                        "bola_idor": {"idor"},
+                        "misconfig": {"server_info_leak", "missing_header", "misconfig"},
+                        "api_abuse": {"rate_limit", "sensitive_data", "api_abuse"},
+                    }
+                    allowed = FAMILY_SUBTYPES.get(rem_key, {rem_key} if rem_key else None)
+                    if allowed is None or sub_type in allowed:
+                        return TOOL_REMEDIATIONS[key]
+
+        # Check tool_name:remediation_key default
+        if rem_key:
+            tool_rem_key = f"{finding.tool_name}:{rem_key}"
+            if tool_rem_key in TOOL_REMEDIATIONS:
+                return TOOL_REMEDIATIONS[tool_rem_key]
+
+    # 2. Direct remediation_key database lookup (all 21 taxonomy types)
+    if rem_key and rem_key in REMEDIATION_KEY_DATABASE:
+        return REMEDIATION_KEY_DATABASE[rem_key]
+
+    # 3. Taxonomy OWASP mapping from vuln_type
+    if tax and tax.owasp in OWASP_REMEDIATIONS:
+        return OWASP_REMEDIATIONS[tax.owasp]
+
+    # 4. Fall back to OWASP tag on finding
     if finding.owasp_tag:
         if finding.owasp_tag in OWASP_REMEDIATIONS:
             return OWASP_REMEDIATIONS[finding.owasp_tag]
-        # Match prefix if format is "A03:2021 Injection" or "A03:2021 - Injection"
         tag_key = finding.owasp_tag.split()[0] if " " in finding.owasp_tag else finding.owasp_tag
         if tag_key in OWASP_REMEDIATIONS:
             return OWASP_REMEDIATIONS[tag_key]
+
+    # 5. Fallback text inference
+    text = f"{finding.title or ''} {finding.description or ''}"
+    inf_tax = infer_taxonomy_from_text(text)
+    if inf_tax:
+        if inf_tax.remediation_key in REMEDIATION_KEY_DATABASE:
+            return REMEDIATION_KEY_DATABASE[inf_tax.remediation_key]
+        if inf_tax.owasp in OWASP_REMEDIATIONS:
+            return OWASP_REMEDIATIONS[inf_tax.owasp]
 
     return None
 

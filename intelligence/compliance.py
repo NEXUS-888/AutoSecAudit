@@ -1,7 +1,13 @@
 import logging
-from typing import List, Dict, Any
+import re
+from typing import List, Dict, Any, Tuple, Optional
 
 from core.models import Finding
+from intelligence.taxonomy import (
+    TAXONOMY_ENTRIES,
+    get_taxonomy,
+    infer_taxonomy_from_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -9,7 +15,7 @@ OWASP_MAPPING = {
     "A01:2021": {
         "name": "Broken Access Control",
         "keywords": ["access control", "authorization", "privilege", "idor", 
-                     "vertical privilege", "horizontal privilege", "bypass"]
+                     "vertical privilege", "horizontal privilege", "access control bypass", "privilege bypass"]
     },
     "A02:2021": {
         "name": "Cryptographic Failures",
@@ -20,7 +26,7 @@ OWASP_MAPPING = {
         "name": "Injection",
         "keywords": ["sql injection", "sqli", "xss", "cross-site scripting",
                      "command injection", "code injection", "ldap", "nosql",
-                     "injection", "script"]
+                     "injection", "script injection"]
     },
     "A04:2021": {
         "name": "Insecure Design",
@@ -82,33 +88,57 @@ class ComplianceMapper:
         }
 
     def map_findings(self, findings: List[Finding]) -> List[Finding]:
-        """Map each finding to OWASP, CWE, and PCI-DSS categories."""
+        """Map each finding to OWASP, CWE, and PCI-DSS categories without overwriting existing plugin tags."""
         for f in findings:
-            owasp_tag = self._find_owasp_category(f)
-            if owasp_tag:
-                f.owasp_tag = owasp_tag
+            tax = None
+            if f.vuln_type:
+                tax = get_taxonomy(f.vuln_type)
+            if not tax:
+                text = f"{f.title or ''} {f.description or ''} {f.tool_name or ''}"
+                tax = infer_taxonomy_from_text(text)
 
-            cwe, pci = self._find_cwe_pci(f)
-            if cwe:
-                f.cwe_id = cwe
-            if pci:
-                f.pci_dss = pci
+            # Never overwrite existing plugin tags!
+            if not f.owasp_tag:
+                if tax:
+                    f.owasp_tag = tax.owasp
+                else:
+                    owasp_tag = self._find_owasp_category(f)
+                    if owasp_tag:
+                        f.owasp_tag = owasp_tag
+
+            if not f.cwe_id:
+                if tax:
+                    f.cwe_id = tax.cwe
+                else:
+                    cwe, _ = self._find_cwe_pci(f)
+                    if cwe:
+                        f.cwe_id = cwe
+
+            if not f.pci_dss:
+                if tax:
+                    f.pci_dss = tax.pci
+                else:
+                    _, pci = self._find_cwe_pci(f)
+                    if pci:
+                        f.pci_dss = pci
 
         return findings
 
     def _find_cwe_pci(self, finding: Finding) -> tuple:
-        text = f"{finding.title} {finding.description} {finding.tool_name}".lower()
+        text = f"{finding.title or ''} {finding.description or ''} {finding.tool_name or ''}"
         for key, (cwe, pci) in self.cwe_mapping.items():
-            if key in text:
+            pattern = rf"\b{re.escape(key)}\b"
+            if re.search(pattern, text, re.IGNORECASE):
                 return cwe, pci
         return None, None
 
     def _find_owasp_category(self, finding: Finding) -> str:
-        text = f"{finding.title} {finding.description}".lower()
+        text = f"{finding.title or ''} {finding.description or ''}"
 
         for category_id, category_info in self.owasp_mapping.items():
             for keyword in category_info["keywords"]:
-                if keyword in text:
+                pattern = rf"\b{re.escape(keyword)}\b"
+                if re.search(pattern, text, re.IGNORECASE):
                     return category_id
 
         return self._infer_from_severity(finding)

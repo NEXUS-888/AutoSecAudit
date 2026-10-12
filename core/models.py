@@ -81,6 +81,7 @@ class Finding:
     method: Optional[str] = None
     evidence: Optional[str] = None
     fingerprint: Optional[str] = None
+    original_severity: Optional[str] = None
 
     def __post_init__(self):
         if isinstance(self.vuln_type, Enum):

@@ -7,19 +7,24 @@ executives, and non-technical stakeholders.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
+import re
+from typing import Dict, List, Any, Optional, Union
+
+from intelligence.taxonomy import (
+    get_taxonomy,
+    infer_taxonomy_from_text,
+    CATEGORY_CUSTOMER_DATA,
+    CATEGORY_ACCOUNT_TAKEOVER,
+    CATEGORY_PHISHING_DEFACEMENT,
+    CATEGORY_SERVER_CONTROL,
+)
 
 logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Core Threat Categories
+# Core Threat Categories Metadata
 # ---------------------------------------------------------------------------
-CATEGORY_CUSTOMER_DATA = "customer_data_theft"
-CATEGORY_ACCOUNT_TAKEOVER = "account_takeover"
-CATEGORY_PHISHING_DEFACEMENT = "phishing_defacement"
-CATEGORY_SERVER_CONTROL = "server_control"
-
 CATEGORY_METADATA = {
     CATEGORY_CUSTOMER_DATA: {
         "title": "Customer Data & Database Theft",
@@ -51,32 +56,75 @@ CATEGORY_METADATA = {
 # ---------------------------------------------------------------------------
 # Threat Mapping Heuristics
 # ---------------------------------------------------------------------------
-def classify_threat_category(finding: Dict[str, Any]) -> str:
-    """Map finding to one of the 4 real-world business threat categories."""
-    title = (finding.get("title") or "").lower()
-    tool = (finding.get("tool_name") or finding.get("tool") or "").lower()
-    owasp = (finding.get("owasp_tag") or finding.get("owasp") or "").upper()
-    desc = (finding.get("description") or "").lower()
+def classify_threat_category(finding: Union[Dict[str, Any], Any]) -> str:
+    """
+    Map finding to one of the 4 real-world business threat categories.
+    Uses canonical taxonomy first, and word-boundary regexes as fallback.
+    Never misclassifies '[Dev Environment Artifact]' as customer data theft,
+    and never classifies 'OAuth' by the 'auth' keyword alone.
+    """
+    # 1. First check vuln_type against taxonomy
+    if isinstance(finding, str):
+        vuln_type = None
+        title = finding
+        tool = ""
+        owasp = ""
+        desc = ""
+    elif isinstance(finding, dict):
+        vuln_type = finding.get("vuln_type")
+        title = finding.get("title") or ""
+        tool = finding.get("tool_name") or finding.get("tool") or ""
+        owasp = finding.get("owasp_tag") or finding.get("owasp") or ""
+        desc = finding.get("description") or ""
+    else:
+        vuln_type = getattr(finding, "vuln_type", None)
+        title = getattr(finding, "title", "") or ""
+        tool = getattr(finding, "tool_name", "") or getattr(finding, "tool", "") or ""
+        owasp = getattr(finding, "owasp_tag", "") or getattr(finding, "owasp", "") or ""
+        desc = getattr(finding, "description", "") or ""
 
-    if any(k in title or k in tool for k in ["rce", "command injection", "remote code", "exec"]):
+    if vuln_type:
+        tax = get_taxonomy(vuln_type)
+        if tax:
+            return tax.danger_category
+
+    # 2. Clean dev artifact marker
+    # Remove dev artifact marker to prevent false-match of 'env' inside 'environment'
+    title_clean = re.sub(r"\[Dev Environment Artifact\]", "", title, flags=re.IGNORECASE)
+    text = f"{title_clean} {desc} {tool.replace('_', ' ')}".strip()
+
+    # 3. Try taxonomy text inference with word boundaries
+    tax = infer_taxonomy_from_text(text)
+    if tax:
+        return tax.danger_category
+
+    # 4. Fallback keyword matching with word-boundary regexes
+    # Server control
+    if re.search(r"\b(rce|command injection|remote code|exec|ssti|ssrf)\b", text, re.IGNORECASE):
         return CATEGORY_SERVER_CONTROL
 
-    if any(k in title or k in tool for k in ["sqli", "sql injection", "database", "git", "env", "dirbrute", "directory listing", "backup", "source code"]):
+    # Customer data (handles .env and .git without requiring preceding word character)
+    if re.search(r"(?:(?<![\w.])\.(?:git|env)\b|\b(?:sqli|sql injection|database|dirbrute|directory listing|backup|source code|path traversal)\b)", text, re.IGNORECASE):
         return CATEGORY_CUSTOMER_DATA
 
-    if any(k in title or k in tool for k in ["auth", "jwt", "session", "cookie", "password", "brute", "idor", "token"]):
+    # Account takeover (Strict \bauth\b to NOT match oauth)
+    if re.search(r"\b(auth|jwt|session|cookie|password|brute|idor|token|bola)\b", text, re.IGNORECASE):
         return CATEGORY_ACCOUNT_TAKEOVER
 
-    if any(k in title or k in tool for k in ["cors", "xss", "cross-site", "csp", "clickjacking", "frame", "header", "hsts", "redirect"]):
+    # Phishing / defacement
+    if re.search(r"\b(cors|xss|cross-site|csp|clickjacking|frame|header|hsts|redirect|csrf)\b", text, re.IGNORECASE):
         return CATEGORY_PHISHING_DEFACEMENT
 
     # OWASP tag fallback
-    if "A03:2021" in owasp:
+    owasp_upper = owasp.upper()
+    if "A03:2021" in owasp_upper:
         return CATEGORY_CUSTOMER_DATA
-    if "A01:2021" in owasp or "A07:2021" in owasp:
+    if "A01:2021" in owasp_upper or "A07:2021" in owasp_upper:
         return CATEGORY_ACCOUNT_TAKEOVER
-    if "A05:2021" in owasp:
+    if "A05:2021" in owasp_upper:
         return CATEGORY_PHISHING_DEFACEMENT
+    if "A10:2021" in owasp_upper:
+        return CATEGORY_SERVER_CONTROL
 
     return CATEGORY_CUSTOMER_DATA
 
@@ -179,19 +227,84 @@ def analyze_real_danger(finding: Dict[str, Any]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Posture Grade & Threat Matrix Calculator
 # ---------------------------------------------------------------------------
-def calculate_security_posture(findings: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Calculate letter grade (A+ to F), numerical score, and executive summary."""
-    total = len(findings)
-    crit_count = sum(1 for f in findings if (f.get("severity") or "").lower() == "critical")
-    high_count = sum(1 for f in findings if (f.get("severity") or "").lower() == "high")
-    med_count = sum(1 for f in findings if (f.get("severity") or "").lower() == "medium")
-    low_count = sum(1 for f in findings if (f.get("severity") or "").lower() == "low")
+def calculate_security_posture(findings: List[Union[Dict[str, Any], Any]]) -> Dict[str, Any]:
+    """
+    Calculate letter grade (A+ to F), numerical score, and executive summary.
+    - Findings are deduplicated by fingerprint (or tool:title).
+    - Severity penalties are weighted by confidence: high=1.0, medium=0.6, low=0.25 (default 0.6).
+    - An automatic 'F' is triggered ONLY if a finding is Critical AND at least medium confidence.
+    """
+    # Weights by confidence
+    CONFIDENCE_WEIGHTS = {
+        "high": 1.0,
+        "medium": 0.6,
+        "low": 0.25,
+    }
+
+    SEVERITY_PENALTIES = {
+        "critical": 25,
+        "high": 12,
+        "medium": 5,
+        "low": 1,
+        "info": 0,
+    }
+
+    def _finding_rank(finding_dict: Dict[str, Any]) -> tuple:
+        s = (finding_dict.get("severity") or "info").lower()
+        c = (finding_dict.get("confidence") or "medium").lower()
+        # Rank by confidence weight first, then severity penalty
+        return (CONFIDENCE_WEIGHTS.get(c, 0.6), SEVERITY_PENALTIES.get(s, 0))
+
+    deduped_map: Dict[str, Dict[str, Any]] = {}
+    for item in findings:
+        f = item.to_dict() if hasattr(item, "to_dict") else dict(item) if isinstance(item, dict) else item.__dict__
+        fp = f.get("fingerprint")
+        if not fp:
+            tool = f.get("tool_name") or f.get("tool") or ""
+            title = f.get("title") or ""
+            fp = f"{tool}:{title}"
+        if fp in deduped_map:
+            # Retain finding with highest confidence weight and severity
+            if _finding_rank(f) > _finding_rank(deduped_map[fp]):
+                deduped_map[fp] = f
+        else:
+            deduped_map[fp] = f
+
+    deduped = list(deduped_map.values())
+    total = len(deduped)
+
+    crit_count = 0
+    high_count = 0
+    med_count = 0
+    low_count = 0
+    has_confirmed_critical = False
+    total_penalty = 0.0
+
+    for f in deduped:
+        sev = (f.get("severity") or "info").lower()
+        conf = (f.get("confidence") or "medium").lower()
+        weight = CONFIDENCE_WEIGHTS.get(conf, 0.6)
+        base_penalty = SEVERITY_PENALTIES.get(sev, 0)
+
+        total_penalty += base_penalty * weight
+
+        if sev == "critical":
+            crit_count += 1
+            if conf in ("high", "medium"):
+                has_confirmed_critical = True
+        elif sev == "high":
+            high_count += 1
+        elif sev == "medium":
+            med_count += 1
+        elif sev == "low":
+            low_count += 1
 
     # Score calculation out of 100
-    score = 100 - (crit_count * 25 + high_count * 12 + med_count * 5 + low_count * 1)
-    score = max(10, min(100, score))
+    score = 100 - round(total_penalty)
+    score = max(10, min(100, int(score)))
 
-    if crit_count > 0 or score < 50:
+    # Automatic F triggered ONLY if confirmed critical (>= medium confidence) or score < 50
+    if has_confirmed_critical or score < 50:
         grade = "F"
         grade_label = "Severe Danger"
         grade_color = "#ef4444"
@@ -225,14 +338,14 @@ def calculate_security_posture(findings: List[Dict[str, Any]]) -> Dict[str, Any]
         CATEGORY_SERVER_CONTROL: 0,
     }
 
-    for f in findings:
+    for f in deduped:
         cat = classify_threat_category(f)
         category_counts[cat] = category_counts.get(cat, 0) + 1
 
     threat_matrix = []
     for cat_id, meta in CATEGORY_METADATA.items():
         count = category_counts.get(cat_id, 0)
-        status = "CRITICAL" if count > 0 and crit_count > 0 and cat_id in [CATEGORY_CUSTOMER_DATA, CATEGORY_SERVER_CONTROL] else ("AT RISK" if count > 0 else "SECURE")
+        status = "CRITICAL" if count > 0 and has_confirmed_critical and cat_id in [CATEGORY_CUSTOMER_DATA, CATEGORY_SERVER_CONTROL] else ("AT RISK" if count > 0 else "SECURE")
         color = "#ef4444" if status == "CRITICAL" else ("#f59e0b" if status == "AT RISK" else "#10b981")
 
         threat_matrix.append({
