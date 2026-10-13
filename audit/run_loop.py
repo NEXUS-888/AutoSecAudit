@@ -28,7 +28,7 @@ STATE = AUDIT / "STATE.md"
 RUNTIME = ROOT / ".git" / "audit-loop"  # inside .git: never committed, never in diffs
 
 LAST_BATCH = 25
-MAX_ROUNDS = 6
+MAX_ROUNDS = 8
 SONNET_BATCHES = {"01", "06", "17"}  # mechanical batches; everything else is verified by Opus
 PROTECTED = ("audit/BACKLOG.md", "audit/VERIFIER.md", "audit/run_loop.py",
              "audit/show_batch.py", "audit/wait_for_status.py", "audit/supervise.py", ".claude/")
