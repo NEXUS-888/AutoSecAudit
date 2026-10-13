@@ -6,6 +6,8 @@ from typing import Dict, Any, List, Optional
 
 from plugins.base_plugin import BaseScanner
 from core.utils import format_severity
+from core.cookies import (describe_issue, insecure_cookie_flags, raw_set_cookie_headers,
+                          severity_for as cookie_severity)
 
 logger = logging.getLogger(__name__)
 
@@ -315,6 +317,7 @@ class SQLiScanner(BaseScanner):
                                 "type": "login_bypass",
                                 "verified": True,
                                 "confidence": "high",
+                                "set_cookie_headers": raw_set_cookie_headers(resp),
                             })
                             logger.info(
                                 f"[SQLi] Verified login bypass at {login_path} ({mode_name}) "
@@ -519,7 +522,36 @@ class SQLiScanner(BaseScanner):
                 "evidence": result.get("evidence"),
             })
 
+        findings.extend(self._cookie_findings(host, port))
         return {"tool_name": "sqli_scanner", "findings": findings}
+
+    def _cookie_findings(self, host: str, port: int) -> List[Dict[str, Any]]:
+        """Session cookies handed out by a verified login bypass, if they lack hardening flags."""
+        seen, out = set(), []
+        https = self.target.lower().startswith("https://")
+        for result in self.results:
+            for issue in insecure_cookie_flags(result.get("set_cookie_headers", []), https=https):
+                if issue["cookie"] in seen:
+                    continue
+                seen.add(issue["cookie"])
+                out.append({
+                    "id": f"SQLI-COOKIE-{len(out) + 1:03d}",
+                    "title": f"Insecure session cookie: {issue['cookie']} (missing {', '.join(issue['missing'])})",
+                    "severity": cookie_severity(issue),
+                    "host": host,
+                    "port": port,
+                    "description": describe_issue(issue),
+                    "raw_output": f"Set-Cookie issued on {result['endpoint']} after login bypass",
+                    "owasp_tag": "A05:2021 Security Misconfiguration",
+                    "tool_name": "sqli_scanner",
+                    "confidence": "high",
+                    "vuln_type": "insecure_cookie",
+                    "endpoint": result["endpoint"],
+                    "param": issue["cookie"],
+                    "method": "POST",
+                    "evidence": "; ".join(result.get("set_cookie_headers", []))[:300],
+                })
+        return out
 
     # ------------------------------------------------------------------
     # _get_mock_output()

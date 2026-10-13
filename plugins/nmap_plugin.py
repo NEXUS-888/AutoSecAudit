@@ -2,6 +2,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 import logging
 import re
+from urllib.parse import urlsplit
 from typing import Dict, Any, List, Optional
 
 import config
@@ -27,14 +28,7 @@ class NmapPlugin(BaseScanner):
             logger.warning(f"Nmap not available, skipping scan")
             return
 
-        target = self._extract_host(self.target)
-        cmd = [
-            config.NMAP_PATH,
-            "-sV",
-            "-oX", "-",
-            "-T4",
-            target
-        ]
+        cmd = self._build_command()
 
         try:
             logger.info(f"Running Nmap: {' '.join(cmd)}")
@@ -117,11 +111,29 @@ class NmapPlugin(BaseScanner):
 
         return {"tool_name": "nmap", "findings": findings}
 
+    def _build_command(self) -> List[str]:
+        """Nmap command line. Scans only the target's port unless a full scan is opted into."""
+        cmd = [config.NMAP_PATH, "-sV", "-oX", "-", "-T4"]
+        if not getattr(config, "NMAP_FULL_SCAN", False):
+            cmd += ["-p", str(self._extract_port(self.target))]
+        cmd.append(self._extract_host(self.target))
+        return cmd
+
+    def _parsed_target(self, target: str):
+        if not re.match(r"^[a-z][a-z0-9+.-]*://", target, re.IGNORECASE):
+            target = f"http://{target}"
+        return urlsplit(target)
+
     def _extract_host(self, target: str) -> str:
-        target = re.sub(r"^https?://", "", target)
-        target = target.split("/")[0]
-        target = target.split(":")[0]
-        return target
+        return self._parsed_target(target).hostname or ""
+
+    def _extract_port(self, target: str) -> int:
+        parsed = self._parsed_target(target)
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
+        return port or (443 if parsed.scheme.lower() == "https" else 80)
 
     def _assess_severity(self, service: str, port: str) -> str:
         service = service.lower()

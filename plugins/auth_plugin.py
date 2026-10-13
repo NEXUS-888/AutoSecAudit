@@ -43,7 +43,8 @@ class AuthScanner(BaseScanner):
 
     IDOR_PATHS = ["/api/Users/1", "/api/Users/2", "/api/BasketItems/1"]
 
-    ADMIN_PATHS = ["/administration", "/admin", "/#/administration"]
+    # No "/#/..." routes: a URL fragment is never sent to the server, so probing one only re-fetches the home page.
+    ADMIN_PATHS = ["/administration", "/admin"]
 
     def __init__(self, mock_mode: Optional[bool] = None):
         super().__init__(mock_mode)

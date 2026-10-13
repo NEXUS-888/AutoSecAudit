@@ -84,7 +84,7 @@ class OpenRedirectScanner(BaseScanner):
                             continue
                         if resp.status_code in (301, 302, 303, 307, 308):
                             loc = resp.headers.get("Location", "")
-                            if "example.com" in loc:
+                            if self._redirects_to_external_host(test_url, loc):
                                 self.results.append({
                                     "path": clean_path,
                                     "param": param,
@@ -97,6 +97,18 @@ class OpenRedirectScanner(BaseScanner):
                                 break  # One confirmed finding per param/path is sufficient
                     except Exception as e:
                         logger.debug(f"[OpenRedirect] Error testing {test_url}: {e}")
+
+    @staticmethod
+    def _redirects_to_external_host(request_url: str, location: str) -> bool:
+        """True only if the redirect target resolves to the payload's host (example.com).
+
+        Merely containing the payload is not enough: a same-site redirect such as Django's
+        /login -> /login/?next=https%3A%2F%2Fexample.com just echoes it in the query string.
+        """
+        if not location:
+            return False
+        host = (urlparse(urljoin(request_url, location)).hostname or "").lower()
+        return host == "example.com" or host.endswith(".example.com")
 
     def parse_output(self) -> Dict[str, Any]:
         findings: List[Dict[str, Any]] = []

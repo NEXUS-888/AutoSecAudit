@@ -87,6 +87,9 @@ DEBUG = os.environ.get("AUTOSEC_DEBUG", "false").lower() == "true"
 THREAD_COUNT = int(os.environ.get("AUTOSEC_THREAD_COUNT", "4"))
 
 NMAP_PATH = os.environ.get("AUTOSEC_NMAP_PATH", "nmap")
+# Scan every port on the host instead of just the target's port (opt-in; slow, and on localhost
+# it reports unrelated services running on the machine).
+NMAP_FULL_SCAN = os.environ.get("AUTOSEC_NMAP_FULL_SCAN", "").lower() in ("1", "true", "yes")
 NIKTO_PATH = os.environ.get("AUTOSEC_NIKTO_PATH", "nikto")
 
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"

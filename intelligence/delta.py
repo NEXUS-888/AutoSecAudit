@@ -47,8 +47,25 @@ class DeltaAnalyzer:
         d["fingerprint"] = fp
         return fp
 
+    @staticmethod
+    def _tools_that_ran(report: Any) -> set:
+        return {r.tool_name for r in (getattr(report, "scan_results", None) or [])
+                if getattr(r, "status", "success") == "success" and r.tool_name}
+
+    @staticmethod
+    def _finding_tools(finding: Any) -> List[str]:
+        tools = getattr(finding, "reporting_tools", None)
+        if not tools:
+            tools = [t.strip() for t in (getattr(finding, "tool_name", None) or "").split(",") if t.strip()]
+        return tools
+
     def compare(self, current_report: Report, previous_report: Report) -> Dict[str, Any]:
-        """Compare current findings with previous findings by fingerprint."""
+        """Compare current findings with previous findings by fingerprint.
+
+        Only scanners that ran successfully in both scans are compared. Otherwise a scan with a
+        narrower profile would report every finding of the missing scanners as "fixed", and a
+        wider one would report them all as "new".
+        """
         if not current_report or not hasattr(current_report, "all_findings"):
             current_findings_list = []
         else:
@@ -64,6 +81,21 @@ class DeltaAnalyzer:
                 f for f in previous_report.all_findings
                 if f and (getattr(f, "fingerprint", None) or getattr(f, "id", None) or getattr(f, "title", None))
             ]
+
+        ran_current = self._tools_that_ran(current_report)
+        ran_previous = self._tools_that_ran(previous_report)
+        scope = {"compared_tools": [], "excluded_tools": []}
+        if ran_current and ran_previous:
+            compared = ran_current & ran_previous
+
+            def in_scope(finding):
+                tools = self._finding_tools(finding)
+                return not tools or any(t in compared for t in tools)
+
+            current_findings_list = [f for f in current_findings_list if in_scope(f)]
+            previous_findings_list = [f for f in previous_findings_list if in_scope(f)]
+            scope = {"compared_tools": sorted(compared),
+                     "excluded_tools": sorted((ran_current | ran_previous) - compared)}
 
         current_fps = {self._get_fingerprint(f) for f in current_findings_list}
         previous_fps = {self._get_fingerprint(f) for f in previous_findings_list}
@@ -87,7 +119,8 @@ class DeltaAnalyzer:
                 "new_count": len(new_findings),
                 "fixed_count": len(fixed_findings),
                 "unchanged_count": len(unchanged_findings),
-            }
+            },
+            "scope": scope,
         }
 
         logger.info(f"Delta: {len(new_findings)} new, {len(fixed_findings)} fixed, {len(unchanged_findings)} unchanged")

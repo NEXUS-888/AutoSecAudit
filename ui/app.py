@@ -2364,6 +2364,9 @@ def get_current_user():
     """Retrieve logged-in user from session, if any."""
     user_id = session.get("user_id")
     if user_id:
+        if auth.is_session_revoked(session.get("sid")):
+            session.clear()
+            return None
         return auth.get_user_by_id(user_id)
     return None
 
@@ -2443,6 +2446,7 @@ def login():
             _release_login_reservation(client_ip)
             session["user_id"] = user["id"]
             session["username"] = user["username"]
+            session["sid"] = auth.new_session_id()
             if request.is_json:
                 return jsonify({"success": True, "message": "Login successful", "user": user, "redirect": next_url})
             return redirect(next_url)
@@ -2492,6 +2496,7 @@ def register():
         if ok and user:
             session["user_id"] = user["id"]
             session["username"] = user["username"]
+            session["sid"] = auth.new_session_id()
             if request.is_json:
                 return jsonify({"success": True, "message": "Account created successfully", "user": user, "redirect": next_url})
             return redirect(next_url)
@@ -2508,7 +2513,8 @@ def register():
 
 @app.route("/logout")
 def logout():
-    """Log out user and clear session."""
+    """Log out user: revoke this session id server-side (so a copied cookie stops working) and clear it."""
+    auth.revoke_session(session.get("sid"))
     session.clear()
     return redirect(url_for("index"))
 

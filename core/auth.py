@@ -62,6 +62,13 @@ def init_user_db() -> None:
                 )
             """)
 
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS revoked_sessions (
+                    sid TEXT PRIMARY KEY,
+                    revoked_at REAL NOT NULL
+                )
+            """)
+
             # Seed demo user if no users exist
             cursor = conn.execute("SELECT COUNT(*) as count FROM users")
             if cursor.fetchone()["count"] == 0:
@@ -179,6 +186,35 @@ def verify_user(identifier: str, password: str) -> Tuple[bool, str, Optional[Dic
     except Exception as e:
         logger.error(f"Authentication error for {identifier}: {e}")
         return False, "Authentication service error.", None
+
+
+# Flask rejects signed session cookies older than 31 days, so a revocation only has to outlive that.
+REVOKED_SESSION_RETENTION = 32 * 24 * 3600
+
+
+def new_session_id() -> str:
+    """Random id stored in the session cookie so that a single login can be revoked server-side."""
+    return secrets.token_urlsafe(16)
+
+
+def revoke_session(sid: str, now: Optional[float] = None) -> None:
+    """Mark a session id as logged out and drop revocations too old to matter."""
+    if not sid:
+        return
+    now = time.time() if now is None else now
+    with contextlib.closing(_get_db()) as conn:
+        with conn:
+            conn.execute("INSERT OR REPLACE INTO revoked_sessions (sid, revoked_at) VALUES (?, ?)", (sid, now))
+            conn.execute("DELETE FROM revoked_sessions WHERE revoked_at < ?",
+                         (time.time() - REVOKED_SESSION_RETENTION,))
+
+
+def is_session_revoked(sid: str) -> bool:
+    if not sid:
+        return False
+    with contextlib.closing(_get_db()) as conn:
+        row = conn.execute("SELECT 1 FROM revoked_sessions WHERE sid = ?", (sid,)).fetchone()
+    return row is not None
 
 
 def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:

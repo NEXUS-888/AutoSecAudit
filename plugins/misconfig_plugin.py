@@ -6,6 +6,8 @@ from typing import Dict, Any, List, Optional
 
 from plugins.base_plugin import BaseScanner
 from core.utils import format_severity
+from core.cookies import (describe_issue, insecure_cookie_flags, raw_set_cookie_headers,
+                          severity_for as cookie_severity)
 from core.dev_detector import tag_dev_artifact_finding
 
 logger = logging.getLogger(__name__)
@@ -148,6 +150,8 @@ class MisconfigScanner(BaseScanner):
             logger.warning(f"Security-header check failed: {exc}")
             return
 
+        self._record_cookie_issues(raw_set_cookie_headers(resp), base_url)
+
         for header_name, meta in self.SECURITY_HEADERS.items():
             if header_name not in resp.headers:
                 f_hdr = {
@@ -175,6 +179,27 @@ class MisconfigScanner(BaseScanner):
                 if self.dev_environment:
                     f_hdr = tag_dev_artifact_finding(f_hdr, self.dev_environment)
                 self.results.append(f_hdr)
+
+    def _record_cookie_issues(self, set_cookie_headers, base_url: str) -> None:
+        """Report session-like cookies set without HttpOnly / SameSite (and Secure over HTTPS)."""
+        host, port = self._extract_host_port(base_url)
+        for issue in insecure_cookie_flags(set_cookie_headers, https=base_url.lower().startswith("https://")):
+            self.results.append({
+                "id": f"MISCONF-COOKIE-{len(self.results)+1:03d}",
+                "title": f"Insecure session cookie: {issue['cookie']} (missing {', '.join(issue['missing'])})",
+                "severity": cookie_severity(issue),
+                "host": host,
+                "port": port,
+                "description": describe_issue(issue),
+                "raw_output": f"Set-Cookie on {base_url}: {'; '.join(set_cookie_headers)[:300]}",
+                "owasp_tag": "A05:2021 Security Misconfiguration",
+                "tool_name": "misconfig_scanner",
+                "vuln_type": "insecure_cookie",
+                "endpoint": "/",
+                "param": issue["cookie"],
+                "method": "GET",
+                "evidence": f"Set-Cookie: {'; '.join(set_cookie_headers)[:300]}",
+            })
 
     def _check_cors(self, base_url: str) -> None:
         """Send a cross-origin request and inspect CORS headers."""

@@ -265,9 +265,15 @@ def run_scan_pipeline(
         logger.warning("Scan cancelled or timed out after report generation; halting.")
         raise ScanCancelledError("Scan cancelled or timed out after report generation.")
 
-    # 8. Delta comparison
+    # 8. Correlator (before delta: stored reports hold merged findings, so compare merged with merged)
+    emit("enriching", "Correlating findings...", 65)
+    correlator = Correlator()
+    report.all_findings = correlator.merge_canonical(report.all_findings)
+    report.all_findings = correlator.link_related(report.all_findings)
+
+    # 9. Delta comparison
     if previous_report:
-        emit("processing", "Running delta analysis...", 65)
+        emit("processing", "Running delta analysis...", 70)
         prev_report_obj = None
         if isinstance(previous_report, Report):
             prev_report_obj = previous_report
@@ -282,12 +288,6 @@ def run_scan_pipeline(
             delta = DeltaAnalyzer().compare(report, prev_report_obj)
             report.delta = delta
             report.previous_report_path = str(previous_report) if isinstance(previous_report, str) else None
-
-    # 9. Correlator
-    emit("enriching", "Correlating findings...", 70)
-    correlator = Correlator()
-    report.all_findings = correlator.merge_canonical(report.all_findings)
-    report.all_findings = correlator.link_related(report.all_findings)
 
     # 10. Enricher
     emit("enriching", "Enriching findings with CVE data...", 75)
