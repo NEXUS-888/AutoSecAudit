@@ -80,9 +80,28 @@ def _get_or_create_secret_key() -> str:
     return key
 
 
+def resolve_cookie_secure(is_https: bool = False) -> bool:
+    """Resolve whether session cookies should carry the Secure flag.
+
+    Honors AUTOSEC_COOKIE_SECURE override ('1'/'true'/'yes' -> True,
+    '0'/'false'/'no' -> False). Defaults to True when the request is over
+    HTTPS (is_https=True), and False on plain HTTP local connections.
+    """
+    raw = os.environ.get("AUTOSEC_COOKIE_SECURE", "").strip().lower()
+    if raw in ("1", "true", "yes"):
+        return True
+    if raw in ("0", "false", "no"):
+        return False
+    return bool(is_https)
+
+
 # Web application security
 SECRET_KEY = _get_or_create_secret_key()
 DEBUG = os.environ.get("AUTOSEC_DEBUG", "false").lower() == "true"
+COOKIE_SECURE = resolve_cookie_secure(False)
+SESSION_COOKIE_SECURE = COOKIE_SECURE
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_HTTPONLY = True
 
 THREAD_COUNT = int(os.environ.get("AUTOSEC_THREAD_COUNT", "4"))
 

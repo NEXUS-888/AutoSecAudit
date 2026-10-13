@@ -22,8 +22,7 @@ class TestSSEProgress(unittest.TestCase):
             admin = auth.get_user_by_username("admin")
         self.admin_id = admin["id"]
 
-        with self.client.session_transaction() as sess:
-            sess["user_id"] = self.admin_id
+        auth.login_test_client(self.client, self.admin_id)
 
         with scan_jobs_lock:
             scan_jobs.clear()
@@ -116,8 +115,7 @@ class TestSSEProgress(unittest.TestCase):
 
         def read_stream(dest):
             client = self.app.test_client()
-            with client.session_transaction() as sess:
-                sess["user_id"] = self.admin_id
+            auth.login_test_client(client, self.admin_id)
             resp = client.get(f"/scan/progress/{scan_id}")
             for chunk in resp.response:
                 text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk

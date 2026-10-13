@@ -22,8 +22,8 @@ class TestTargetReachability(unittest.TestCase):
         app.config["WTF_CSRF_ENABLED"] = True
 
     def _auth_client(self, client):
-        with client.session_transaction() as sess:
-            sess["user_id"] = self.admin["id"]
+        import core.auth as auth
+        auth.login_test_client(client, self.admin["id"])
         return client
 
     def test_offline_port_detected_as_unreachable(self):

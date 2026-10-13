@@ -25,8 +25,7 @@ with app.test_client() as client:
     if not admin:
         auth.init_user_db()
         admin = auth.get_user_by_username("admin")
-    with client.session_transaction() as sess:
-        sess["user_id"] = admin["id"]
+    auth.login_test_client(client, admin["id"])
 
     resp = client.get("/history")
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"

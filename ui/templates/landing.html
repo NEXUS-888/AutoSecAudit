@@ -1460,7 +1460,10 @@
                         ● {{ user.username }}
                     </span>
                     <a href="/dashboard" class="btn btn-secondary">Console</a>
-                    <a href="/logout" class="btn btn-secondary" style="padding: 0.6rem 0.8rem;">Logout</a>
+                    <form method="POST" action="/logout" style="display: inline; margin: 0;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-secondary" style="padding: 0.6rem 0.8rem; cursor: pointer;">Logout</button>
+                    </form>
                 {% else %}
                     <button onclick="openAuthModal('login')" class="btn btn-secondary">Sign In</button>
                     <button onclick="requireAuthPrompt('Please sign in or create an account to start scanning.')" class="btn btn-primary">Launch Scanner</button>

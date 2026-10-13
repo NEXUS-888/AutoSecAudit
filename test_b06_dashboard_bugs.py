@@ -24,8 +24,7 @@ class TestB06DashboardBugs(unittest.TestCase):
             admin = auth.get_user_by_username("admin")
         self.admin_id = admin["id"]
 
-        with self.client.session_transaction() as sess:
-            sess["user_id"] = self.admin_id
+        auth.login_test_client(self.client, self.admin_id)
 
         self.reports_dir = Path(config.REPORTS_DIR)
         self.reports_dir.mkdir(parents=True, exist_ok=True)

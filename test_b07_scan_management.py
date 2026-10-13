@@ -33,8 +33,7 @@ class TestB07ScanManagement(unittest.TestCase):
             admin = auth.get_user_by_username("admin")
         self.admin_id = admin["id"]
 
-        with self.client.session_transaction() as sess:
-            sess["user_id"] = self.admin_id
+        auth.login_test_client(self.client, self.admin_id)
 
         # Clear scan_jobs between tests
         with scan_jobs_lock:
@@ -144,8 +143,7 @@ class TestB07ScanManagement(unittest.TestCase):
 
         def worker():
             client = self.app.test_client()
-            with client.session_transaction() as sess:
-                sess["user_id"] = self.admin_id
+            auth.login_test_client(client, self.admin_id)
 
             barrier.wait()
             resp = client.post("/scan/async", data={
@@ -193,8 +191,7 @@ class TestB07ScanManagement(unittest.TestCase):
 
         def subscriber(dest_list):
             client = self.app.test_client()
-            with client.session_transaction() as sess:
-                sess["user_id"] = self.admin_id
+            auth.login_test_client(client, self.admin_id)
             response = client.get(f"/scan/progress/{scan_id}")
             for line in response.response:
                 text = line.decode("utf-8") if isinstance(line, bytes) else line
@@ -317,8 +314,7 @@ class TestB07ScanManagement(unittest.TestCase):
 
         def subscriber():
             client = self.app.test_client()
-            with client.session_transaction() as sess:
-                sess["user_id"] = self.admin_id
+            auth.login_test_client(client, self.admin_id)
             resp = client.get(f"/scan/progress/{scan_id}")
             for line in resp.response:
                 text = line.decode("utf-8") if isinstance(line, bytes) else line

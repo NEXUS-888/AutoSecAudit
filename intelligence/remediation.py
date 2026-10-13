@@ -209,13 +209,6 @@ TOOL_REMEDIATIONS = {
         "4. Implement IP-based rate limiting on authentication endpoints.\n"
         "5. Alert on brute-force patterns in your monitoring system."
     ),
-    "auth_scanner:idor": (
-        "1. Implement object-level authorization checks on every data access.\n"
-        "2. Use indirect reference maps (UUIDs) instead of sequential IDs.\n"
-        "3. Verify the authenticated user owns or has access to the requested resource.\n"
-        "4. Log all unauthorized access attempts.\n"
-        "5. Use automated IDOR testing in your security test suite."
-    ),
     "misconfig_scanner:misconfig": (
         "1. Remove or obfuscate Server, X-Powered-By, and X-AspNet-Version headers.\n"
         "2. In Nginx: add 'server_tokens off;' to your config.\n"

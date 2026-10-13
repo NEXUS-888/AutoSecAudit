@@ -160,7 +160,7 @@ class TestSessionRevocation(unittest.TestCase):
         old_cookie = client.get_cookie("session").value
         self.assertEqual(client.get("/dashboard").status_code, 200)
 
-        client.get("/logout")
+        client.post("/logout")
 
         replay = self.app.test_client()
         replay.set_cookie("session", old_cookie)
@@ -173,14 +173,14 @@ class TestSessionRevocation(unittest.TestCase):
         first, second = self.app.test_client(), self.app.test_client()
         self._login(first)
         self._login(second)
-        first.get("/logout")
+        first.post("/logout")
         self.assertEqual(second.get("/dashboard").status_code, 200)
 
     def test_revocation_survives_a_restart(self):
         client = self.app.test_client()
         self._login(client)
         old_cookie = client.get_cookie("session").value
-        client.get("/logout")
+        client.post("/logout")
         auth._initialized_dbs.clear()  # simulate a fresh process reading the same DB
         replay = self.app.test_client()
         replay.set_cookie("session", old_cookie)

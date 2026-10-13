@@ -168,8 +168,7 @@ class TestDangerEngineAndRecipes(unittest.TestCase):
             if not admin:
                 auth.init_user_db()
                 admin = auth.get_user_by_username("admin")
-            with client.session_transaction() as sess:
-                sess["user_id"] = admin["id"]
+            auth.login_test_client(client, admin["id"])
 
             resp = client.get(f"/report/{mock_id}")
             self.assertEqual(resp.status_code, 200)

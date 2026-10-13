@@ -94,8 +94,7 @@ class TestSilentFailures(unittest.TestCase):
             if not admin:
                 auth.init_user_db()
                 admin = auth.get_user_by_username("admin")
-            with client.session_transaction() as sess:
-                sess["user_id"] = admin["id"]
+            auth.login_test_client(client, admin["id"])
 
             resp = client.post("/scan/async", data={})
             self.assertEqual(resp.status_code, 400)

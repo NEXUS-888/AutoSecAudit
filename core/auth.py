@@ -263,3 +263,19 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error fetching user by username {username}: {e}")
         return None
+
+
+def init_test_session(sess: Any, user_id: str) -> str:
+    """Populate a Flask session-like mapping with user_id and a fresh sid."""
+    sid = new_session_id()
+    sess["user_id"] = user_id
+    sess["sid"] = sid
+    sess.permanent = True
+    return sid
+
+
+def login_test_client(client: Any, user_id: str) -> str:
+    """Shared test helper to establish an authenticated session on a Flask test client."""
+    with client.session_transaction() as sess:
+        return init_test_session(sess, user_id)
+

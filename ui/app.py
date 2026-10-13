@@ -6,8 +6,10 @@ import uuid
 import queue
 import time
 import urllib.parse
+from datetime import timedelta
 from typing import Optional
-from flask import Flask, render_template_string, render_template, request, redirect, url_for, send_file, abort, Response, jsonify, session
+from flask import Flask, render_template_string, render_template, request, redirect, url_for, send_file, abort, Response, jsonify, session, has_request_context
+from flask.sessions import SecureCookieSessionInterface
 from functools import wraps
 from pathlib import Path
 from werkzeug.utils import secure_filename
@@ -30,7 +32,27 @@ app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"), stati
 app.secret_key = config.SECRET_KEY
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = config.SESSION_COOKIE_SAMESITE
+app.config["SESSION_COOKIE_SECURE"] = config.SESSION_COOKIE_SECURE
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
 app.config.setdefault("WTF_CSRF_ENABLED", True)
+
+
+class AutoSecSessionInterface(SecureCookieSessionInterface):
+    """Session interface that defaults Secure=True on HTTPS requests and honors AUTOSEC_COOKIE_SECURE."""
+
+    def get_cookie_secure(self, app):
+        if has_request_context():
+            is_https = bool(
+                request.is_secure
+                or request.headers.get("X-Forwarded-Proto", "").strip().lower() == "https"
+            )
+            return config.resolve_cookie_secure(is_https=is_https)
+        return config.resolve_cookie_secure(is_https=bool(super().get_cookie_secure(app)))
+
+
+app.session_interface = AutoSecSessionInterface()
 
 
 class AutoSecCSRFProtect(CSRFProtect):
@@ -2363,12 +2385,37 @@ HTML_BLOCKED = """
 def get_current_user():
     """Retrieve logged-in user from session, if any."""
     user_id = session.get("user_id")
+    sid = session.get("sid")
     if user_id:
-        if auth.is_session_revoked(session.get("sid")):
+        if not sid or auth.is_session_revoked(sid):
             session.clear()
             return None
         return auth.get_user_by_id(user_id)
     return None
+
+
+def _can_access_report(user: Optional[dict], report_data: Optional[dict]) -> bool:
+    """Return True if user is admin or owns the report. Legacy owner-less reports are admin-only."""
+    if not user or not isinstance(report_data, dict):
+        return False
+    if user.get("role") == "admin":
+        return True
+    owner = report_data.get("owner")
+    if not owner:
+        return False
+    return str(owner) == str(user.get("id"))
+
+
+def _can_access_job(user: Optional[dict], job: Optional[dict]) -> bool:
+    """Return True if user is admin or owns the scan job. Legacy owner-less jobs are admin-only."""
+    if not user or not isinstance(job, dict):
+        return False
+    if user.get("role") == "admin":
+        return True
+    owner = job.get("owner")
+    if not owner:
+        return False
+    return str(owner) == str(user.get("id"))
 
 
 def login_required(f):
@@ -2408,12 +2455,18 @@ def dashboard():
     """Active security scanning console and target configuration."""
     current_user = get_current_user()
     reports_dir = Path(config.REPORTS_DIR)
+    reports = []
     if reports_dir.exists():
-        reports = [f.stem.replace("scan_", "") for f in reports_dir.glob("scan_*.json")]
-        reports.sort(reverse=True)
-        reports = reports[:5]
-    else:
-        reports = []
+        for f in sorted(reports_dir.glob("scan_*.json"), reverse=True):
+            try:
+                data = load_json(str(f))
+                if not data or not _can_access_report(current_user, data):
+                    continue
+                reports.append(f.stem.replace("scan_", ""))
+                if len(reports) >= 5:
+                    break
+            except Exception as e:
+                logger.debug(f"Skipping corrupt report {f}: {e}")
     return render_template_string(HTML_FORM, recent_reports=reports, user=current_user, is_demo=config.MOCK_MODE)
 
 
@@ -2444,6 +2497,7 @@ def login():
         ok, msg, user = auth.verify_user(identifier, password)
         if ok and user:
             _release_login_reservation(client_ip)
+            session.permanent = True
             session["user_id"] = user["id"]
             session["username"] = user["username"]
             session["sid"] = auth.new_session_id()
@@ -2494,6 +2548,7 @@ def register():
 
         ok, msg, user = auth.create_user(username, email, password, full_name=full_name, role="developer")
         if ok and user:
+            session.permanent = True
             session["user_id"] = user["id"]
             session["username"] = user["username"]
             session["sid"] = auth.new_session_id()
@@ -2511,7 +2566,7 @@ def register():
     return render_template("auth.html", mode="register", next=next_url)
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
     """Log out user: revoke this session id server-side (so a copied cookie stops working) and clear it."""
     auth.revoke_session(session.get("sid"))
@@ -2533,6 +2588,7 @@ def auth_status():
 def history():
     """Scan history dashboard with charts and trends."""
     from jinja2 import Environment, FileSystemLoader
+    current_user = get_current_user()
     reports_dir = Path(config.REPORTS_DIR)
     scans = []
 
@@ -2540,7 +2596,7 @@ def history():
         for json_file in sorted(reports_dir.glob("scan_*.json")):
             try:
                 data = load_json(str(json_file))
-                if not data:
+                if not data or not _can_access_report(current_user, data):
                     continue
                 summary = data.get("summary", {})
                 timestamp = data.get("timestamp", "")
@@ -2623,6 +2679,7 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
             previous_report=previous_path,
             progress_callback=emit,
             cancel_check=check_cancelled,
+            owner=job.get("owner"),
         )
 
         try:
@@ -2658,6 +2715,7 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
 def scan_async():
     """Start a scan in the background, return a scan_id for SSE streaming."""
     _cleanup_stale_jobs()
+    current_user = get_current_user()
     target = request.form.get("target", "").strip()
     if not target:
         return jsonify({"error": "Target is required"}), 400
@@ -2694,6 +2752,7 @@ def scan_async():
         "status": "starting",
         "target": target,
         "profile": profile,
+        "owner": current_user["id"] if current_user else None,
         "events": [],
         "condition": cond,
         "report_name": None,
@@ -2759,9 +2818,10 @@ def scan_async():
 @login_required
 def scan_progress(scan_id):
     """SSE endpoint — streams scan progress events."""
+    current_user = get_current_user()
     with scan_jobs_lock:
         job = scan_jobs.get(scan_id)
-    if not job:
+    if not job or not _can_access_job(current_user, job):
         return "Scan not found", 404
 
     last_event_id_hdr = request.headers.get("Last-Event-ID") or request.args.get("last_event_id")
@@ -2831,9 +2891,10 @@ def scan_progress(scan_id):
 @login_required
 def scan_status(scan_id):
     """JSON status endpoint — polling fallback."""
+    current_user = get_current_user()
     with scan_jobs_lock:
         job = scan_jobs.get(scan_id)
-    if not job:
+    if not job or not _can_access_job(current_user, job):
         return jsonify({"error": "Scan not found"}), 404
     return jsonify({
         "status": job["status"],
@@ -2961,12 +3022,15 @@ def _resolve_report_data(report_id: str):
 @app.route("/report/<report_id>")
 @login_required
 def view_report(report_id):
+    current_user = get_current_user()
     if not report_id or report_id in ("undefined", "null", "latest"):
         import glob
         reports = sorted(glob.glob(f"{config.REPORTS_DIR}/scan_*.json"), reverse=True)
-        if reports:
-            latest_id = Path(reports[0]).stem.replace("scan_", "")
-            return redirect(url_for("view_report", report_id=latest_id))
+        for rep_path in reports:
+            data = load_json(rep_path)
+            if data and _can_access_report(current_user, data):
+                latest_id = Path(rep_path).stem.replace("scan_", "")
+                return redirect(url_for("view_report", report_id=latest_id))
         return render_template_string(HTML_REPORT_NOT_FOUND, report_id="Unknown"), 404
         
     _validate_report_id(report_id)
@@ -2975,16 +3039,20 @@ def view_report(report_id):
     report_data, resolved_id = _resolve_report_data(report_id)
     
     if not report_data:
-        # Check if pre-rendered HTML file exists
-        html_candidates = [
-            f"{config.REPORTS_DIR}/report_{clean_id}.html",
-            f"{config.REPORTS_DIR}/{report_id}.html",
-            f"{config.REPORTS_DIR}/{clean_id}.html",
-        ]
-        for hp in html_candidates:
-            if os.path.exists(hp):
-                with open(hp, "r", encoding="utf-8") as f:
-                    return f.read()
+        if current_user and current_user.get("role") == "admin":
+            # Check if pre-rendered HTML file exists (admin only for owner-less HTML)
+            html_candidates = [
+                f"{config.REPORTS_DIR}/report_{clean_id}.html",
+                f"{config.REPORTS_DIR}/{report_id}.html",
+                f"{config.REPORTS_DIR}/{clean_id}.html",
+            ]
+            for hp in html_candidates:
+                if os.path.exists(hp):
+                    with open(hp, "r", encoding="utf-8") as f:
+                        return f.read()
+        return render_template_string(HTML_REPORT_NOT_FOUND, report_id=report_id), 404
+
+    if not _can_access_report(current_user, report_data):
         return render_template_string(HTML_REPORT_NOT_FOUND, report_id=report_id), 404
     
     report_data = _enrich_report_data(report_data)
@@ -3007,8 +3075,9 @@ def download_report(report_id):
     if not report_id or report_id in ("undefined", "null"):
         abort(404, description="Invalid report ID.")
     
+    current_user = get_current_user()
     report_data, resolved_id = _resolve_report_data(report_id)
-    if not report_data:
+    if not report_data or not _can_access_report(current_user, report_data):
         abort(404, description="Report not found.")
         
     clean_id = resolved_id or report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "")
@@ -3029,8 +3098,9 @@ def download_pdf_report(report_id):
     if not report_id or report_id in ("undefined", "null"):
         abort(404, description="Invalid report ID.")
         
+    current_user = get_current_user()
     report_data, resolved_id = _resolve_report_data(report_id)
-    if not report_data:
+    if not report_data or not _can_access_report(current_user, report_data):
         abort(404, description="Report not found.")
     
     clean_id = resolved_id or report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "").replace(".pdf", "")
@@ -3062,8 +3132,9 @@ def export_waf_rules(report_id):
     if not report_id or report_id in ("undefined", "null"):
         abort(404, description="Invalid report ID.")
         
+    current_user = get_current_user()
     report_data, resolved_id = _resolve_report_data(report_id)
-    if not report_data:
+    if not report_data or not _can_access_report(current_user, report_data):
         abort(404, description="Report not found.")
         
     clean_id = resolved_id or report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "").replace(".pdf", "")
@@ -3101,8 +3172,9 @@ def export_waf_rules(report_id):
 @app.route("/api/report/<report_id>/dev-ticket/<finding_id>")
 @login_required
 def export_dev_ticket(report_id, finding_id):
+    current_user = get_current_user()
     report_data, _ = _resolve_report_data(report_id)
-    if not report_data:
+    if not report_data or not _can_access_report(current_user, report_data):
         abort(404, description="Report not found.")
         
     from intelligence.recipes import generate_dev_ticket_markdown

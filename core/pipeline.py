@@ -78,6 +78,7 @@ class ScanRequest:
     webhook: Optional[str] = None
     report_id: Optional[str] = None
     treat_dev_artifacts_as_info: bool = False
+    owner: Optional[str] = None
 
 
 def run_scan_pipeline(
@@ -133,6 +134,7 @@ def run_scan_pipeline(
     progress_callback = req_dict.get("progress_callback")
     webhook = req_dict.get("webhook")
     report_id = req_dict.get("report_id")
+    owner = req_dict.get("owner") or kwargs.get("owner")
     cancel_check = req_dict.get("cancel_check") or kwargs.get("cancel_check")
     reachability_timeout = float(req_dict.get("reachability_timeout", 5.0))
     treat_dev_artifacts_as_info = bool(req_dict.get("treat_dev_artifacts_as_info", False))
@@ -258,6 +260,8 @@ def run_scan_pipeline(
     elif report_id:
         report.report_id = report_id
 
+    if owner is not None:
+        report.owner = owner
     report.treat_dev_artifacts_as_info = treat_dev_artifacts_as_info
 
     # Checkpoint 3: After report generation
