@@ -10,6 +10,7 @@ realistic sample endpoints for demo/testing).
 """
 
 import re
+import time
 import logging
 import urllib.parse
 from typing import Dict, Any, List, Optional, Set
@@ -57,6 +58,9 @@ class CrawlResult:
     forms: List[DiscoveredEndpoint] = field(default_factory=list)
     skipped_forms: List[DiscoveredEndpoint] = field(default_factory=list)
     links: List[str] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
+    fetch_failures: int = 0
+    start_ok: bool = False
 
     def _resolve_form_page(self, ep: DiscoveredEndpoint) -> str:
         if ep.form_page:
@@ -154,12 +158,24 @@ class CrawlResult:
             "endpoints": [e.to_dict() for e in self.endpoints],
             "forms": [f.to_dict() for f in self.forms],
             "links": self.links,
+            "errors": self.errors,
+            "fetch_failures": self.fetch_failures,
+            "start_ok": self.start_ok,
         }
 
 
 # ---------------------------------------------------------------------------
 # HTML parser that extracts links, forms, and script references
 # ---------------------------------------------------------------------------
+_ON_NAV_PATTERN = re.compile(
+    r"""(?:\b(?:window\.)?location(?:\.href)?\s*=\s*|"""
+    r"""\b(?:window\.)?location\.(?:assign|replace)\s*\(\s*|"""
+    r"""(?:^|[^.\w])(?:window\.)?open\s*\(\s*)"""
+    r"""['"`]([^'"`\r\n\t]+)['"`]""",
+    re.IGNORECASE,
+)
+
+
 class _LinkFormParser(HTMLParser):
     """Extract links, forms, and their inputs from HTML."""
 
@@ -182,6 +198,29 @@ class _LinkFormParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list):
         attr_dict = {k.lower(): (v if v is not None else "") for k, v in attrs}
+
+        # AUD-54: Extract same-origin URLs from data-href, data-url, formaction
+        for data_attr in ("data-href", "data-url", "formaction"):
+            val = attr_dict.get(data_attr, "").strip()
+            if val and not val.lower().startswith(("#", "javascript:", "mailto:", "tel:")):
+                self.links.append(val)
+
+        # AUD-54: Extract from <meta http-equiv="refresh" content="...">
+        if tag == "meta" and attr_dict.get("http-equiv", "").lower() == "refresh":
+            content = attr_dict.get("content", "")
+            m = re.search(r"""url\s*=\s*['"]?([^\s'";,]+)""", content, re.IGNORECASE)
+            if m:
+                u = m.group(1).strip()
+                if u and not u.lower().startswith(("#", "javascript:", "mailto:", "tel:")):
+                    self.links.append(u)
+
+        # AUD-54: Extract navigation targets from on* inline event handler attributes
+        for k, v in attrs:
+            if k.lower().startswith("on") and v:
+                for match in _ON_NAV_PATTERN.finditer(v):
+                    nav_url = match.group(1).strip()
+                    if nav_url and not nav_url.lower().startswith(("#", "javascript:", "mailto:", "tel:")):
+                        self.links.append(nav_url)
 
         if tag == "a":
             href = attr_dict.get("href", "")
@@ -400,6 +439,27 @@ def extract_js_endpoints(text: str, source_path: str = "") -> List[DiscoveredEnd
 
 DEFAULT_DENY_PATTERN = r"logout|log-out|signout|sign-out|logoff|delete|remove|destroy"
 
+_HEX_ID_SEGMENT_RE = re.compile(
+    r"^(?:[0-9]+|0x[0-9a-f]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{6,}|(?=[0-9a-f]*\d)[0-9a-f]{2,})$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_path_template(url_or_path: str) -> str:
+    """Normalize numeric and hex-id path segments into a template (e.g. /post/1 -> /post/{id})."""
+    path = _extract_path(url_or_path)
+    parts = path.split("/")
+    normalized_parts = []
+    for part in parts:
+        if not part:
+            normalized_parts.append("")
+        elif _HEX_ID_SEGMENT_RE.match(part):
+            normalized_parts.append("{id}")
+        else:
+            normalized_parts.append(part)
+    result = "/".join(normalized_parts)
+    return result if result.startswith("/") else "/" + result
+
 
 # ---------------------------------------------------------------------------
 # Crawler
@@ -409,21 +469,25 @@ class WebCrawler:
     Crawl a target website to discover endpoints, forms, and API paths.
 
     Usage:
-        crawler = WebCrawler(max_pages=20, max_depth=3)
+        crawler = WebCrawler(max_pages=100, max_depth=4)
         result = crawler.crawl("http://localhost:3000")
     """
 
     def __init__(
         self,
-        max_pages: int = 20,
-        max_depth: int = 3,
+        max_pages: Optional[int] = None,
+        max_depth: Optional[int] = None,
+        max_seconds: Optional[int] = None,
         mock_mode: Optional[bool] = None,
         auth_headers: Optional[Dict[str, str]] = None,
         auth_cookies: Optional[Dict[str, str]] = None,
         deny_pattern: Optional[Any] = None,
+        max_pages_per_template: int = 5,
     ):
-        self.max_pages = max_pages
-        self.max_depth = max_depth
+        self.max_pages = max_pages if max_pages is not None else getattr(config, "CRAWL_MAX_PAGES", 100)
+        self.max_depth = max_depth if max_depth is not None else getattr(config, "CRAWL_MAX_DEPTH", 4)
+        self.max_seconds = max_seconds if max_seconds is not None else getattr(config, "CRAWL_MAX_SECONDS", 60)
+        self.max_pages_per_template = max_pages_per_template
         self.mock_mode = mock_mode if mock_mode is not None else config.MOCK_MODE
         self.auth_headers = auth_headers or {}
         self.auth_cookies = auth_cookies or {}
@@ -465,16 +529,83 @@ class WebCrawler:
         if not target.startswith(("http://", "https://")):
             target = f"http://{target}"
 
-        result = CrawlResult(target=target)
-        logger.info(f"[Crawler] Starting crawl on {target} (max {self.max_pages} pages, depth {self.max_depth})")
+        result = CrawlResult(target=target, start_ok=False)
+        logger.info(
+            f"[Crawler] Starting crawl on {target} (max {self.max_pages} pages, depth {self.max_depth}, time {self.max_seconds}s)"
+        )
 
         self._visited.clear()
         self._visited_scripts: Set[str] = set()
+        template_counts: Dict[str, int] = {}
+        start_time = time.monotonic()
+
+        # AUD-56: Retry start URL up to 3 times with 1s then 2s backoff
+        start_resp = None
+        max_start_retries = 3
+        backoff_delays = [1.0, 2.0]
+
+        for attempt in range(max_start_retries):
+            if (time.monotonic() - start_time) >= self.max_seconds:
+                result.errors.append("Crawl time cap exceeded before start URL completed")
+                return result
+            try:
+                resp = self._session.get(target, timeout=CRAWL_TIMEOUT, allow_redirects=True)
+                if resp.status_code >= 500:
+                    err_msg = f"HTTP {resp.status_code} on start URL {target}"
+                    logger.debug(f"[Crawler] Start URL attempt {attempt + 1} failed: {err_msg}")
+                    result.fetch_failures += 1
+                    if attempt < max_start_retries - 1:
+                        time.sleep(backoff_delays[attempt])
+                        continue
+                    else:
+                        result.errors.append(err_msg)
+                        result.start_ok = False
+                        return result
+                start_resp = resp
+                result.start_ok = True
+                break
+            except Exception as e:
+                err_msg = f"Failed to fetch start URL {target}: {e}"
+                logger.debug(f"[Crawler] Start URL attempt {attempt + 1} failed: {err_msg}")
+                result.fetch_failures += 1
+                if attempt < max_start_retries - 1:
+                    time.sleep(backoff_delays[attempt])
+                else:
+                    result.errors.append(err_msg)
+                    result.start_ok = False
+                    return result
+
+        if not start_resp or not result.start_ok:
+            return result
+
+        # Check if redirect left the target origin (scheme + host + port)
+        target_parsed = urllib.parse.urlparse(result.target)
+        resp_parsed = urllib.parse.urlparse(start_resp.url)
+        target_port = target_parsed.port or (443 if target_parsed.scheme.lower() == "https" else 80)
+        resp_port = resp_parsed.port or (443 if resp_parsed.scheme.lower() == "https" else 80)
+        target_origin = (target_parsed.scheme.lower(), (target_parsed.hostname or "").lower(), target_port)
+        resp_origin = (resp_parsed.scheme.lower(), (resp_parsed.hostname or "").lower(), resp_port)
+        if target_origin != resp_origin:
+            logger.debug(f"[Crawler] Discarding response from off-origin redirect: {start_resp.url}")
+            result.errors.append(f"Start URL redirected off-origin: {start_resp.url}")
+            result.start_ok = False
+            return result
+
+        # Check if final URL or redirect chain hit a denied URL
+        if self._is_denied(start_resp.url) or any(self._is_denied(r.url) for r in getattr(start_resp, "history", [])):
+            logger.debug(f"[Crawler] Discarding response from denied redirect: {start_resp.url}")
+            result.errors.append(f"Start URL redirected to denied URL: {start_resp.url}")
+            result.start_ok = False
+            return result
 
         from collections import deque
         queue = deque([(target, 0)])
 
         while queue and result.pages_visited < self.max_pages:
+            if (time.monotonic() - start_time) >= self.max_seconds:
+                logger.info(f"[Crawler] Crawl time cap ({self.max_seconds}s) reached; stopping BFS.")
+                break
+
             url, depth = queue.popleft()
             if depth > self.max_depth:
                 continue
@@ -483,39 +614,52 @@ class WebCrawler:
                 continue
 
             normalized = url.split("?")[0].split("#")[0].rstrip("/")
-            if normalized in self._visited:
-                continue
-            self._visited.add(normalized)
-
-            try:
-                resp = self._session.get(url, timeout=CRAWL_TIMEOUT, allow_redirects=True)
-            except requests.RequestException as e:
-                logger.debug(f"[Crawler] Failed to fetch {url}: {e}")
+            if normalized in self._visited and depth > 0:
                 continue
 
-            # Check if redirect left the target origin (scheme + host + port)
-            target_parsed = urllib.parse.urlparse(result.target)
-            resp_parsed = urllib.parse.urlparse(resp.url)
-            target_port = target_parsed.port or (443 if target_parsed.scheme.lower() == "https" else 80)
-            resp_port = resp_parsed.port or (443 if resp_parsed.scheme.lower() == "https" else 80)
-            target_origin = (target_parsed.scheme.lower(), (target_parsed.hostname or "").lower(), target_port)
-            resp_origin = (resp_parsed.scheme.lower(), (resp_parsed.hostname or "").lower(), resp_port)
-            if target_origin != resp_origin:
-                logger.debug(f"[Crawler] Discarding response from off-origin redirect: {resp.url}")
+            tmpl = _normalize_path_template(url)
+            if depth > 0 and template_counts.get(tmpl, 0) >= self.max_pages_per_template:
+                logger.debug(f"[Crawler] Skipping URL exceeding template cap ({tmpl}): {url}")
                 continue
 
-            # Check if final URL or redirect chain hit a denied URL
-            if self._is_denied(resp.url) or any(self._is_denied(r.url) for r in getattr(resp, "history", [])):
-                logger.debug(f"[Crawler] Discarding response from denied redirect: {resp.url}")
-                continue
+            if depth == 0:
+                resp = start_resp
+                self._visited.add(normalized)
+                effective_norm = resp.url.split("?")[0].split("#")[0].rstrip("/")
+                self._visited.add(effective_norm)
+                tmpl = _normalize_path_template(resp.url)
+                template_counts[tmpl] = template_counts.get(tmpl, 0) + 1
+            else:
+                self._visited.add(normalized)
+                template_counts[tmpl] = template_counts.get(tmpl, 0) + 1
+                try:
+                    resp = self._session.get(url, timeout=CRAWL_TIMEOUT, allow_redirects=True)
+                except Exception as e:
+                    logger.debug(f"[Crawler] Failed to fetch {url}: {e}")
+                    result.fetch_failures += 1
+                    result.errors.append(f"Failed to fetch {url}: {e}")
+                    continue
+
+                # Check if redirect left the target origin (scheme + host + port)
+                resp_parsed = urllib.parse.urlparse(resp.url)
+                resp_port = resp_parsed.port or (443 if resp_parsed.scheme.lower() == "https" else 80)
+                resp_origin = (resp_parsed.scheme.lower(), (resp_parsed.hostname or "").lower(), resp_port)
+                if target_origin != resp_origin:
+                    logger.debug(f"[Crawler] Discarding response from off-origin redirect: {resp.url}")
+                    continue
+
+                # Check if final URL or redirect chain hit a denied URL
+                if self._is_denied(resp.url) or any(self._is_denied(r.url) for r in getattr(resp, "history", [])):
+                    logger.debug(f"[Crawler] Discarding response from denied redirect: {resp.url}")
+                    continue
 
             result.pages_visited += 1
             content_type = resp.headers.get("content-type", "")
 
             # Only parse HTML
             if "text/html" not in content_type.lower():
-                path = _extract_path(url)
-                params = _extract_query_params(url)
+                path = _extract_path(resp.url or url)
+                params = _extract_query_params(resp.url or url)
                 result.endpoints.append(DiscoveredEndpoint(
                     path=path, params=params, endpoint_type="resource", source=url
                 ))
@@ -528,7 +672,7 @@ class WebCrawler:
             except Exception as e:
                 logger.warning(f"[Crawler] HTML parse error on {url}: {e}")
 
-            current_path = _extract_path(url)
+            current_path = _extract_path(resp.url or url)
 
             # Process discovered forms (exclude off-origin and denied actions; record denied in skipped_forms)
             page_url = getattr(resp, "url", None) if isinstance(getattr(resp, "url", None), str) else url
@@ -536,7 +680,7 @@ class WebCrawler:
                 page_url = url
             for form in parser.forms:
                 action = form["action"] or current_path
-                resolved = _normalize_url(url, action)
+                resolved = _normalize_url(resp.url or url, action)
                 if not resolved:
                     continue
                 form_path = _extract_path(resolved)
@@ -562,7 +706,7 @@ class WebCrawler:
             for href in parser.links:
                 if self._is_denied(href):
                     continue
-                resolved = _normalize_url(url, href)
+                resolved = _normalize_url(resp.url or url, href)
                 if resolved:
                     if self._is_denied(resolved):
                         continue
@@ -579,7 +723,12 @@ class WebCrawler:
                         source=current_path,
                     ))
                     norm_link = resolved.split("?")[0].split("#")[0].rstrip("/")
-                    if norm_link not in self._visited and depth + 1 <= self.max_depth:
+                    link_tmpl = _normalize_path_template(resolved)
+                    if (
+                        norm_link not in self._visited
+                        and depth + 1 <= self.max_depth
+                        and template_counts.get(link_tmpl, 0) < self.max_pages_per_template
+                    ):
                         queue.append((resolved, depth + 1))
 
             # Fetch same-origin <script src> files (size cap 2 MB, max 10 files)
@@ -588,7 +737,7 @@ class WebCrawler:
                     break
                 if self._is_denied(script_src):
                     continue
-                resolved_script = _normalize_url(url, script_src)
+                resolved_script = _normalize_url(resp.url or url, script_src)
                 if not resolved_script:
                     continue
                 if self._is_denied(resolved_script):
@@ -664,26 +813,29 @@ class WebCrawler:
                         s_resp.close()
 
             # Look for API endpoints and parameters in inline JS
-            js_endpoints = extract_js_endpoints(resp.text, current_path)
-            existing_keys = {(ep.method, ep.path) for ep in result.endpoints}
-            for j_ep in js_endpoints:
-                if self._is_denied(j_ep.path):
-                    continue
-                if (j_ep.method, j_ep.path) not in existing_keys:
-                    existing_keys.add((j_ep.method, j_ep.path))
-                    result.endpoints.append(j_ep)
+            try:
+                js_endpoints = extract_js_endpoints(resp.text, current_path)
+                existing_keys = {(ep.method, ep.path) for ep in result.endpoints}
+                for j_ep in js_endpoints:
+                    if self._is_denied(j_ep.path):
+                        continue
+                    if (j_ep.method, j_ep.path) not in existing_keys:
+                        existing_keys.add((j_ep.method, j_ep.path))
+                        result.endpoints.append(j_ep)
 
-            for match in _HREF_PATTERN.findall(resp.text):
-                if self._is_denied(match):
-                    continue
-                if ("GET", match) not in existing_keys:
-                    existing_keys.add(("GET", match))
-                    result.endpoints.append(DiscoveredEndpoint(
-                        path=match,
-                        method="GET",
-                        endpoint_type="link",
-                        source=current_path,
-                    ))
+                for match in _HREF_PATTERN.findall(resp.text):
+                    if self._is_denied(match):
+                        continue
+                    if ("GET", match) not in existing_keys:
+                        existing_keys.add(("GET", match))
+                        result.endpoints.append(DiscoveredEndpoint(
+                            path=match,
+                            method="GET",
+                            endpoint_type="link",
+                            source=current_path,
+                        ))
+            except Exception as e:
+                logger.debug(f"[Crawler] Error extracting inline endpoints on {url}: {e}")
 
         # Deduplicate links
         result.links = list(set(result.links))
@@ -699,7 +851,7 @@ class WebCrawler:
     # ------------------------------------------------------------------
     def _get_mock_result(self, target: str) -> CrawlResult:
         """Return realistic mock crawl results for demo mode."""
-        result = CrawlResult(target=target, pages_visited=8)
+        result = CrawlResult(target=target, pages_visited=8, start_ok=True)
 
         # Simulate discovered pages and endpoints
         result.endpoints = [

@@ -308,6 +308,9 @@ All runtime behavior can be configured via `AUTOSEC_*` environment variables (de
 | `AUTOSEC_THREAD_COUNT` | `4` | Number of concurrent worker threads used by the scan engine `ThreadPoolExecutor`. |
 | `AUTOSEC_MAX_RESPONSE_BYTES` | `5242880` (5 MiB) | Maximum HTTP response body size read by `core/http_client.py` before truncation. |
 | `AUTOSEC_MAX_REQUEST_SECONDS` | `30` | Hard wall-clock deadline in seconds for streaming an individual HTTP response. |
+| `AUTOSEC_CRAWL_MAX_PAGES` | `100` | Maximum number of pages visited by `WebCrawler` per crawl session (range `1`–`500`). |
+| `AUTOSEC_CRAWL_MAX_DEPTH` | `4` | Maximum link traversal depth for `WebCrawler` BFS discovery (range `1`–`8`). |
+| `AUTOSEC_CRAWL_MAX_SECONDS` | `60` | Maximum wall-clock time in seconds for a `WebCrawler` session before stopping (range `5`–`600`). |
 | `AUTOSEC_MAX_CONCURRENT_SCANS` | `2` | Maximum number of simultaneous active dashboard background scans (`HTTP 429` when exceeded). |
 | `AUTOSEC_SCAN_JOB_TTL` | `3600` | Time-to-live in seconds for completed/failed async scan jobs before eviction. |
 | `AUTOSEC_NMAP_PATH` | `nmap` (or Windows Nmap path) | Path to the `nmap` executable used by `NmapPlugin`. |

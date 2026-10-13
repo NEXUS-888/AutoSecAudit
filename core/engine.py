@@ -271,6 +271,9 @@ class Engine:
 
         # Run web crawler first to discover real endpoints (including authenticated paths)
         crawler = WebCrawler(
+            max_pages=getattr(config, "CRAWL_MAX_PAGES", 100),
+            max_depth=getattr(config, "CRAWL_MAX_DEPTH", 4),
+            max_seconds=getattr(config, "CRAWL_MAX_SECONDS", 60),
             mock_mode=self.mock_mode,
             auth_headers=auth_headers,
             auth_cookies=auth_cookies

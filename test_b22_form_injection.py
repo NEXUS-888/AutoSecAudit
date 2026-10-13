@@ -295,6 +295,8 @@ class TestAUD52SQLiAndXSSFormScanning(unittest.TestCase):
                 patch.object(sqli, "_test_login_endpoints"),
                 patch.object(sqli, "_test_url_path_injection"),
                 patch.object(sqli, "_test_json_body_sqli"),
+                patch.object(sqli, "_test_get_endpoint"),
+                patch.object(sqli, "_test_time_based_sqli"),
             ):
                 sqli.run()
             sqli_findings = [f for f in sqli.parse_output()["findings"] if f.get("vuln_type") == "sqli"]
@@ -313,6 +315,7 @@ class TestAUD52SQLiAndXSSFormScanning(unittest.TestCase):
                 patch.object(xss, "_test_hash_fragment_endpoints"),
                 patch.object(xss, "_test_dom_xss_indicators"),
                 patch.object(xss, "_test_security_headers"),
+                patch.object(xss, "_test_reflected_xss"),
             ):
                 xss.run()
             xss_findings = [f for f in xss.parse_output()["findings"] if f.get("vuln_type") == "xss" and f.get("param") != "dom_xss"]
@@ -377,6 +380,8 @@ class TestAUD52SQLiAndXSSFormScanning(unittest.TestCase):
                         patch.object(scanner, "_test_login_endpoints"),
                         patch.object(scanner, "_test_url_path_injection"),
                         patch.object(scanner, "_test_json_body_sqli"),
+                        patch.object(scanner, "_test_get_endpoint"),
+                        patch.object(scanner, "_test_time_based_sqli"),
                     ):
                         scanner.run()
                 else:
@@ -384,6 +389,7 @@ class TestAUD52SQLiAndXSSFormScanning(unittest.TestCase):
                         patch.object(scanner, "_test_hash_fragment_endpoints"),
                         patch.object(scanner, "_test_dom_xss_indicators"),
                         patch.object(scanner, "_test_security_headers"),
+                        patch.object(scanner, "_test_reflected_xss"),
                     ):
                         scanner.run()
 
