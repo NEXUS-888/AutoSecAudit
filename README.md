@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI Build](https://img.shields.io/badge/CI-Passing-brightgreen.svg)](#-testing--quality-assurance)
 [![MCP Ready](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple.svg)](#-model-context-protocol-mcp-server)
-[![Tests: 128 Passed](https://img.shields.io/badge/Tests-128%20Passed-success.svg)](#-testing--quality-assurance)
+[![Tests: 400+ Passed](https://img.shields.io/badge/Tests-400%2B%20Passed-success.svg)](#-testing--quality-assurance)
 [![Standards: OWASP Top 10 • CWE • PCI-DSS](https://img.shields.io/badge/Standards-OWASP%20%7C%20CWE%20%7C%20PCI--DSS-orange.svg)](#-standards--compliance-mapping)
 
 ---
@@ -240,13 +240,82 @@ python main.py scan http://127.0.0.1:8080 --real --profile owasp
 
 ### Option C: Docker & Docker Compose
 
+`docker-compose.yml` binds published ports to host loopback (`127.0.0.1:5000:5000` and `127.0.0.1:3000:3000`), runs AutoSecAudit as a non-root container user (`autosec`), and requires `AUTOSEC_ADMIN_PASSWORD` to be set explicitly before startup:
+
 ```bash
-# Start both AutoSecAudit Web UI (port 5000) and OWASP Juice Shop (port 3000)
-docker-compose up -d autosec
+# Set the initial admin password and start AutoSecAudit Web UI (127.0.0.1:5000) + Juice Shop (127.0.0.1:3000)
+AUTOSEC_ADMIN_PASSWORD="your-strong-admin-password" docker-compose up -d autosec
 
 # View live logs
 docker-compose logs -f autosec
 ```
+
+---
+
+## 🔐 First-Run & Dashboard Authentication
+
+All Web Dashboard routes (`/`, `/scan`, `/scan/async`, `/scan/progress/<id>`, `/report/<id>`, `/history`, `/api/report/<id>`, `/api/reports`, `/api/stats`) require authentication (`/login`). Only `/login`, `/register`, `/health`, and static assets are accessible without an active session.
+
+- **Initial Admin Password**: On first startup (when `users.db` has no users), AutoSecAudit creates the `admin` account using the `AUTOSEC_ADMIN_PASSWORD` environment variable if set. If `AUTOSEC_ADMIN_PASSWORD` is unset or empty, a random password is generated once via `secrets.token_urlsafe(16)` and printed to `stderr`. AutoSecAudit never uses a hardcoded default password.
+- **Self-Registration**: User self-registration at `/register` is **disabled by default** (`AUTOSEC_ALLOW_REGISTRATION=false`). Set `AUTOSEC_ALLOW_REGISTRATION=true` to allow new users to register; self-registered accounts are always assigned the `developer` role.
+- **Scan & Report Ownership**: Every scan job and saved report records the authenticated user's `owner_id`. Non-admin users can only view, export, or generate dev tickets for their own scans and reports, while `admin` users have full visibility across all reports.
+
+---
+
+## 🔑 Authenticated Target Scanning
+
+AutoSecAudit can authenticate against a target web application before crawling and running attack plugins so authenticated routes and forms are covered:
+
+```bash
+# Pass target credentials via CLI flags (or set AUTOSEC_LOGIN_PASS in the environment)
+export AUTOSEC_LOGIN_PASS="target-secret-password"
+python main.py scan http://127.0.0.1:8080 --real \
+  --login-user admin \
+  --login-url /login/
+
+# Or provide --login-pass explicitly on the command line:
+python main.py scan http://127.0.0.1:8080 --real \
+  --login-user admin \
+  --login-pass "target-secret-password" \
+  --login-url /login/
+```
+
+> **Windows Git Bash Note (`MSYS_NO_PATHCONV`)**: Git Bash (MSYS2) automatically rewrites leading-slash arguments like `--login-url /login/` into Windows filesystem paths (e.g. `C:/Program Files/Git/login/`). When running on Windows Git Bash, prefix the command with `MSYS_NO_PATHCONV=1` or double the leading slash (`//login/`):
+> ```bash
+> MSYS_NO_PATHCONV=1 python main.py scan http://127.0.0.1:8080 --real --login-user admin --login-url /login/
+> ```
+
+---
+
+## ⚙️ Configuration Reference
+
+All runtime behavior can be configured via `AUTOSEC_*` environment variables (defined in `config.py`, `core/`, `ui/`, `plugins/`, `main.py`, and `mcp_server.py`):
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `AUTOSEC_HOST` | `127.0.0.1` (`0.0.0.0` in Docker) | Network interface address the Flask dashboard server binds to. |
+| `AUTOSEC_DEBUG` | `false` | Enables Flask debug mode when set to `true` (disabled in production). |
+| `AUTOSEC_LOG_LEVEL` | `INFO` | Logging verbosity level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`). |
+| `AUTOSEC_MOCK_MODE` | `true` (`false` in Docker image) | Runs scanners in simulated mock mode when `true`; live HTTP probing when `false`. |
+| `AUTOSEC_DATA_DIR` | `./data` | Base directory for SQLite databases (`users.db`), persisted secret key, and scan reports. |
+| `AUTOSEC_SECRET_KEY` | Auto-generated in `<DATA_DIR>/.secret_key` | Flask session signing secret key (persisted across restarts with `0600` permissions). |
+| `AUTOSEC_COOKIE_SECURE` | Auto-detected (`true` on HTTPS) | Controls the `Secure` attribute on session cookies (`true` / `false`). |
+| `AUTOSEC_ADMIN_PASSWORD` | Generated via `secrets.token_urlsafe(16)` | Initial password for the seeded `admin` account on first database initialization. |
+| `AUTOSEC_ALLOW_REGISTRATION` | `false` | Enables user self-registration at `/register` when set to `true`. |
+| `AUTOSEC_LOGIN_PASS` | *(unset)* | Fallback password for authenticated target scanning when `--login-user` is used without `--login-pass`. |
+| `AUTOSEC_HTTP_TIMEOUT` | `10` | Per-request connect/read timeout in seconds for scanner HTTP probes. |
+| `AUTOSEC_SCAN_TIMEOUT` | `300` | Maximum overall wall-clock timeout in seconds for a single plugin execution. |
+| `AUTOSEC_THREAD_COUNT` | `4` | Number of concurrent worker threads used by the scan engine `ThreadPoolExecutor`. |
+| `AUTOSEC_MAX_RESPONSE_BYTES` | `5242880` (5 MiB) | Maximum HTTP response body size read by `core/http_client.py` before truncation. |
+| `AUTOSEC_MAX_REQUEST_SECONDS` | `30` | Hard wall-clock deadline in seconds for streaming an individual HTTP response. |
+| `AUTOSEC_MAX_CONCURRENT_SCANS` | `2` | Maximum number of simultaneous active dashboard background scans (`HTTP 429` when exceeded). |
+| `AUTOSEC_SCAN_JOB_TTL` | `3600` | Time-to-live in seconds for completed/failed async scan jobs before eviction. |
+| `AUTOSEC_NMAP_PATH` | `nmap` (or Windows Nmap path) | Path to the `nmap` executable used by `NmapPlugin`. |
+| `AUTOSEC_NMAP_FULL_SCAN` | `false` | Enables `-sV -O --script vuln` full Nmap scanning when `true` (uses fast `-F` scan by default). |
+| `AUTOSEC_NIKTO_PATH` | `nikto` | Path to the `nikto` executable used by `NiktoPlugin`. |
+| `AUTOSEC_ENABLE_METADATA_PROBES` | `false` | Opt-in flag allowing `SSRFScanner` to probe cloud metadata endpoints (`169.254.169.254`, etc.). |
+
+*Internal Scanner Probe Markers*: `CommandInjectionScanner` (`plugins/command_injection_plugin.py`) uses the benign verification tokens `AUTOSEC_RCE_TEST`, `AUTOSEC_42_RCE`, and `AUTOSEC_INERT_PROBE` to confirm OS command execution without destructive side effects.
 
 ---
 
@@ -292,7 +361,7 @@ python main.py
   [2] Run CLI Target Security Scan
   [3] List Discovered Scanner Plugins (19 Plugins)
   [4] Run Automated Verification Proof (verify_proof.py)
-  [5] Run Full Test Suite (120 Automated Tests)
+  [5] Run Full Test Suite (run_tests.py)
   [6] Exit
 ============================================================
 ```
@@ -308,6 +377,9 @@ python main.py scan http://localhost:3000 --profile owasp
 
 # ── Live Active Scan (Sends real HTTP payloads) ──────────────────────────
 python main.py scan http://localhost:3000 --real --profile api
+
+# ── Authenticated Form Login Scan ─────────────────────────────────────────
+python main.py scan http://localhost:3000 --real --login-user admin --login-pass secret --login-url /login
 
 # ── CI/CD Build Gating (Fails build if severity exceeds threshold) ───────
 python main.py scan http://localhost:3000 --fail-on high
@@ -360,11 +432,11 @@ python run_tests.py
 ============================================================
                   TEST RESULTS SUMMARY
 ============================================================
-Total Tests Executed : 128
+Total Tests Executed : 427
 Total Failures       : 0
 Total Errors         : 0
 Total Skipped        : 0
-Execution Time       : 13.61 seconds
+Execution Time       : 18.50 seconds
 ============================================================
 SUCCESS: All tests passed successfully!
 ```
