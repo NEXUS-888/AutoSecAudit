@@ -296,6 +296,8 @@ class AuthScanner(BaseScanner):
                                 "severity": format_severity("HIGH"),
                                 "host": host,
                                 "port": port,
+                                "endpoint": path,
+                                "method": "GET",
                                 "description": (
                                     f"Admin panel at {url} is accessible and "
                                     f"returned HTTP {resp.status_code} with "
@@ -452,6 +454,10 @@ class AuthScanner(BaseScanner):
         for f in self.results:
             if "vuln_type" not in f:
                 f["vuln_type"] = "idor" if "IDOR" in f.get("title", "") else "auth"
+            if not f.get("endpoint") and " at " in f.get("title", ""):
+                f["endpoint"] = f["title"].split(" at ")[-1].strip()
+            if not f.get("method"):
+                f["method"] = "GET"
         return {"tool_name": "auth_scanner", "findings": self.results}
 
     def _get_tool_name(self) -> str:

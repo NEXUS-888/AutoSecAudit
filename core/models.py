@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
 import hashlib
+import re
 
 
 class VulnType(str, Enum):
@@ -56,6 +57,65 @@ def compute_finding_fingerprint(
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def normalize_endpoint_path(endpoint: Optional[str]) -> str:
+    """Normalize endpoint paths, replacing numeric path segments with {id}."""
+    if not endpoint:
+        return "/"
+    ep = str(endpoint).strip()
+    if "?" in ep:
+        ep = ep.split("?")[0]
+    if " (" in ep:
+        ep = ep.split(" (")[0]
+    # Replace numeric segments: e.g. /123 -> /{id}
+    ep = re.sub(r"/\d+(?=/|$)", "/{id}", ep)
+    # Also normalize placeholder styles: <id>, <user_id>, {user_id}, <int:user_id> -> {id}
+    ep = re.sub(r"/<[^>]+>(?=/|$)", "/{id}", ep)
+    ep = re.sub(r"/\{[^}]+\}(?=/|$)", "/{id}", ep)
+    if len(ep) > 1 and ep.endswith("/"):
+        ep = ep.rstrip("/")
+    return ep or "/"
+
+
+def compute_canonical_key(
+    vuln_type: Optional[str] = None,
+    method: Optional[str] = None,
+    endpoint: Optional[str] = None,
+    param: Optional[str] = None,
+    title: Optional[str] = None,
+) -> str:
+    """Compute canonical deduplication key ignoring reporting tool.
+    
+    Formula: vuln_type|method|normalized_endpoint|param
+    Numeric path segments in endpoint are normalized to {id}.
+    """
+    from intelligence.taxonomy import normalize_vuln_type_key, infer_taxonomy_from_text
+
+    norm_ep = normalize_endpoint_path(endpoint)
+    norm_method = (method or "GET").upper()
+
+    # Strip URL-path artifacts from param
+    p = (param or "").strip()
+    if p == norm_ep or p.startswith("/") or p == endpoint:
+        p = ""
+    # Lowercase param for consistent cross-tool matching (e.g. security headers)
+    p = p.lower()
+
+    # Canonicalize vuln_type via taxonomy/alias mapping
+    v = normalize_vuln_type_key(vuln_type) if vuln_type else None
+
+    # Map generic/discovery scanner types (dir_brute, misconfig, generic, info_disclosure)
+    # to specific vulnerability types via taxonomy inference from title.
+    # Specific vulnerability types (such as sqli, xss, command_injection, ssrf, etc.) are preserved.
+    GENERIC_DISCOVERY_TYPES = {"dir_brute", "dirbrute", "misconfig", "generic", "info_disclosure", None, ""}
+    if v in GENERIC_DISCOVERY_TYPES and title:
+        inferred = infer_taxonomy_from_text(title)
+        if inferred and inferred.vuln_type:
+            v = inferred.vuln_type
+
+    v_str = v or "generic"
+    return f"{v_str}|{norm_method}|{norm_ep}|{p}"
+
+
 @dataclass
 class Finding:
     """Represents a single security finding."""
@@ -82,6 +142,7 @@ class Finding:
     evidence: Optional[str] = None
     fingerprint: Optional[str] = None
     original_severity: Optional[str] = None
+    reporting_tools: Optional[List[str]] = None
 
     def __post_init__(self):
         if isinstance(self.vuln_type, Enum):
@@ -92,6 +153,15 @@ class Finding:
     def compute_fingerprint(self) -> str:
         return compute_finding_fingerprint(
             tool=self.tool_name,
+            vuln_type=self.vuln_type,
+            method=self.method,
+            endpoint=self.endpoint,
+            param=self.param,
+            title=self.title,
+        )
+
+    def compute_canonical_key(self) -> str:
+        return compute_canonical_key(
             vuln_type=self.vuln_type,
             method=self.method,
             endpoint=self.endpoint,

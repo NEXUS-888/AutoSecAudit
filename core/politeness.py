@@ -61,34 +61,25 @@ class PolitenessEngine:
     def pace_request(self) -> None:
         """
         Apply thread-safe global rate limiting delay between requests.
-        Keeps shared _next_allowed_at under lock, reservations space out callers by interval.
+        Serializes request pacing under lock to guarantee consistent inter-request spacing.
         """
-        now = time.monotonic()
-        with self._lock:
-            if self.request_interval_ms > 0:
-                interval = self.request_interval_ms / 1000.0
-            else:
-                interval = 0.0
-
-            if interval <= 0.0:
-                if self.max_jitter_ms > 0:
-                    min_j = max(0, self.min_jitter_ms)
-                    max_j = max(min_j, self.max_jitter_ms)
-                    delay = random.uniform(min_j, max_j) / 1000.0
-                else:
-                    delay = 0.0
+        if self.request_interval_ms <= 0:
+            if self.max_jitter_ms > 0:
+                min_j = max(0, self.min_jitter_ms)
+                max_j = max(min_j, self.max_jitter_ms)
+                delay = random.uniform(min_j, max_j) / 1000.0
                 if delay > 0:
                     time.sleep(delay)
-                return
+            return
 
-            scheduled_time = max(now, self._next_allowed_at)
-            self._next_allowed_at = scheduled_time + interval
-            sleep_duration = scheduled_time - now
-
-        if sleep_duration > 0:
-            time.sleep(sleep_duration)
-            while time.monotonic() < scheduled_time:
-                time.sleep(0.0005)
+        interval = self.request_interval_ms / 1000.0
+        with self._lock:
+            now = time.monotonic()
+            wait_time = self._next_allowed_at - now
+            if wait_time > 0:
+                time.sleep(wait_time)
+                now = time.monotonic()
+            self._next_allowed_at = now + interval
 
     def handle_response_status(self, status_code: int) -> float:
         """

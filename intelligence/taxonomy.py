@@ -271,6 +271,17 @@ TAXONOMY_ALIASES: Dict[str, str] = {
     "idor": VulnType.IDOR.value,
     "tls": VulnType.SSL_TLS.value,
     "ssl": VulnType.SSL_TLS.value,
+    "admin_panel": VulnType.AUTH.value,
+    "admin panel": VulnType.AUTH.value,
+    "sensitive_file": VulnType.SECRET_EXPOSURE.value,
+    "sensitive file": VulnType.SECRET_EXPOSURE.value,
+    "secrets": VulnType.SECRET_EXPOSURE.value,
+    "missing security header": VulnType.MISCONFIG.value,
+    "missing security headers": VulnType.MISCONFIG.value,
+    "security header": VulnType.MISCONFIG.value,
+    "security headers": VulnType.MISCONFIG.value,
+    "x_xss_protection": VulnType.MISCONFIG.value,
+    "x-xss-protection": VulnType.MISCONFIG.value,
 }
 
 
@@ -313,8 +324,10 @@ FALLBACK_RULES = [
     (re.compile(r"\b(ssrf|server-side request forgery)\b", re.IGNORECASE), VulnType.SSRF.value),
     # 4. SSTI
     (re.compile(r"\b(ssti|server-side template injection|template injection)\b", re.IGNORECASE), VulnType.SSTI.value),
-    # 5. XSS
-    (re.compile(r"\b(xss|cross-site scripting|reflected xss|stored xss|dom xss)\b", re.IGNORECASE), VulnType.XSS.value),
+    # 5. Security Headers / Header Misconfiguration (prioritized over XSS to avoid X-XSS-Protection matching)
+    (re.compile(r"\b(missing (?:security )?header|\w+ header missing|security headers?|x-xss-protection)\b", re.IGNORECASE), VulnType.MISCONFIG.value),
+    # 6. XSS
+    (re.compile(r"(?<!x-)\b(xss|cross-site scripting|reflected xss|stored xss|dom xss)\b(?!-protection)", re.IGNORECASE), VulnType.XSS.value),
     # 6. CSRF
     (re.compile(r"\b(csrf|cross-site request forgery)\b", re.IGNORECASE), VulnType.CSRF.value),
     # 7. IDOR / BOLA
@@ -328,13 +341,13 @@ FALLBACK_RULES = [
     # 11. CORS
     (re.compile(r"\b(cors|cross-origin resource sharing|cors wildcard)\b", re.IGNORECASE), VulnType.CORS.value),
     # 12. Secret Exposure (handles .env and .git without requiring preceding word character)
-    (re.compile(r"(?:(?<![\w.])\.(?:env|git)\b|\b(?:secret exposure|api key leak|exposed secret|private key)\b)", re.IGNORECASE), VulnType.SECRET_EXPOSURE.value),
+    (re.compile(r"(?:(?<![\w.])\.(?:env|git)\b|\b(?:secret exposure|api key leak|exposed secret|private key|sensitive file|exposed sensitive file|secrets file|exposed secrets?)\b)", re.IGNORECASE), VulnType.SECRET_EXPOSURE.value),
     # 13. Directory Brute-force / Sensitive files
     (re.compile(r"\b(dirbrute|directory brute|directory listing|sensitive path|exposed directory)\b", re.IGNORECASE), VulnType.DIR_BRUTE.value),
     # 14. SSL / TLS
     (re.compile(r"\b(ssl|tls|hsts|weak cipher|certificate)\b", re.IGNORECASE), VulnType.SSL_TLS.value),
     # 15. Authentication & Login Weakness (Strict \bauth\b to NOT match oauth)
-    (re.compile(r"\b(brute force|credential stuffing|broken authentication|weak password|session fixation|login bypass)\b", re.IGNORECASE), VulnType.AUTH.value),
+    (re.compile(r"\b(brute force|credential stuffing|broken authentication|weak password|session fixation|login bypass|admin panel|exposed admin)\b", re.IGNORECASE), VulnType.AUTH.value),
     (re.compile(r"\bauth\b", re.IGNORECASE), VulnType.AUTH.value),
     # 16. Misconfig & Security Headers / CSP / Clickjacking
     (

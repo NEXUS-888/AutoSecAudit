@@ -78,12 +78,113 @@ class Correlator:
                 unique.append(f)
         return unique
 
-    def link_related(self, findings: List[Finding]) -> List[Finding]:
+    def merge_canonical(self, findings: List[Finding]) -> List[Finding]:
+        """Merge findings sharing canonical key vuln_type|method|normalized_endpoint|param.
+        
+        Ignores which tool reported the finding.
+        Keeps highest-confidence evidence, lists every reporting tool,
+        and uses one severity per vuln_type from the AUD-37 table.
+        """
+        from intelligence.taxonomy import get_taxonomy
+        from core.utils import format_severity
+
+        CONF_RANK = {"high": 3, "medium": 2, "low": 1}
+        groups = defaultdict(list)
+        for f in findings:
+            key = f.compute_canonical_key() if hasattr(f, "compute_canonical_key") else None
+            if not key:
+                from core.models import compute_canonical_key
+                key = compute_canonical_key(
+                    vuln_type=getattr(f, "vuln_type", None),
+                    method=getattr(f, "method", None),
+                    endpoint=getattr(f, "endpoint", None),
+                    param=getattr(f, "param", None),
+                    title=getattr(f, "title", None),
+                )
+            groups[key].append(f)
+
+        merged_results = []
+        for key, group in groups.items():
+            parts = key.split("|")
+            canonical_vuln = parts[0]
+            tax = get_taxonomy(canonical_vuln)
+            canonical_sev = format_severity(tax.default_severity) if tax and tax.default_severity else None
+
+            if len(group) == 1:
+                f = group[0]
+                if canonical_sev:
+                    f.severity = canonical_sev
+                if not getattr(f, "reporting_tools", None):
+                    f.reporting_tools = [f.tool_name] if f.tool_name else []
+                merged_results.append(f)
+                continue
+
+            # Multiple findings sharing canonical key: merge!
+            best = max(group, key=lambda x: CONF_RANK.get((getattr(x, "confidence", "medium") or "medium").lower(), 2))
+            highest_conf = best.confidence or "medium"
+            evidence = best.evidence or best.raw_output
+
+            # Gather all reporting tools
+            tools = []
+            for item in group:
+                t_val = getattr(item, "tool_name", "") or ""
+                for t in str(t_val).split(","):
+                    t_clean = t.strip()
+                    if t_clean and t_clean not in tools:
+                        tools.append(t_clean)
+            tools_sorted = sorted(tools)
+            tool_str = ", ".join(tools_sorted)
+
+            sev = canonical_sev if canonical_sev else best.severity
+
+            # Merge references
+            all_refs = []
+            for item in group:
+                if item.references:
+                    for r in item.references:
+                        if r not in all_refs:
+                            all_refs.append(r)
+
+            norm_ep = parts[2]
+            norm_param = parts[3] or None
+            norm_method = parts[1]
+
+            merged = Finding(
+                id=best.id,
+                title=best.title,
+                severity=sev,
+                host=best.host,
+                port=best.port,
+                description=best.description,
+                raw_output=best.raw_output,
+                cve_id=best.cve_id,
+                cvss_score=best.cvss_score,
+                references=all_refs or None,
+                owasp_tag=best.owasp_tag or (tax.owasp if tax else None),
+                tool_name=tool_str,
+                confidence=highest_conf,
+                remediation=best.remediation or (tax.remediation_key if tax else None),
+                cwe_id=best.cwe_id or (tax.cwe if tax else None),
+                pci_dss=best.pci_dss or (tax.pci if tax else None),
+                vuln_type=canonical_vuln,
+                endpoint=norm_ep,
+                param=norm_param,
+                method=norm_method,
+                evidence=evidence,
+            )
+            merged.reporting_tools = tools_sorted
+            merged_results.append(merged)
+
+        return merged_results
+
+    def link_related(self, findings: List[Finding], cross_tool: bool = False) -> List[Finding]:
         """Deduplicate findings by fingerprint and link related findings by (endpoint, param).
         
         Guaranteed to be idempotent.
         """
         deduped = self._deduplicate(findings)
+        if cross_tool:
+            deduped = self.merge_canonical(deduped)
 
         endpoint_param_map = defaultdict(list)
         for f in deduped:

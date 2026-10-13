@@ -107,6 +107,20 @@ class XSSScanner(BaseScanner):
             return True
         return False
 
+    @staticmethod
+    def _is_html_rendered(resp: Optional[requests.Response]) -> bool:
+        """Check if response is rendered as HTML by browsers (text/html or no explicit non-HTML type)."""
+        if resp is None:
+            return False
+        ct = resp.headers.get("Content-Type", "").lower()
+        if not ct:
+            # No explicit non-HTML type
+            return True
+        if "text/html" in ct or "application/xhtml+xml" in ct:
+            return True
+        # Explicit non-HTML type (e.g. application/json, text/plain, image/*)
+        return False
+
     # ------------------------------------------------------------------
     # Core scanning logic
     # ------------------------------------------------------------------
@@ -131,7 +145,7 @@ class XSSScanner(BaseScanner):
                 )
                 if resp is None:
                     break  # endpoint unreachable – skip remaining payloads
-                if self._payload_reflected(payload, resp.text):
+                if self._payload_reflected(payload, resp.text) and self._is_html_rendered(resp):
                     self.results.append({
                         "endpoint": f"{path}?{param}=<payload>",
                         "payload": payload,
@@ -158,7 +172,7 @@ class XSSScanner(BaseScanner):
                 )
                 if resp is None:
                     break
-                if self._payload_reflected(payload, resp.text):
+                if self._payload_reflected(payload, resp.text) and self._is_html_rendered(resp):
                     # Avoid duplicate for same endpoint
                     already = any(
                         r["endpoint"] == f"{path}?{param}=<payload>"

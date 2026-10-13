@@ -52,7 +52,19 @@ class SSRFScanner(BaseScanner):
                 if response is None:
                     continue
                 body = response.text.lower()
-                evidence = any(marker in body for marker in ("instance-id", "ami-id", "metadata", "127.0.0.1", "localhost"))
+                p_lower = payload.lower()
+                quoted_p = urllib.parse.quote(payload, safe="").lower()
+                quoted_p_std = urllib.parse.quote(payload).lower()
+                body_without_payload = body.replace(p_lower, "").replace(quoted_p, "").replace(quoted_p_std, "")
+                markers = (
+                    "instance-id", "ami-id", "security-credentials",
+                    "simulated_internal_response", "ssh-", "root:x:0:0",
+                    "redis_version", "mysql_native_password",
+                    "connection refused", "failed to connect", "network unreachable",
+                )
+                evidence = any(marker in body_without_payload for marker in markers)
+                if not evidence and ("127.0.0.1" in body_without_payload or "localhost" in body_without_payload):
+                    evidence = True
                 if evidence or response.status_code in (502, 504):
                     self.results.append({"endpoint": f"{endpoint['path']}?{param}=<url>", "payload": payload,
                                          "status_code": response.status_code, "evidence": response.text[:500],

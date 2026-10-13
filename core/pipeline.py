@@ -286,6 +286,7 @@ def run_scan_pipeline(
     # 9. Correlator
     emit("enriching", "Correlating findings...", 70)
     correlator = Correlator()
+    report.all_findings = correlator.merge_canonical(report.all_findings)
     report.all_findings = correlator.link_related(report.all_findings)
 
     # 10. Enricher
