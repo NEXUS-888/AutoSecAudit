@@ -11,6 +11,7 @@ In mock mode, returns realistic sample findings.
 """
 
 import logging
+import re
 from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse, urljoin, parse_qs, urlencode
 import requests
@@ -107,7 +108,12 @@ class OpenRedirectScanner(BaseScanner):
         """
         if not location:
             return False
-        host = (urlparse(urljoin(request_url, location)).hostname or "").lower()
+        norm = location.strip().replace("\\", "/")
+        if not norm:
+            return False
+        norm = re.sub(r"^/{3,}", "//", norm)
+        norm = re.sub(r"^([a-zA-Z][a-zA-Z0-9+.-]*):/*", r"\1://", norm)
+        host = (urlparse(urljoin(request_url, norm)).hostname or "").lower()
         return host == "example.com" or host.endswith(".example.com")
 
     def parse_output(self) -> Dict[str, Any]:

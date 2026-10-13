@@ -1,3 +1,4 @@
+import ipaddress
 import subprocess
 import xml.etree.ElementTree as ET
 import logging
@@ -23,6 +24,11 @@ class NmapPlugin(BaseScanner):
         self.target = target
 
     def run(self) -> None:
+        host = self._extract_host(self.target or "")
+        if not host or host.startswith("-"):
+            logger.warning(f"Invalid or option-like Nmap target host '{host}', skipping scan")
+            return
+
         tool_name = self._get_tool_name()
         if not self.check_tool_available(tool_name):
             logger.warning(f"Nmap not available, skipping scan")
@@ -111,17 +117,38 @@ class NmapPlugin(BaseScanner):
 
         return {"tool_name": "nmap", "findings": findings}
 
+    def _is_ipv6(self, host: str) -> bool:
+        if not host:
+            return False
+        clean = host.strip("[]").split("%")[0]
+        try:
+            return isinstance(ipaddress.ip_address(clean), ipaddress.IPv6Address)
+        except ValueError:
+            return ":" in clean
+
     def _build_command(self) -> List[str]:
         """Nmap command line. Scans only the target's port unless a full scan is opted into."""
+        host = self._extract_host(self.target or "")
         cmd = [config.NMAP_PATH, "-sV", "-oX", "-", "-T4"]
+        if self._is_ipv6(host):
+            cmd.append("-6")
         if not getattr(config, "NMAP_FULL_SCAN", False):
-            cmd += ["-p", str(self._extract_port(self.target))]
-        cmd.append(self._extract_host(self.target))
+            cmd += ["-p", str(self._extract_port(self.target or ""))]
+        cmd += ["--", host]
         return cmd
 
     def _parsed_target(self, target: str):
+        target = (target or "").strip()
+        if not target:
+            return urlsplit("")
         if not re.match(r"^[a-z][a-z0-9+.-]*://", target, re.IGNORECASE):
-            target = f"http://{target}"
+            try:
+                if isinstance(ipaddress.ip_address(target), ipaddress.IPv6Address):
+                    target = f"http://[{target}]"
+                else:
+                    target = f"http://{target}"
+            except ValueError:
+                target = f"http://{target}"
         return urlsplit(target)
 
     def _extract_host(self, target: str) -> str:

@@ -104,6 +104,55 @@ HTTP_TIMEOUT = int(os.environ.get("AUTOSEC_HTTP_TIMEOUT", "10"))
 SCAN_TIMEOUT = int(os.environ.get("AUTOSEC_SCAN_TIMEOUT", "300"))
 USER_AGENT = "AutoSecAudit/2.0"
 
+DEFAULT_MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MiB
+MIN_MAX_RESPONSE_BYTES = 64 * 1024            # 64 KiB
+MAX_MAX_RESPONSE_BYTES = 100 * 1024 * 1024   # 100 MiB
+
+DEFAULT_MAX_REQUEST_SECONDS = 30
+MIN_MAX_REQUEST_SECONDS = 1
+MAX_MAX_REQUEST_SECONDS = 300
+
+
+def _load_bounded_int(env_name: str, default: int, min_val: int, max_val: int) -> int:
+    raw = os.environ.get(env_name)
+    if raw is None or raw == "":
+        return default
+    try:
+        val = int(raw)
+    except (ValueError, TypeError):
+        logger.warning(
+            "%s=%r is not a valid integer; falling back to default %d.",
+            env_name,
+            raw,
+            default,
+        )
+        return default
+    if val < min_val or val > max_val:
+        logger.warning(
+            "%s=%d is outside valid range [%d, %d]; falling back to default %d.",
+            env_name,
+            val,
+            min_val,
+            max_val,
+            default,
+        )
+        return default
+    return val
+
+
+MAX_RESPONSE_BYTES = _load_bounded_int(
+    "AUTOSEC_MAX_RESPONSE_BYTES",
+    DEFAULT_MAX_RESPONSE_BYTES,
+    MIN_MAX_RESPONSE_BYTES,
+    MAX_MAX_RESPONSE_BYTES,
+)
+MAX_REQUEST_SECONDS = _load_bounded_int(
+    "AUTOSEC_MAX_REQUEST_SECONDS",
+    DEFAULT_MAX_REQUEST_SECONDS,
+    MIN_MAX_REQUEST_SECONDS,
+    MAX_MAX_REQUEST_SECONDS,
+)
+
 # Scan Profiles configuration
 SCAN_PROFILES = {
     "full": {
