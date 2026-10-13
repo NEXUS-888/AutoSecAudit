@@ -167,14 +167,25 @@ class TestAud64ResponseSizeAndTimeLimits(unittest.TestCase):
         def fast_drip():
             def generate():
                 yield b"part1"
-                time.sleep(2.5)
+                time.sleep(8.0)  # always longer than the time cap used with this endpoint
                 yield b"part2"
 
             return Response(generate(), content_type="text/plain")
 
+        # Server-side concurrency tracking: how many /slow_header_2s requests were in flight at once.
+        cls.slow_state = {"inflight": 0, "max": 0}
+        cls.slow_lock = threading.Lock()
+
         @app.route("/slow_header_2s")
         def slow_header_2s():
-            time.sleep(2.0)
+            with cls.slow_lock:
+                cls.slow_state["inflight"] += 1
+                cls.slow_state["max"] = max(cls.slow_state["max"], cls.slow_state["inflight"])
+            try:
+                time.sleep(2.0)
+            finally:
+                with cls.slow_lock:
+                    cls.slow_state["inflight"] -= 1
             return Response(b"done", content_type="text/plain")
 
         cls.server = make_server("127.0.0.1", 0, app, threaded=True)
@@ -314,18 +325,26 @@ class TestAud64ResponseSizeAndTimeLimits(unittest.TestCase):
                 pass
 
     def test_aud64_concurrent_requests_not_serialized_with_positive_pacing(self):
-        """With PolitenessEngine(request_interval_ms=50), 5 concurrent GETs to a 2s endpoint finish in <4s."""
+        """With PolitenessEngine(request_interval_ms=50), 5 concurrent GETs to a 2s endpoint overlap.
+
+        Measured on the server (requests in flight at the same time), not with a tight wall-clock bound
+        that a busy machine can exceed. Serialized requests would never overlap and would take >= 10 s.
+        """
         client = ScanHttpClient(
             target=self.base_url,
             politeness=PolitenessEngine(request_interval_ms=50, max_jitter_ms=0),
         )
+        with self.slow_lock:
+            self.slow_state["max"] = 0
         t0 = time.monotonic()
         with ThreadPoolExecutor(max_workers=5) as pool:
             results = list(pool.map(lambda _: client.get(f"{self.base_url}/slow_header_2s"), range(5)))
         elapsed = time.monotonic() - t0
 
         self.assertTrue(all(r is not None and r.status_code == 200 for r in results))
-        self.assertLess(elapsed, 4.0, f"Concurrent requests were serialized: took {elapsed:.2f}s >= 4.0s")
+        self.assertGreaterEqual(self.slow_state["max"], 3,
+                                f"Concurrent requests were serialized: at most {self.slow_state['max']} in flight")
+        self.assertLess(elapsed, 9.0, f"Concurrent requests were serialized: took {elapsed:.2f}s (serial >= 10s)")
 
     def test_aud64_normal_small_response_unchanged_and_not_truncated(self):
         client = ScanHttpClient(
@@ -357,8 +376,10 @@ class TestAud64ResponseSizeAndTimeLimits(unittest.TestCase):
             target=self.base_url,
             politeness=PolitenessEngine(request_interval_ms=0, max_jitter_ms=0),
         )
+        # The time cap (4 s) is well above what a size-limited response needs even on a busy machine and
+        # well below /fast_drip's 8 s, so each response is cut by exactly one of the two limits.
         with patch.object(config, "MAX_RESPONSE_BYTES", 64 * 1024), \
-             patch.object(config, "MAX_REQUEST_SECONDS", 1.5):
+             patch.object(config, "MAX_REQUEST_SECONDS", 4.0):
 
             def call_one(idx: int):
                 if idx < 25:
