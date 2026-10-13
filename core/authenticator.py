@@ -55,6 +55,7 @@ CSRF_TOKEN_CANDIDATES = [
     "_token", "authenticity_token", "csrfmiddlewaretoken",
     "xsrf_token", "xsrf-token", "antiforgery_token", "__requestverificationtoken"
 ]
+CSRF_TOKEN_NAMES = CSRF_TOKEN_CANDIDATES
 
 MAX_CREDENTIAL_SUBMISSIONS = 6
 DEFAULT_DENY_PATTERN = r"logout|log-out|signout|sign-out|logoff|delete|remove|destroy"

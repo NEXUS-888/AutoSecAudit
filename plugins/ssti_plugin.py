@@ -27,25 +27,88 @@ class SSTIScanner(BaseScanner):
         return "python-requests"
 
     def run(self) -> None:
+        import html as _html_mod
         base_url, _, _ = self._parse_target(self.target)
         endpoints = self.discovered_endpoints or DEFAULT_ENDPOINTS
         self.results = []
-        for endpoint in endpoints[:20]:
-            if not endpoint.get("param"):
+
+        preferred = {"name", "template", "text", "view", "page", "content", "message", "title", "q"}
+        get_endpoints = [ep for ep in endpoints if not self._is_form_endpoint(ep)][:20]
+        form_endpoints = self._select_form_targets(
+            [ep for ep in endpoints if self._is_form_endpoint(ep)],
+            preferred_names=preferred,
+        )
+
+        for endpoint in get_endpoints:
+            param = endpoint.get("param")
+            path = endpoint.get("path", "")
+            method = str(endpoint.get("method") or "GET").upper()
+            if not param or not path:
                 continue
+            ctrl_resp = self._safe_request(
+                method,
+                f"{base_url}{path}",
+                params={param: "safe123"} if method == "GET" else None,
+                json_data={param: "safe123"} if method != "GET" else None,
+                allow_redirects=False,
+            )
+            ctrl_text = (ctrl_resp.text or "") if ctrl_resp is not None else ""
             for payload in PAYLOADS:
                 response = self._safe_request(
-                    endpoint.get("method", "GET"),
-                    f"{base_url}{endpoint['path']}",
-                    params={endpoint["param"]: payload},
-                    json_data={endpoint["param"]: payload},
+                    method,
+                    f"{base_url}{path}",
+                    params={param: payload} if method == "GET" else None,
+                    json_data={param: payload} if method != "GET" else None,
                     allow_redirects=False,
                 )
                 if response is None:
                     continue
-                if "49" in response.text and payload not in response.text:
-                    self.results.append({"endpoint": f"{endpoint['path']}?{endpoint['param']}=<payload>", "payload": payload,
-                                         "status_code": response.status_code, "evidence": response.text[:500]})
+                if (
+                    "49" in response.text
+                    and payload not in response.text
+                    and _html_mod.escape(payload) not in response.text
+                    and "49" not in ctrl_text
+                ):
+                    self.results.append({
+                        "endpoint": f"{path}?{param}=<payload>" if method == "GET" else path,
+                        "param": param,
+                        "method": method,
+                        "payload": payload,
+                        "status_code": response.status_code,
+                        "evidence": response.text[:500],
+                    })
+                    break
+
+        reported_pairs = {(r.get("endpoint", "").split("?")[0], r.get("param")) for r in self.results}
+        for endpoint in form_endpoints:
+            path = endpoint.get("path", "")
+            param = endpoint.get("param", "")
+            method = str(endpoint.get("method") or "POST").upper()
+            if not path or not param or (path, param) in reported_pairs:
+                continue
+
+            ctrl_resp = self.submit_form_probe(endpoint, param, "safe123")
+            ctrl_text = (ctrl_resp.text or "") if ctrl_resp is not None else ""
+
+            for payload in PAYLOADS:
+                response = self.submit_form_probe(endpoint, param, payload)
+                if response is None:
+                    continue
+                if (
+                    "49" in response.text
+                    and payload not in response.text
+                    and _html_mod.escape(payload) not in response.text
+                    and "49" not in ctrl_text
+                ):
+                    self.results.append({
+                        "endpoint": path,
+                        "param": param,
+                        "method": method,
+                        "payload": payload,
+                        "status_code": response.status_code,
+                        "evidence": response.text[:500],
+                    })
+                    reported_pairs.add((path, param))
                     break
 
     def parse_output(self) -> Dict[str, Any]:
@@ -54,7 +117,7 @@ class SSTIScanner(BaseScanner):
         for i, r in enumerate(self.results, 1):
             ep_str = r.get("endpoint", "")
             ep = ep_str.split("?")[0] if "?" in ep_str else ep_str
-            param = ep_str.split("?")[1].split("=")[0] if "?" in ep_str and "=" in ep_str else "name"
+            param = r.get("param") or (ep_str.split("?")[1].split("=")[0] if "?" in ep_str and "=" in ep_str else "name")
             findings.append({
                 "id": f"SSTI-{i:03d}", "title": f"Server-Side Template Injection ({r['endpoint']})", "severity": format_severity("Critical"),
                 "host": host, "port": port, "description": f"The template expression {r['payload']} was evaluated to 49 at {r['endpoint']}.", "raw_output": r["evidence"],
@@ -62,7 +125,7 @@ class SSTIScanner(BaseScanner):
                 "vuln_type": "ssti",
                 "endpoint": ep,
                 "param": param,
-                "method": "GET",
+                "method": r.get("method", "GET"),
                 "evidence": r.get("evidence"),
                 "remediation": "Treat user input as data, never as a template; use context-safe rendering and disable access to filesystem, process, and reflection primitives."
             })

@@ -422,6 +422,59 @@ class SQLiScanner(BaseScanner):
                             logger.info(f"[SQLi] Verified JSON body SQLi at {ep['path']} on {mutated_path}")
                             return
 
+    def _test_form_endpoints(self, form_endpoints: List[Dict[str, Any]]) -> None:
+        """Probe discovered HTML forms (POST and form-sourced GET) via submit_form_probe."""
+        preferred = {"name", "user", "username", "email", "pass", "pwd", "search", "q", "query", "id", "cat", "item"}
+        selected = self._select_form_targets(form_endpoints, preferred_names=preferred)
+        reported_pairs = {
+            (str(r.get("endpoint", "")).split("?")[0], r.get("param"))
+            for r in self.results
+        }
+        form_payloads = [
+            "' OR 1=1--",
+            "' OR '1'='1",
+            "\" OR 1=1--",
+            "' UNION SELECT NULL--",
+        ]
+
+        for ep in selected:
+            path = str(ep.get("path") or "")
+            param = str(ep.get("param") or "")
+            method = str(ep.get("method") or "POST").upper()
+            if not path or not param or (path, param) in reported_pairs:
+                continue
+
+            ctrl_resp = self.submit_form_probe(ep, param, "safe123")
+            if ctrl_resp is None:
+                continue
+            ctrl_text = (ctrl_resp.text or "").lower()
+            ctrl_sig = self._check_sql_errors(ctrl_text)
+
+            for payload in form_payloads:
+                resp = self.submit_form_probe(ep, param, payload)
+                if resp is None:
+                    continue
+                match = self._check_sql_errors(resp.text)
+                if match and match != ctrl_sig and not re.search(match, ctrl_text):
+                    self.results.append({
+                        "endpoint": path,
+                        "param": param,
+                        "method": method,
+                        "payload": payload,
+                        "matched_signature": match,
+                        "status_code": resp.status_code,
+                        "evidence": resp.text[:300],
+                        "type": "error_based",
+                        "verified": True,
+                        "confidence": "high",
+                    })
+                    reported_pairs.add((path, param))
+                    logger.info(
+                        f"[SQLi] Verified form injection at {method} {path} ({param}) "
+                        f"with payload: {payload!r}"
+                    )
+                    break
+
     # ------------------------------------------------------------------
     # run() – main entry point
     # ------------------------------------------------------------------
@@ -438,23 +491,34 @@ class SQLiScanner(BaseScanner):
             endpoints_to_test = ENDPOINT_TEMPLATES
             logger.info(f"[SQLiScanner] No discovered endpoints, using {len(endpoints_to_test)} default templates")
 
-        # 1. GET parameter injection on discovered/default endpoints
-        for ep in endpoints_to_test:
+        get_endpoints = [
+            ep for ep in endpoints_to_test
+            if not self._is_form_endpoint(ep) and str(ep.get("method") or "GET").upper() == "GET"
+        ]
+        form_endpoints = [ep for ep in endpoints_to_test if self._is_form_endpoint(ep)]
+
+        # 1. GET parameter injection on discovered/default non-form endpoints
+        for ep in get_endpoints:
             self._test_get_endpoint(base_url, ep)
             # Time-based blind check on top endpoints
             if len(self.results) == 0:
                 self._test_time_based_sqli(base_url, ep)
 
-        # 2. Login form injection
+        # 2. Form-aware injection on discovered POST/form endpoints
+        if form_endpoints:
+            self._test_form_endpoints(form_endpoints)
+
+        # 3. Login form injection
         self._test_login_endpoints(base_url)
 
-        # 3. REST path-based injection
+        # 4. REST path-based injection
         self._test_url_path_injection(base_url)
 
-        # 4. Deep JSON body fuzzing
+        # 5. Deep JSON body fuzzing
         self._test_json_body_sqli(base_url)
 
-        self.raw_output = f"Tested {len(endpoints_to_test)} GET endpoints, " \
+        self.raw_output = f"Tested {len(get_endpoints)} GET endpoints, " \
+                          f"{len(form_endpoints)} form endpoints, " \
                           f"{len(LOGIN_ENDPOINTS)} login endpoints. " \
                           f"Found {len(self.results)} potential issue(s)."
         logger.info(f"[SQLiScanner] Finished – {self.raw_output}")
@@ -518,7 +582,7 @@ class SQLiScanner(BaseScanner):
                 "vuln_type": "sqli",
                 "endpoint": ep,
                 "param": param,
-                "method": "POST" if result.get("type") == "login_bypass" else "GET",
+                "method": result.get("method") or ("POST" if result.get("type") == "login_bypass" else "GET"),
                 "evidence": result.get("evidence"),
             })
 

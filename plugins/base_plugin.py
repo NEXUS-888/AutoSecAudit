@@ -1,19 +1,39 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Tuple, List, Callable, Union
 import logging
+import re
 import shutil
 import difflib
 import time
+import urllib.parse
 import requests
 import urllib3
+import urllib3.filepost
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import config
+from core.authenticator import CSRF_TOKEN_NAMES
+from core.crawler import DEFAULT_DENY_PATTERN, _LinkFormParser, _normalize_url, _extract_path
+from core.utils import is_target_allowed
 from core.politeness import PolitenessEngine
 from core.http_client import ScanHttpClient
 from core.timing import TimingVerifier
 from core.fuzzer import generate_json_fuzz_mutations, extract_json_leaf_paths, mutate_json_at_path
 from core.spa_detector import SPADetector
 from core.dev_detector import detect_dev_environment
+
+FORM_DENY_PATTERN = (
+    f"(?:{DEFAULT_DENY_PATTERN})"
+    r"|reset|drop|purge|unsubscribe|deactivate|close-account|password"
+)
+FORM_DENY_REGEX = re.compile(FORM_DENY_PATTERN, re.IGNORECASE)
+
+PROMISING_FIELD_KEYWORDS = (
+    "pass", "pwd", "search", "id", "name", "query", "q",
+    "url", "uri", "file", "path", "command", "cmd", "exec",
+    "host", "domain", "ip", "ping", "template", "view", "page",
+    "doc", "redirect", "dest", "comment", "message", "text",
+    "title", "user", "username", "email", "code", "input", "data",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -475,5 +495,281 @@ class BaseScanner(ABC):
             results.append((path, resp))
 
         return results
+
+    # ------------------------------------------------------------------
+    # Form-aware probing & safety gates (AUD-51, AUD-52, AUD-53)
+    # ------------------------------------------------------------------
+
+    def _resolve_form_action_url(self, endpoint: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Resolve (action_url, form_page_url) and enforce same-origin and scope rules.
+        Returns (None, None) if cross-origin or disallowed.
+        """
+        base_url, _, _ = self._parse_target(self.target or "http://127.0.0.1")
+        raw_form_page = str(endpoint.get("form_page") or "").strip()
+        if raw_form_page:
+            resolved_form_page = _normalize_url(base_url, raw_form_page)
+            if resolved_form_page is None:
+                return None, None
+        else:
+            resolved_form_page = base_url
+
+        raw_action = endpoint.get("action")
+        if raw_action is None:
+            raw_action = endpoint.get("path", "")
+        raw_action_str = str(raw_action or "").strip()
+        if not raw_action_str:
+            raw_action_str = _extract_path(resolved_form_page)
+
+        resolved_action = _normalize_url(resolved_form_page, raw_action_str)
+        if resolved_action is None or _normalize_url(base_url, resolved_action) is None:
+            return None, None
+
+        allowed, _ = is_target_allowed(resolved_action)
+        if not allowed:
+            return None, None
+
+        return resolved_action, resolved_form_page
+
+    def _is_form_endpoint_allowed(self, endpoint: Dict[str, Any], param: Optional[str] = None) -> bool:
+        """
+        Return True only if the form endpoint is same-origin, in-scope, and neither its
+        action path, form id/name, nor any field name/label matches FORM_DENY_REGEX.
+        """
+        resolved_action, _ = self._resolve_form_action_url(endpoint)
+        if not resolved_action:
+            return False
+
+        parsed_action = urllib.parse.urlparse(resolved_action)
+        action_target = parsed_action.path or "/"
+        if parsed_action.query:
+            action_target += "?" + parsed_action.query
+
+        candidates: List[str] = [action_target]
+        for key in ("form_id", "form_name", "id", "name", "label"):
+            val = endpoint.get(key)
+            if val:
+                candidates.append(str(val))
+        if param:
+            candidates.append(str(param))
+        fields = endpoint.get("fields")
+        if isinstance(fields, dict):
+            candidates.extend(str(k) for k in fields.keys() if k)
+        params_list = endpoint.get("params")
+        if isinstance(params_list, (list, tuple, set)):
+            candidates.extend(str(p) for p in params_list if p)
+        labels_list = endpoint.get("labels")
+        if isinstance(labels_list, (list, tuple, set)):
+            candidates.extend(str(lbl) for lbl in labels_list if lbl)
+
+        for item in candidates:
+            if item and FORM_DENY_REGEX.search(item):
+                logger.debug(f"[{self.__class__.__name__}] Refusing denied form probe on {action_target} (matched {item!r})")
+                return False
+
+        return True
+
+    def submit_form_probe(
+        self,
+        endpoint: Dict[str, Any],
+        param: str,
+        value: Any,
+    ) -> Optional[requests.Response]:
+        """
+        Build and submit a form probe from endpoint['fields'] with only `param` replaced.
+        - Refuses (returns None, sends nothing) when cross-origin or matching form deny rules.
+        - Re-fetches `form_page` first when a CSRF-like field is present in `fields` and uses the fresh token.
+        - Encodes per `enctype` (application/x-www-form-urlencoded or multipart/form-data) or GET params.
+        - Sends through `_safe_request`.
+        """
+        if not isinstance(endpoint, dict) or not param:
+            return None
+
+        if not self._is_form_endpoint_allowed(endpoint, param=param):
+            return None
+
+        resolved_action, resolved_form_page = self._resolve_form_action_url(endpoint)
+        if not resolved_action:
+            return None
+
+        raw_fields = endpoint.get("fields")
+        if isinstance(raw_fields, dict):
+            form_data: Dict[str, str] = {
+                str(k): ("" if v is None else str(v))
+                for k, v in raw_fields.items()
+            }
+        else:
+            form_data = {}
+
+        for p in endpoint.get("params") or []:
+            if p:
+                form_data.setdefault(str(p), "")
+
+        csrf_names_lower = {str(n).lower() for n in CSRF_TOKEN_NAMES}
+        csrf_field_keys = [k for k in form_data.keys() if k.lower() in csrf_names_lower and k != param]
+
+        raw_form_page = str(endpoint.get("form_page") or "").strip()
+        if csrf_field_keys and resolved_form_page:
+            fetch_url = resolved_form_page if raw_form_page else resolved_action
+            page_resp = self._safe_request("GET", fetch_url, allow_redirects=True)
+            if page_resp is not None and getattr(page_resp, "text", None):
+                parser = _LinkFormParser()
+                try:
+                    parser.feed(page_resp.text)
+                except Exception as exc:
+                    logger.debug(f"[{self.__class__.__name__}] CSRF re-fetch parse error on {fetch_url}: {exc}")
+
+                target_action_path = _extract_path(resolved_action)
+                matched_form = None
+                for f in parser.forms:
+                    f_action = f.get("action") or _extract_path(fetch_url)
+                    f_resolved = _normalize_url(fetch_url, f_action)
+                    if f_resolved and _extract_path(f_resolved) == target_action_path:
+                        matched_form = f
+                        break
+                if matched_form is None and parser.forms:
+                    matched_form = parser.forms[0]
+
+                for ck in csrf_field_keys:
+                    fresh_val = None
+                    if matched_form and isinstance(matched_form.get("fields"), dict):
+                        for fk, fv in matched_form["fields"].items():
+                            if fk.lower() == ck.lower() and fv:
+                                fresh_val = fv
+                                break
+                    if fresh_val is None:
+                        for f in parser.forms:
+                            for fk, fv in (f.get("fields") or {}).items():
+                                if fk.lower() == ck.lower() and fv:
+                                    fresh_val = fv
+                                    break
+                            if fresh_val is not None:
+                                break
+                    if fresh_val is not None:
+                        form_data[ck] = str(fresh_val)
+
+        form_data[str(param)] = "" if value is None else str(value)
+
+        method = str(endpoint.get("method") or "POST").upper()
+        enctype = str(endpoint.get("enctype") or "application/x-www-form-urlencoded").lower().strip()
+        headers: Dict[str, str] = {}
+        if raw_form_page and resolved_form_page:
+            headers["Referer"] = resolved_form_page
+
+        if method == "GET":
+            return self._safe_request(
+                "GET",
+                resolved_action,
+                params=form_data,
+                headers=headers or None,
+                allow_redirects=True,
+            )
+
+        if "multipart/form-data" in enctype:
+            body_bytes, content_type = urllib3.filepost.encode_multipart_formdata(list(form_data.items()))
+            headers["Content-Type"] = content_type
+            return self._safe_request(
+                method,
+                resolved_action,
+                data=body_bytes,
+                headers=headers,
+                allow_redirects=True,
+            )
+
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+        return self._safe_request(
+            method,
+            resolved_action,
+            data=form_data,
+            headers=headers,
+            allow_redirects=True,
+        )
+
+    @staticmethod
+    def _is_form_endpoint(endpoint: Dict[str, Any]) -> bool:
+        """Return True if endpoint represents a discovered HTML form target."""
+        if not isinstance(endpoint, dict):
+            return False
+        return bool(endpoint.get("source") == "form" or "fields" in endpoint)
+
+    @staticmethod
+    def _field_priority_score(param_name: str, preferred_names: Optional[set] = None) -> int:
+        """Lower score means higher priority when selecting up to MAX_FIELDS_PER_FORM."""
+        p_low = (param_name or "").lower()
+        if preferred_names:
+            pref_low = {str(n).lower() for n in preferred_names}
+            if p_low in pref_low:
+                return 0
+            if any(k in p_low for k in pref_low):
+                return 1
+        if p_low in PROMISING_FIELD_KEYWORDS:
+            return 2
+        if any(k in p_low for k in PROMISING_FIELD_KEYWORDS):
+            return 3
+        return 4
+
+    def _select_form_targets(
+        self,
+        endpoints: List[Dict[str, Any]],
+        preferred_names: Optional[set] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter, prioritize, and cap form endpoints to at most config.MAX_FORMS_PER_PLUGIN forms
+        and config.MAX_FIELDS_PER_FORM fields per form.
+        Excludes cross-origin forms, denied forms/fields, and CSRF token fields.
+        """
+        max_forms = int(getattr(config, "MAX_FORMS_PER_PLUGIN", 8))
+        max_fields = int(getattr(config, "MAX_FIELDS_PER_FORM", 6))
+        csrf_names_lower = {str(n).lower() for n in CSRF_TOKEN_NAMES}
+
+        forms_by_key: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+        form_order: List[Tuple[str, str]] = []
+
+        for ep in endpoints or []:
+            if not self._is_form_endpoint(ep):
+                continue
+            param = str(ep.get("param") or "").strip()
+            if not param or param.lower() in csrf_names_lower:
+                continue
+            if not self._is_form_endpoint_allowed(ep, param=param):
+                continue
+            method = str(ep.get("method") or "POST").upper()
+            path = str(ep.get("path") or "/")
+            fkey = (method, path)
+            if fkey not in forms_by_key:
+                forms_by_key[fkey] = []
+                form_order.append(fkey)
+            if not any(existing.get("param") == param for existing in forms_by_key[fkey]):
+                forms_by_key[fkey].append(ep)
+
+        # Prioritize forms that have promising fields first, preserving discovery order on ties
+        def _form_sort_key(idx_and_key: Tuple[int, Tuple[str, str]]) -> Tuple[int, int]:
+            idx, fkey = idx_and_key
+            eps = forms_by_key[fkey]
+            best_score = min(
+                (self._field_priority_score(str(e.get("param", "")), preferred_names) for e in eps),
+                default=4,
+            )
+            return (best_score, idx)
+
+        sorted_form_keys = [
+            fkey for _, fkey in sorted(enumerate(form_order), key=_form_sort_key)
+        ][:max_forms]
+
+        selected: List[Dict[str, Any]] = []
+        for fkey in sorted_form_keys:
+            eps = forms_by_key[fkey]
+            sorted_eps = [
+                ep for _, ep in sorted(
+                    enumerate(eps),
+                    key=lambda item: (
+                        self._field_priority_score(str(item[1].get("param", "")), preferred_names),
+                        item[0],
+                    ),
+                )
+            ][:max_fields]
+            selected.extend(sorted_eps)
+
+        return selected
 
 

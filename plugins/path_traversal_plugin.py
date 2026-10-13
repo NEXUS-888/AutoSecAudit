@@ -27,28 +27,86 @@ class PathTraversalScanner(BaseScanner):
     def _get_tool_name(self) -> str:
         return "python-requests"
 
+    @staticmethod
+    def _has_lfi_evidence(text: str, ctrl_text: Optional[str] = None) -> bool:
+        body = (text or "").lower()
+        ctrl = (ctrl_text or "").lower()
+        for sig in ("root:x:0:0:", "root:x:0:0", "[boot loader]", "[fonts]", "[extensions]"):
+            if sig in body and sig not in ctrl:
+                return True
+        return False
+
     def run(self) -> None:
         base_url, _, _ = self._parse_target(self.target)
         endpoints = self.discovered_endpoints or DEFAULT_ENDPOINTS
         self.results = []
-        for endpoint in endpoints[:20]:
+
+        get_endpoints = [ep for ep in endpoints if not self._is_form_endpoint(ep)][:20]
+        form_endpoints = self._select_form_targets(
+            [ep for ep in endpoints if self._is_form_endpoint(ep)],
+            preferred_names=PARAM_NAMES,
+        )
+
+        for endpoint in get_endpoints:
             param = endpoint.get("param", "")
-            if not param or param.lower() not in PARAM_NAMES:
+            path = endpoint.get("path", "")
+            method = str(endpoint.get("method") or "GET").upper()
+            if not param or not path or param.lower() not in PARAM_NAMES:
                 continue
+            ctrl_resp = self._safe_request(
+                method,
+                f"{base_url}{path}",
+                params={param: "readme.txt"} if method == "GET" else None,
+                json_data={param: "readme.txt"} if method != "GET" else None,
+                allow_redirects=False,
+            )
+            ctrl_text = (ctrl_resp.text or "") if ctrl_resp is not None else ""
             for payload in PAYLOADS:
                 response = self._safe_request(
-                    endpoint.get("method", "GET"),
-                    f"{base_url}{endpoint['path']}",
-                    params={param: payload},
-                    json_data={param: payload},
+                    method,
+                    f"{base_url}{path}",
+                    params={param: payload} if method == "GET" else None,
+                    json_data={param: payload} if method != "GET" else None,
                     allow_redirects=False,
                 )
                 if response is None:
                     continue
-                body = response.text.lower()
-                if "root:x:0:0:" in body or "[boot loader]" in body or "[fonts]" in body:
-                    self.results.append({"endpoint": f"{endpoint['path']}?{param}=<payload>", "payload": payload,
-                                         "status_code": response.status_code, "evidence": response.text[:500]})
+                if self._has_lfi_evidence(response.text, ctrl_text=ctrl_text):
+                    self.results.append({
+                        "endpoint": f"{path}?{param}=<payload>" if method == "GET" else path,
+                        "param": param,
+                        "method": method,
+                        "payload": payload,
+                        "status_code": response.status_code,
+                        "evidence": response.text[:500],
+                    })
+                    break
+
+        reported_pairs = {(r.get("endpoint", "").split("?")[0], r.get("param")) for r in self.results}
+        for endpoint in form_endpoints:
+            path = endpoint.get("path", "")
+            param = endpoint.get("param", "")
+            method = str(endpoint.get("method") or "POST").upper()
+            if not path or not param or (path, param) in reported_pairs:
+                continue
+
+            ctrl_resp = self.submit_form_probe(endpoint, param, "readme.txt")
+            ctrl_text = (ctrl_resp.text or "") if ctrl_resp is not None else ""
+
+            for payload in PAYLOADS:
+                response = self.submit_form_probe(endpoint, param, payload)
+                if response is None:
+                    continue
+                if self._has_lfi_evidence(response.text, ctrl_text=ctrl_text):
+                    self.results.append({
+                        "endpoint": path,
+                        "param": param,
+                        "method": method,
+                        "payload": payload,
+                        "status_code": response.status_code,
+                        "evidence": response.text[:500],
+                    })
+                    reported_pairs.add((path, param))
                     break
 
     def parse_output(self) -> Dict[str, Any]:
@@ -57,7 +115,7 @@ class PathTraversalScanner(BaseScanner):
         for i, r in enumerate(self.results, 1):
             ep_str = r.get("endpoint", "")
             ep = ep_str.split("?")[0] if "?" in ep_str else ep_str
-            param = ep_str.split("?")[1].split("=")[0] if "?" in ep_str and "=" in ep_str else "file"
+            param = r.get("param") or (ep_str.split("?")[1].split("=")[0] if "?" in ep_str and "=" in ep_str else "file")
             findings.append({
                 "id": f"LFI-{i:03d}",
                 "title": f"Local File Inclusion / Path Traversal ({r['endpoint']})",
@@ -69,7 +127,7 @@ class PathTraversalScanner(BaseScanner):
                 "vuln_type": "path_traversal",
                 "endpoint": ep,
                 "param": param,
-                "method": "GET",
+                "method": r.get("method", "GET"),
                 "evidence": r.get("evidence"),
                 "remediation": "Resolve paths against a fixed base directory, reject traversal segments after decoding, and use opaque file identifiers instead of user-controlled paths."
             })

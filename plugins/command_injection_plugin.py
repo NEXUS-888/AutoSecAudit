@@ -12,6 +12,8 @@ from plugins.base_plugin import BaseScanner
 logger = logging.getLogger(__name__)
 
 MARKER = "AUTOSEC_RCE_TEST"
+import html as _html_mod
+
 PAYLOAD_PROBES = [
     ("; echo AUTOSEC_$((6*7))_RCE; #", "AUTOSEC_42_RCE"),
     ("| echo AUTOSEC_$((6*7))_RCE", "AUTOSEC_42_RCE"),
@@ -26,14 +28,43 @@ DEFAULT_ENDPOINTS = [
 ]
 
 
+def _strip_reflected_payload(text: str, payload: Optional[str] = None) -> str:
+    """Remove reflected payload variants and echo commands from text before checking markers."""
+    cleaned = text or ""
+    if payload:
+        for variant in (
+            payload,
+            _html_mod.escape(payload),
+            _html_mod.escape(payload, quote=False),
+            urllib.parse.quote(payload),
+            urllib.parse.quote_plus(payload),
+        ):
+            if variant:
+                cleaned = cleaned.replace(variant, "")
+    for echo_cmd in (
+        "; echo AUTOSEC_RCE_TEST; #",
+        "| echo AUTOSEC_RCE_TEST",
+        "echo AUTOSEC_RCE_TEST",
+        "; echo AUTOSEC_$((6*7))_RCE; #",
+        "| echo AUTOSEC_$((6*7))_RCE",
+        "echo AUTOSEC_$((6*7))_RCE",
+    ):
+        cleaned = cleaned.replace(echo_cmd, "").replace(_html_mod.escape(echo_cmd), "")
+    return cleaned
+
+
 def check_command_exec_proof(
     resp_text: str,
     expected_output: Optional[str] = None,
     control_text: Optional[str] = None,
+    payload: Optional[str] = None,
 ) -> bool:
-    """Verify response contains execution proof absent from control."""
+    """Verify response contains execution proof absent from control and not mere input reflection."""
     if not resp_text:
         return False
+
+    cleaned_resp = _strip_reflected_payload(resp_text, payload)
+    cleaned_ctrl = _strip_reflected_payload(control_text, payload) if control_text is not None else None
 
     proof_signatures = []
     if expected_output:
@@ -41,6 +72,7 @@ def check_command_exec_proof(
     proof_signatures.extend([
         ("exact", "AUTOSEC_42_RCE"),
         ("exact", "command output: AUTOSEC_RCE_TEST"),
+        ("exact", MARKER),
         ("exact", "uid=0(root)"),
         ("regex", r"uid=\d+\(\w+\)\s+gid=\d+"),
         ("exact", "root:x:0:0"),
@@ -50,17 +82,17 @@ def check_command_exec_proof(
     for sig_type, sig_val in proof_signatures:
         in_resp = False
         if sig_type == "exact":
-            in_resp = sig_val in resp_text
+            in_resp = sig_val in cleaned_resp
         elif sig_type == "regex":
-            in_resp = bool(re.search(sig_val, resp_text))
+            in_resp = bool(re.search(sig_val, cleaned_resp))
 
         if in_resp:
-            if control_text is not None:
+            if cleaned_ctrl is not None:
                 in_control = False
                 if sig_type == "exact":
-                    in_control = sig_val in control_text
+                    in_control = sig_val in cleaned_ctrl
                 elif sig_type == "regex":
-                    in_control = bool(re.search(sig_val, control_text))
+                    in_control = bool(re.search(sig_val, cleaned_ctrl))
                 if in_control:
                     continue  # Proof signature was already in control, discard!
             return True
@@ -93,45 +125,50 @@ class CommandInjectionScanner(BaseScanner):
         endpoints = self.discovered_endpoints or DEFAULT_ENDPOINTS
         self.results = []
 
-        # 1. Parameter injection with output execution verification
-        for endpoint in endpoints[:20]:
+        preferred = {"command", "cmd", "exec", "domain", "host", "ip", "ping", "target", "url", "q", "search"}
+        get_endpoints = [ep for ep in endpoints if not self._is_form_endpoint(ep)][:20]
+        form_endpoints = self._select_form_targets(
+            [ep for ep in endpoints if self._is_form_endpoint(ep)],
+            preferred_names=preferred,
+        )
+
+        # 1a. Non-form GET / POST API parameter injection
+        for endpoint in get_endpoints:
             if not endpoint.get("param"):
                 continue
             path, param, method = endpoint["path"], endpoint["param"], endpoint.get("method", "GET")
             url = f"{base_url}{path}"
             m_upper = method.upper()
 
-            if m_upper == "GET":
-                req_modes = [lambda val, p=param: {"params": {p: val}}]
-            else:
-                req_modes = [
-                    lambda val, p=param: {"json_data": {p: val}},
-                    lambda val, p=param: {"data": {p: val}},
-                ]
+            req_modes = (
+                [{"params": {param: None}}]
+                if m_upper == "GET"
+                else [{"json_data": {param: None}}, {"data": {param: None}}]
+            )
 
-            inert_token = "AUTOSEC_INERT_PROBE"
             hit = False
-            for make_kw in req_modes:
+            for mode_template in req_modes:
                 if hit:
                     break
-                # Measure baseline with an inert probe using the same body/param encoding
-                inert_resp = self._safe_request(m_upper, url, **make_kw(inert_token))
+                def _make_kw(val: str, tmpl: Dict[str, Any] = mode_template, p: str = param) -> Dict[str, Any]:
+                    key = next(iter(tmpl.keys()))
+                    return {key: {p: val}}
+
+                inert_token = "AUTOSEC_INERT_PROBE"
+                inert_resp = self._safe_request(m_upper, url, **_make_kw(inert_token))
                 inert_text = inert_resp.text if inert_resp is not None else None
 
                 for payload, expected_output in PAYLOAD_PROBES:
-                    response = self._safe_request(m_upper, url, **make_kw(payload))
+                    response = self._safe_request(m_upper, url, **_make_kw(payload))
                     if response is None:
                         continue
 
-                    # Execution verification: response must contain proof of execution
-                    # that is absent from the inert control response.
-                    has_exec_proof = check_command_exec_proof(
+                    if check_command_exec_proof(
                         response.text,
                         expected_output=expected_output,
                         control_text=inert_text,
-                    )
-
-                    if has_exec_proof:
+                        payload=payload,
+                    ):
                         conf = "high" if inert_resp is not None else "medium"
                         self.results.append({
                             "endpoint": f"{path}?{param}=<payload>",
@@ -146,17 +183,20 @@ class CommandInjectionScanner(BaseScanner):
                         hit = True
                         break
 
-            # Blind time-delay check if no verified output was found
             if not hit and len(self.results) == 0:
                 delay_cmd = "; sleep 2; #"
                 fast_cmd = "; echo 1; #"
-                for make_kw in req_modes:
-                    def probe_safe(mk=make_kw):
-                        return self._safe_request(m_upper, url, **mk("safe_test"))
-                    def probe_delay(mk=make_kw):
-                        return self._safe_request(m_upper, url, **mk(delay_cmd))
-                    def probe_fast(mk=make_kw):
-                        return self._safe_request(m_upper, url, **mk(fast_cmd))
+                for mode_template in req_modes:
+                    def _make_kw_t(val: str, tmpl: Dict[str, Any] = mode_template, p: str = param) -> Dict[str, Any]:
+                        key = next(iter(tmpl.keys()))
+                        return {key: {p: val}}
+
+                    def probe_safe(u=url, m=m_upper, mk=_make_kw_t):
+                        return self._safe_request(m, u, **mk("safe_test"))
+                    def probe_delay(u=url, m=m_upper, mk=_make_kw_t):
+                        return self._safe_request(m, u, **mk(delay_cmd))
+                    def probe_fast(u=url, m=m_upper, mk=_make_kw_t):
+                        return self._safe_request(m, u, **mk(fast_cmd))
 
                     is_verified, conf, details = self._verify_timing(probe_safe, probe_delay, probe_fast, expected_delay=2.0)
                     if is_verified:
@@ -171,6 +211,69 @@ class CommandInjectionScanner(BaseScanner):
                             "confidence": conf,
                         })
                         break
+
+        # 1b. Form endpoints via submit_form_probe
+        reported_pairs = {(r.get("endpoint", "").split("?")[0], r.get("param")) for r in self.results}
+        for endpoint in form_endpoints:
+            path = endpoint.get("path", "")
+            param = endpoint.get("param", "")
+            method = str(endpoint.get("method") or "POST").upper()
+            if not path or not param or (path, param) in reported_pairs:
+                continue
+
+            inert_token = "AUTOSEC_INERT_PROBE"
+            inert_resp = self.submit_form_probe(endpoint, param, inert_token)
+            inert_text = inert_resp.text if inert_resp is not None else None
+
+            hit = False
+            for payload, expected_output in PAYLOAD_PROBES:
+                response = self.submit_form_probe(endpoint, param, payload)
+                if response is None:
+                    continue
+                if check_command_exec_proof(
+                    response.text,
+                    expected_output=expected_output,
+                    control_text=inert_text,
+                    payload=payload,
+                ):
+                    conf = "high" if inert_resp is not None else "medium"
+                    self.results.append({
+                        "endpoint": f"{path}?{param}=<payload>",
+                        "param": param,
+                        "method": method,
+                        "payload": payload,
+                        "status_code": response.status_code,
+                        "elapsed": 0.1,
+                        "evidence": response.text[:500],
+                        "confidence": conf,
+                    })
+                    reported_pairs.add((path, param))
+                    hit = True
+                    break
+
+            if not hit and len(self.results) == 0:
+                delay_cmd = "; sleep 2; #"
+                fast_cmd = "; echo 1; #"
+                def probe_safe(ep=endpoint, p=param):
+                    return self.submit_form_probe(ep, p, "safe_test")
+                def probe_delay(ep=endpoint, p=param):
+                    return self.submit_form_probe(ep, p, delay_cmd)
+                def probe_fast(ep=endpoint, p=param):
+                    return self.submit_form_probe(ep, p, fast_cmd)
+
+                is_verified, conf, details = self._verify_timing(probe_safe, probe_delay, probe_fast, expected_delay=2.0)
+                if is_verified:
+                    self.results.append({
+                        "endpoint": f"{path}?{param}=<blind_payload>",
+                        "param": param,
+                        "method": method,
+                        "payload": delay_cmd,
+                        "status_code": 200,
+                        "elapsed": details["delay_elapsed"],
+                        "evidence": f"Statistical blind command execution verified: baseline {details['baseline_mean']}s -> delay {details['delay_elapsed']}s.",
+                        "confidence": conf,
+                    })
+                    reported_pairs.add((path, param))
 
         # 2. Deep JSON body injection for API endpoints
         json_endpoints = [

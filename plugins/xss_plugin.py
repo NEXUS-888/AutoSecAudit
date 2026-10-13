@@ -99,11 +99,9 @@ class XSSScanner(BaseScanner):
     @staticmethod
     def _payload_reflected(payload: str, response_text: str) -> bool:
         """Check if the payload string appears un-encoded in the response body."""
-        # Direct reflection
+        if not payload or not response_text:
+            return False
         if payload in response_text:
-            return True
-        # Also check for the unique marker (if present in payload)
-        if XSS_MARKER in payload and XSS_MARKER in response_text:
             return True
         return False
 
@@ -312,6 +310,47 @@ class XSSScanner(BaseScanner):
                     })
                     break
 
+    def _test_form_xss(self, form_endpoints: List[Dict[str, Any]]) -> None:
+        """Probe discovered HTML forms (POST and form-sourced GET) via submit_form_probe."""
+        preferred = {
+            "comment", "message", "text", "name", "q", "search",
+            "query", "title", "content", "body", "bio", "feedback",
+        }
+        selected = self._select_form_targets(form_endpoints, preferred_names=preferred)
+        reported_pairs = {
+            (str(r.get("endpoint", "")).split("?")[0], r.get("param"))
+            for r in self.results
+            if r.get("type") == "reflected_xss"
+        }
+
+        for ep in selected:
+            path = str(ep.get("path") or "")
+            param = str(ep.get("param") or "")
+            method = str(ep.get("method") or "POST").upper()
+            if not path or not param or (path, param) in reported_pairs:
+                continue
+
+            for payload in MARKER_PAYLOADS[:2]:
+                resp = self.submit_form_probe(ep, param, payload)
+                if resp is None:
+                    break
+                if self._payload_reflected(payload, resp.text) and self._is_html_rendered(resp):
+                    self.results.append({
+                        "endpoint": path,
+                        "param": param,
+                        "method": method,
+                        "payload": payload,
+                        "status_code": resp.status_code,
+                        "evidence": resp.text[:300],
+                        "type": "reflected_xss",
+                        "confidence": "high",
+                    })
+                    reported_pairs.add((path, param))
+                    logger.info(
+                        f"[XSS] Reflected form payload at {method} {path} ({param})"
+                    )
+                    break
+
     # ------------------------------------------------------------------
     # run() – main entry point
     # ------------------------------------------------------------------
@@ -328,20 +367,31 @@ class XSSScanner(BaseScanner):
             endpoints_to_test = ENDPOINT_TEMPLATES
             logger.info(f"[XSSScanner] No discovered endpoints, using {len(endpoints_to_test)} default templates")
 
-        # 1. Reflected XSS via GET parameters
-        self._test_reflected_xss(base_url, endpoints_to_test)
+        get_endpoints = [
+            ep for ep in endpoints_to_test
+            if not self._is_form_endpoint(ep) and str(ep.get("method") or "GET").upper() == "GET"
+        ]
+        form_endpoints = [ep for ep in endpoints_to_test if self._is_form_endpoint(ep)]
 
-        # 2. Hash-fragment / SPA endpoints
+        # 1. Reflected XSS via GET parameters
+        if get_endpoints:
+            self._test_reflected_xss(base_url, get_endpoints)
+
+        # 2. Form-based XSS via submit_form_probe
+        if form_endpoints:
+            self._test_form_xss(form_endpoints)
+
+        # 3. Hash-fragment / SPA endpoints
         self._test_hash_fragment_endpoints(base_url)
 
-        # 3. DOM-XSS sink indicators in page source
+        # 4. DOM-XSS sink indicators in page source
         self._test_dom_xss_indicators(base_url)
 
-        # 4. Security header audit
+        # 5. Security header audit
         self._test_security_headers(base_url)
 
         self.raw_output = (
-            f"Tested {len(endpoints_to_test)} endpoints with "
+            f"Tested {len(get_endpoints)} GET endpoints and {len(form_endpoints)} form endpoints with "
             f"{len(XSS_PAYLOADS)} payloads. "
             f"Found {len(self.results)} potential issue(s)."
         )
@@ -399,7 +449,9 @@ class XSSScanner(BaseScanner):
             finding_vuln_type = "misconfig" if rtype in ("missing_header", "weak_header") else "xss"
             ep_str = result.get("endpoint", "/")
             ep = ep_str.split("?")[0] if "?" in ep_str else ep_str
-            param = ep_str.split("?")[1].split("=")[0] if "?" in ep_str and "=" in ep_str else None
+            param = result.get("param")
+            if not param and "?" in ep_str and "=" in ep_str:
+                param = ep_str.split("?")[1].split("=")[0]
             if rtype in ("missing_header", "weak_header") and result.get("header_name"):
                 param = result["header_name"]
             elif rtype == "dom_xss_indicator":
@@ -419,7 +471,7 @@ class XSSScanner(BaseScanner):
                 "vuln_type": finding_vuln_type,
                 "endpoint": ep,
                 "param": param,
-                "method": "GET",
+                "method": result.get("method", "GET"),
                 "evidence": result.get("evidence"),
             }
             if rtype in ("missing_header", "weak_header") and getattr(self, "dev_environment", None):

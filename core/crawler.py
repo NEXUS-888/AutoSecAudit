@@ -37,6 +37,12 @@ class DiscoveredEndpoint:
     params: List[str] = field(default_factory=list)  # query/form param names
     endpoint_type: str = "link"                # link, form, api, resource
     source: str = ""                           # page where it was found
+    fields: Dict[str, str] = field(default_factory=dict)  # form field name -> default value
+    enctype: str = "application/x-www-form-urlencoded"
+    form_page: str = ""                        # full URL where form was found
+    form_id: str = ""
+    form_name: str = ""
+    labels: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -49,23 +55,85 @@ class CrawlResult:
     pages_visited: int = 0
     endpoints: List[DiscoveredEndpoint] = field(default_factory=list)
     forms: List[DiscoveredEndpoint] = field(default_factory=list)
+    skipped_forms: List[DiscoveredEndpoint] = field(default_factory=list)
     links: List[str] = field(default_factory=list)
 
+    def _resolve_form_page(self, ep: DiscoveredEndpoint) -> str:
+        if ep.form_page:
+            return ep.form_page
+        src = ep.source or ep.path or "/"
+        if src.startswith(("http://", "https://")):
+            return src
+        if self.target:
+            base = self.target if self.target.startswith(("http://", "https://")) else f"http://{self.target}"
+            return urllib.parse.urljoin(base.rstrip("/") + "/", src.lstrip("/"))
+        return src
+
     def get_injectable_endpoints(self) -> List[Dict[str, Any]]:
-        """Return endpoints formatted for injection plugins (SQLi, XSS)."""
+        """Return endpoints formatted for injection plugins (SQLi, XSS, etc.)."""
         results = []
         seen = set()
-        for ep in self.endpoints + self.forms:
+        for ep in self.endpoints:
             if ep.params:
+                is_form_ep = (ep.endpoint_type == "form") or bool(ep.fields)
                 for param in ep.params:
                     key = f"{ep.method}:{ep.path}:{param}"
                     if key not in seen:
                         seen.add(key)
-                        results.append({
+                        if is_form_ep:
+                            form_fields = dict(ep.fields) if ep.fields else {p: "" for p in ep.params}
+                            for p in ep.params:
+                                form_fields.setdefault(p, "")
+                            item: Dict[str, Any] = {
+                                "path": ep.path,
+                                "param": param,
+                                "method": ep.method,
+                                "fields": form_fields,
+                                "enctype": ep.enctype or "application/x-www-form-urlencoded",
+                                "form_page": self._resolve_form_page(ep),
+                                "source": "form",
+                            }
+                            if ep.form_id:
+                                item["form_id"] = ep.form_id
+                            if ep.form_name:
+                                item["form_name"] = ep.form_name
+                            if ep.labels:
+                                item["labels"] = list(ep.labels)
+                            results.append(item)
+                        else:
+                            results.append({
+                                "path": ep.path,
+                                "param": param,
+                                "method": ep.method,
+                            })
+
+        for ep in self.forms:
+            param_names = list(ep.params) if ep.params else list((ep.fields or {}).keys())
+            if param_names:
+                form_fields = dict(ep.fields) if ep.fields else {p: "" for p in param_names}
+                for p in param_names:
+                    form_fields.setdefault(p, "")
+                form_page = self._resolve_form_page(ep)
+                for param in param_names:
+                    key = f"{ep.method}:{ep.path}:{param}"
+                    if key not in seen:
+                        seen.add(key)
+                        item = {
                             "path": ep.path,
                             "param": param,
                             "method": ep.method,
-                        })
+                            "fields": dict(form_fields),
+                            "enctype": ep.enctype or "application/x-www-form-urlencoded",
+                            "form_page": form_page,
+                            "source": "form",
+                        }
+                        if ep.form_id:
+                            item["form_id"] = ep.form_id
+                        if ep.form_name:
+                            item["form_name"] = ep.form_name
+                        if ep.labels:
+                            item["labels"] = list(ep.labels)
+                        results.append(item)
         return results
 
     def get_login_endpoints(self) -> List[str]:
@@ -101,9 +169,19 @@ class _LinkFormParser(HTMLParser):
         self.forms: List[Dict[str, Any]] = []
         self.scripts: List[str] = []
         self._current_form: Optional[Dict[str, Any]] = None
+        self._current_select_name: Optional[str] = None
+        self._in_option: bool = False
+        self._current_option_value: Optional[str] = None
+        self._current_option_text: List[str] = []
+        self._current_option_selected: bool = False
+        self._select_has_value: Set[str] = set()
+        self._current_textarea_name: Optional[str] = None
+        self._current_textarea_text: List[str] = []
+        self._in_label: bool = False
+        self._current_label_text: List[str] = []
 
     def handle_starttag(self, tag: str, attrs: list):
-        attr_dict = dict(attrs)
+        attr_dict = {k.lower(): (v if v is not None else "") for k, v in attrs}
 
         if tag == "a":
             href = attr_dict.get("href", "")
@@ -112,34 +190,109 @@ class _LinkFormParser(HTMLParser):
 
         elif tag == "form":
             action = attr_dict.get("action", "")
-            method = attr_dict.get("method", "GET").upper()
-            self._current_form = {"action": action, "method": method, "inputs": []}
+            method = (attr_dict.get("method") or "GET").upper()
+            enctype = (attr_dict.get("enctype") or "application/x-www-form-urlencoded").strip()
+            self._select_has_value = set()
+            self._current_form = {
+                "action": action,
+                "method": method,
+                "enctype": enctype,
+                "inputs": [],
+                "fields": {},
+                "form_id": attr_dict.get("id", ""),
+                "form_name": attr_dict.get("name", ""),
+                "labels": [],
+            }
 
         elif tag == "input" and self._current_form is not None:
             name = attr_dict.get("name", "")
-            input_type = attr_dict.get("type", "text").lower()
-            if name and input_type not in ("submit", "button", "image"):
-                self._current_form["inputs"].append(name)
+            input_type = (attr_dict.get("type") or "text").lower()
+            val = attr_dict.get("value", "")
+            if name and input_type not in ("submit", "button", "image", "reset"):
+                if name not in self._current_form["inputs"]:
+                    self._current_form["inputs"].append(name)
+                if input_type in ("radio", "checkbox"):
+                    if name not in self._current_form["fields"] or "checked" in attr_dict:
+                        self._current_form["fields"][name] = val or "on"
+                else:
+                    self._current_form["fields"][name] = val
 
         elif tag == "textarea" and self._current_form is not None:
             name = attr_dict.get("name", "")
             if name:
-                self._current_form["inputs"].append(name)
+                if name not in self._current_form["inputs"]:
+                    self._current_form["inputs"].append(name)
+                self._current_form["fields"].setdefault(name, "")
+                self._current_textarea_name = name
+                self._current_textarea_text = []
 
         elif tag == "select" and self._current_form is not None:
             name = attr_dict.get("name", "")
             if name:
-                self._current_form["inputs"].append(name)
+                if name not in self._current_form["inputs"]:
+                    self._current_form["inputs"].append(name)
+                self._current_form["fields"].setdefault(name, "")
+                self._current_select_name = name
+
+        elif tag == "option" and self._current_form is not None and self._current_select_name is not None:
+            self._in_option = True
+            raw_keys = {k.lower() for k, _ in attrs}
+            self._current_option_value = attr_dict.get("value") if "value" in raw_keys else None
+            self._current_option_text = []
+            self._current_option_selected = "selected" in raw_keys
+
+        elif tag == "label" and self._current_form is not None:
+            self._in_label = True
+            self._current_label_text = []
 
         elif tag == "script":
             src = attr_dict.get("src", "")
             if src:
                 self.scripts.append(src)
 
+    def handle_data(self, data: str):
+        if self._current_textarea_name is not None:
+            self._current_textarea_text.append(data)
+        if self._in_option:
+            self._current_option_text.append(data)
+        if self._in_label:
+            self._current_label_text.append(data)
+
     def handle_endtag(self, tag: str):
-        if tag == "form" and self._current_form is not None:
+        if tag == "textarea" and self._current_form is not None and self._current_textarea_name is not None:
+            self._current_form["fields"][self._current_textarea_name] = "".join(self._current_textarea_text)
+            self._current_textarea_name = None
+            self._current_textarea_text = []
+        elif tag == "option" and self._current_form is not None and self._current_select_name is not None and self._in_option:
+            opt_val = (
+                self._current_option_value
+                if self._current_option_value is not None
+                else "".join(self._current_option_text).strip()
+            )
+            sel_name = self._current_select_name
+            if sel_name not in self._select_has_value or self._current_option_selected:
+                self._current_form["fields"][sel_name] = opt_val
+                self._select_has_value.add(sel_name)
+            self._in_option = False
+            self._current_option_value = None
+            self._current_option_text = []
+            self._current_option_selected = False
+        elif tag == "select":
+            self._current_select_name = None
+            self._in_option = False
+        elif tag == "label" and self._current_form is not None and self._in_label:
+            lbl = "".join(self._current_label_text).strip()
+            if lbl:
+                self._current_form["labels"].append(lbl)
+            self._in_label = False
+            self._current_label_text = []
+        elif tag == "form" and self._current_form is not None:
             self.forms.append(self._current_form)
             self._current_form = None
+            self._current_select_name = None
+            self._current_textarea_name = None
+            self._in_option = False
+            self._in_label = False
 
 
 # ---------------------------------------------------------------------------
@@ -377,25 +530,33 @@ class WebCrawler:
 
             current_path = _extract_path(url)
 
-            # Process discovered forms
+            # Process discovered forms (exclude off-origin and denied actions; record denied in skipped_forms)
+            page_url = getattr(resp, "url", None) if isinstance(getattr(resp, "url", None), str) else url
+            if not page_url or not page_url.startswith(("http://", "https://")):
+                page_url = url
             for form in parser.forms:
                 action = form["action"] or current_path
-                if self._is_denied(action):
-                    continue
                 resolved = _normalize_url(url, action)
-                if resolved:
-                    if self._is_denied(resolved):
-                        continue
-                    form_path = _extract_path(resolved)
-                    if self._is_denied(form_path):
-                        continue
-                    result.forms.append(DiscoveredEndpoint(
-                        path=form_path,
-                        method=form["method"],
-                        params=form["inputs"],
-                        endpoint_type="form",
-                        source=current_path,
-                    ))
+                if not resolved:
+                    continue
+                form_path = _extract_path(resolved)
+                ep = DiscoveredEndpoint(
+                    path=form_path,
+                    method=form["method"],
+                    params=list(form["inputs"]),
+                    endpoint_type="form",
+                    source=current_path,
+                    fields=dict(form.get("fields") or {}),
+                    enctype=form.get("enctype") or "application/x-www-form-urlencoded",
+                    form_page=page_url,
+                    form_id=form.get("form_id", ""),
+                    form_name=form.get("form_name", ""),
+                    labels=list(form.get("labels") or []),
+                )
+                if self._is_denied(action) or self._is_denied(resolved) or self._is_denied(form_path):
+                    result.skipped_forms.append(ep)
+                    continue
+                result.forms.append(ep)
 
             # Process links and enqueue for BFS
             for href in parser.links:
