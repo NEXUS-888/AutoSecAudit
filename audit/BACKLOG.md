@@ -411,13 +411,69 @@ The 2026-10-11 real full-profile scan produced 39 findings, about 25 of them uni
 
 ---
 
-## B19 — Form-aware injection testing (from external-testbed scans, 2026-10-13)
+## B19 — Review regressions and scanner robustness (independent review of commit 428c2cd, 2026-10-13)
+
+Evidence comes from adversarial tests run on a clean checkout, not from reading code. Each issue below was reproduced.
+
+### AUD-62 · The open-redirect false-positive fix now misses real evasion forms (regression)
+- **Files:** `plugins/open_redirect_plugin.py` (`_redirects_to_external_host`)
+- **Problem:** the check resolves the `Location` header with `urljoin` and compares the host. `urljoin` does not treat these as external, but browsers do, and the old substring match caught all of them: `/\example.com`, `\\example.com`, `///example.com`, `https:example.com`. The plugin's own payload list contains the backslash form.
+- **Required fix:** normalize the `Location` value before resolving: convert `\` to `/`, collapse a leading run of three or more `/` to `//`, and accept `scheme:host` (no slashes) and `scheme:/host`. Flag only when the resolved host is `example.com` or a subdomain. Keep the same-site echo case (`/login/?next=https%3A%2F%2Fexample.com`) unflagged.
+- **Acceptance:** with `request_url="http://127.0.0.1:5103/redirect?next=PAYLOAD"`: flagged → `https://example.com`, `//example.com/x`, `/\example.com`, `\\example.com`, `///example.com`, `HTTPS://EXAMPLE.COM`, `https:example.com`, `http://127.0.0.1@example.com/`, `https://attacker.example.com/`. Not flagged → `/login/?next=https%3A%2F%2Fexample.com`, `https://example.com.evil.net/`, `https://notexample.com/`, empty string. A unit test covers every row.
+
+### AUD-63 · Nmap: IPv6 targets scan nothing, and option-like hosts reach the nmap command line
+- **Files:** `plugins/nmap_plugin.py`
+- **Problem:** `http://[::1]:9000` (allowed by the scope check) runs `nmap … ::1` without `-6`; nmap answers "you have to use the -6 option" and scans 0 hosts, silently. A host value such as `--script=x`, `--version` or an empty string is passed to nmap as an option or as no target at all. The scope check normally rejects those first, but the plugin must not rely on that.
+- **Required fix:** add `-6` when the host is an IPv6 literal; if the host is empty or starts with `-`, do not run nmap and log a warning; put `--` immediately before the host in the command.
+- **Acceptance:** `_build_command()` for `http://[::1]:9000/x` contains `-6`, `-p 9000`, `--`, and ends with `::1`. For `http://--script=evil` and for an empty target, `run()` never calls `subprocess.run` (assert with a patch) and logs a warning. IPv4 and hostname targets are unchanged apart from the added `--`.
+
+### AUD-64 · No response-size or total-time limit on requests to the target
+- **Files:** `core/http_client.py`, `config.py`
+- **Problem:** the client reads whole bodies into memory and applies only per-read timeouts. Verified against a local hostile fixture: a 300 MB response was held entirely in memory in 0.8 s, and a response dripping 10 bytes per second kept one request open for 40 s although the read timeout was 5 s. A malicious or broken target can exhaust memory or pin plugin threads until the engine deadline.
+- **Required fix:** send with `stream=True`; read in chunks up to `config.MAX_RESPONSE_BYTES` (default 5 MiB, env `AUTOSEC_MAX_RESPONSE_BYTES`, valid range 64 KiB–100 MiB, invalid → default with a logged warning) and stop at `config.MAX_REQUEST_SECONDS` of total wall time per request (default 30, env `AUTOSEC_MAX_REQUEST_SECONDS`, range 1–300). On either limit, return the response with the body read so far, set `resp.truncated = True` (and `False` otherwise), and increment thread-safe counters `responses_truncated` and `requests_timed_out` on the client (AUD-59 will report them). `.text`, `.content` and `.json()` must keep working on the truncated body.
+- **Acceptance:** a fixture streaming 50 MB → returned content ≤ the cap, `truncated` True, finished in a few seconds; a fixture dripping 10 bytes/s for 60 s with the cap set to 3 s → returns within about 4 s with `truncated` True; a normal small response is unchanged and `truncated` is False; the counters are exact under 50 concurrent calls; the existing http-client tests pass.
+
+---
+
+## B20 — Dashboard ownership and session hardening
+
+### AUD-65 · Any logged-in user can read every other user's reports and scan progress
+- **Files:** `ui/app.py`, `core/auth.py` (if needed), report writing in `core/pipeline.py`
+- **Problem:** verified with two users: user B receives HTTP 200 for user A's `/report/<id>`, `/download/<id>`, `/download_pdf/<id>`, `/api/report/<id>/waf-rules`, `/history`, `/scan/status/<scan_id>` and `/scan/progress/<scan_id>`. Reports contain vulnerability details of the scanned systems.
+- **Required fix:** store the owner's user id in each report (`owner`) and in each scan job. Serve a report, its downloads, its derived endpoints, and a scan's status/progress only to its owner or to a user with role `admin`; everyone else gets 404 (not 403). `/history` lists only the caller's reports (admin: all). Reports without an `owner` (created before this change) are visible to admins only.
+- **Acceptance:** two users A and B and an admin: B gets 404 on every route above for A's report and scan; B's `/history` does not list A's report; A and the admin get 200; an old owner-less report is 404 for A and 200 for the admin. Existing tests are updated only where they relied on cross-user access, with the reason stated in the handoff.
+
+### AUD-66 · Session and small correctness items found in review
+- **Files:** `ui/app.py`, `config.py`, `testbed/app.py`, `intelligence/remediation.py`, templates that link to `/logout`
+- **Problem:** (1) the dashboard's own session cookie is set without `SameSite` and without `Secure` (`SESSION_COOKIE_SAMESITE=None`). (2) `/logout` is a plain GET, so any page can log a user out with an image tag. (3) a session cookie without a `sid` (any cookie issued before AUD-session-revocation shipped, or forged in tests) is still accepted, so those cookies can never be revoked. (4) `testbed/app.py:207` calls `time.sleep` without importing `time`, so `/api/exec` with a `sleep` payload returns 500. (5) `intelligence/remediation.py` defines the key `"auth_scanner:idor"` twice (lines ~160 and ~212); the second silently replaces the first.
+- **Required fix:** (1) set `SESSION_COOKIE_SAMESITE="Lax"` and `SESSION_COOKIE_SECURE` from a `config` flag that defaults to true when the request is HTTPS (`AUTOSEC_COOKIE_SECURE` env override). (2) make logout `POST` with the CSRF token (keep `GET /logout` as a harmless 405 or a confirmation page that posts); update every link or button that used GET. (3) reject sessions that have a `user_id` but no `sid` (treated as logged out) and set `PERMANENT_SESSION_LIFETIME` to 12 hours with `session.permanent = True` at login; update existing tests that forge sessions to add a `sid` through one shared helper. (4) import `time`. (5) merge the two entries into one that keeps the more specific text.
+- **Acceptance:** `Set-Cookie` on login contains `SameSite=Lax` and `HttpOnly`; `GET /logout` does not log the user out; `POST /logout` with a token does; a forged session without `sid` gets 302 to login; the testbed `/api/exec?command=sleep` returns 200 after about 2 s; a unit test asserts `intelligence/remediation.py` has no duplicate dictionary keys (parse with `ast`).
+
+---
+
+## B21 — Deployment and documentation
+
+### AUD-67 · Docker deployment is unreachable since the dashboard binds 127.0.0.1 by default
+- **Files:** `Dockerfile`, `docker-compose.yml`, `README.md`
+- **Problem:** the container runs `python main.py server`, which now binds `127.0.0.1` inside the container, so the published port `5000:5000` cannot be reached from the host. Neither file sets `AUTOSEC_HOST`. Also: the image runs as root, nikto is cloned from an unpinned branch, the Juice Shop image uses `:latest`, and no admin password is provided on first start.
+- **Required fix:** `ENV AUTOSEC_HOST=0.0.0.0` in the Dockerfile (inside the container only); in compose publish `127.0.0.1:5000:5000` (host loopback only) and require `AUTOSEC_ADMIN_PASSWORD` with `${AUTOSEC_ADMIN_PASSWORD:?set AUTOSEC_ADMIN_PASSWORD}`; add a non-root `USER`; pin nikto to a tag or commit and the Juice Shop image to a version; keep `config.py`'s non-loopback warning.
+- **Acceptance:** a test that parses the two files: `AUTOSEC_HOST=0.0.0.0` present for the server image, the published port is bound to `127.0.0.1`, a non-root `USER` exists, no `:latest` tag and no unpinned git clone remain, and `AUTOSEC_ADMIN_PASSWORD` is required in compose.
+
+### AUD-68 · README does not document configuration or the authentication behavior
+- **Files:** `README.md`
+- **Problem:** the code reads about 20 `AUTOSEC_*` environment variables and the README documents none of them. It also does not explain that the dashboard now requires login, how the first admin password is chosen, how to enable registration, or how to run an authenticated scan (`--login-user`, `--login-pass`, `--login-url`), including the Git Bash path-conversion pitfall (`MSYS_NO_PATHCONV=1` or `//login/`).
+- **Required fix:** add a configuration table (name, default, purpose) covering every `AUTOSEC_*` variable the code reads, a first-run section (`AUTOSEC_ADMIN_PASSWORD` or the password printed to stderr, `AUTOSEC_ALLOW_REGISTRATION`), an authenticated-scanning section, and correct any stale statement (test counts, default credentials).
+- **Acceptance:** a test collects every `AUTOSEC_[A-Z_]+` name that appears in `config.py`, `core/`, `ui/`, `plugins/`, `main.py` and `mcp_server.py`, and asserts each one appears in `README.md`; the README mentions `--login-user` and `MSYS_NO_PATHCONV`.
+
+---
+
+## B22 — Form-aware injection testing (from external-testbed scans, 2026-10-13)
 
 Evidence: scanning pygoat (Django) while logged in discovered 37 forms and 69 injectable endpoints yet reported **no** SQLi,
 command injection, SSRF, SSTI or IDOR. All of those labs are POST forms. The injection plugins only exercise URL query
 parameters, JSON bodies and a fixed list of login paths.
 
-### Safety rules for active form testing (apply to B19, B20, B21; the verifier checks them)
+### Safety rules for active form testing (apply to B22, B23, B24; the verifier checks them)
 - Same origin only: never submit to a form whose resolved action is on another origin. `is_target_allowed()` is never bypassed.
 - Never submit a form whose action path, form id/name, or any field name/label matches `core.crawler.DEFAULT_DENY_PATTERN`
   (`logout|log-out|signout|sign-out|logoff|delete|remove|destroy`) or `reset|drop|purge|unsubscribe|deactivate|close-account|password`.
@@ -449,9 +505,9 @@ parameters, JSON bodies and a fixed list of login paths.
 
 ---
 
-## B20 — Crawler coverage (from the pygoat and vulpy scans)
+## B23 — Crawler coverage (from the pygoat and vulpy scans)
 
-Evidence: pygoat links its labs only through `<button onclick="window.location.href='/xssL'">`; the crawl cap of 20 pages was spent on intro pages before any lab was reached; vulpy once crawled 0 pages (13 s, no retry) and another run crawled 7. The form safety rules from B19 apply.
+Evidence: pygoat links its labs only through `<button onclick="window.location.href='/xssL'">`; the crawl cap of 20 pages was spent on intro pages before any lab was reached; vulpy once crawled 0 pages (13 s, no retry) and another run crawled 7. The form safety rules from B22 apply.
 
 ### AUD-54 · Navigation in inline event handlers is invisible to the crawler
 - **Files:** `core/crawler.py`
@@ -473,7 +529,7 @@ Evidence: pygoat links its labs only through `<button onclick="window.location.h
 
 ---
 
-## B21 — API discovery and detection recall
+## B24 — API discovery and detection recall
 
 Evidence: VAmPI serves `/openapi.json`; the scanner reported "API documentation exposed" but tested none of the 17 documented endpoints without `--openapi`. vulpy returns a bare HTTP 500 for a quote in the login field and the SQLi plugin only recognises DB error text. One VAmPI scan hit the 300 s engine deadline ("Request skipped: scan deadline exceeded") and still reported success; under machine load another run lost 4 findings silently.
 
@@ -497,7 +553,7 @@ Evidence: VAmPI serves `/openapi.json`; the scanner reported "API documentation 
 
 ---
 
-## B22 — Regression testbed and a CLI argument check
+## B25 — Regression testbed and a CLI argument check
 
 ### AUD-60 · Second built-in testbed that reproduces the gaps seen on external apps
 - **Files:** `testbed/app2.py` (new), `main.py` (testbed subcommand option to select it), `test_b22_regression_testbed.py` (new)
@@ -513,7 +569,7 @@ Evidence: VAmPI serves `/openapi.json`; the scanner reported "API documentation 
 
 ---
 
-## Deferred (not in the loop — do after B22)
+## Deferred (not in the loop — do after B25)
 - Move the ~2,000 lines of inline HTML in `ui/app.py` into `ui/templates/`.
 - Replace per-plugin `_get_mock_output` with a recorded-fixture replay layer.
 - Move scan jobs to a proper worker/task queue behind a WSGI server.
