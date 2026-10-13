@@ -99,6 +99,8 @@ def compute_canonical_key(
         p = ""
     # Lowercase param for consistent cross-tool matching (e.g. security headers)
     p = p.lower()
+    # Strip cookie scanner prefixes from param
+    p = re.sub(r"^cookie_(?:missing_samesite|samesite_none_insecure):", "", p)
 
     # Canonicalize vuln_type via taxonomy/alias mapping
     v = normalize_vuln_type_key(vuln_type) if vuln_type else None
@@ -107,10 +109,22 @@ def compute_canonical_key(
     # to specific vulnerability types via taxonomy inference from title.
     # Specific vulnerability types (such as sqli, xss, command_injection, ssrf, etc.) are preserved.
     GENERIC_DISCOVERY_TYPES = {"dir_brute", "dirbrute", "misconfig", "generic", "info_disclosure", None, ""}
-    if v in GENERIC_DISCOVERY_TYPES and title:
+    is_csrf_cookie_flag = (
+        v == "csrf"
+        and "cookie" in (title or "").lower()
+        and any(w in (title or "").lower() for w in ("samesite", "httponly", "secure"))
+    )
+    if (v in GENERIC_DISCOVERY_TYPES or is_csrf_cookie_flag) and title:
         inferred = infer_taxonomy_from_text(title)
         if inferred and inferred.vuln_type:
             v = inferred.vuln_type
+        elif is_csrf_cookie_flag:
+            v = "insecure_cookie"
+
+    if v == "insecure_cookie" or "insecure_cookie" in (vuln_type or ""):
+        v = "insecure_cookie"
+        norm_ep = "/"
+        norm_method = "GET"
 
     v_str = v or "generic"
     return f"{v_str}|{norm_method}|{norm_ep}|{p}"

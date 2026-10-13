@@ -217,6 +217,33 @@ class XSSScanner(BaseScanner):
             if resp is None or resp.status_code != 200:
                 continue
             for sink in dom_sinks:
+                if sink in (r"window\.location\s*=", r"location\.href\s*="):
+                    # Check if all location assignments are benign static string navigation literals
+                    def _all_benign_static_nav(text: str) -> bool:
+                        matches = list(re.finditer(r"\b(?:window\.)?location(?:\.href)?\s*=\s*", text, re.IGNORECASE))
+                        if not matches:
+                            return False
+                        for m in matches:
+                            rest = text[m.end():].lstrip()
+                            if not rest or rest[0] not in ("'", '"'):
+                                return False
+                            q = rest[0]
+                            stop_chars = {';', '"', '\r', '\n', '>', '<'} if q == "'" else {';', "'", '\r', '\n', '>', '<'}
+                            end_pos = len(rest)
+                            for i, ch in enumerate(rest):
+                                if i > 0 and ch in stop_chars:
+                                    end_pos = i
+                                    break
+                            rhs = rest[:end_pos].strip()
+                            if len(rhs) < 2 or rhs[0] != q or rhs[-1] != q:
+                                return False
+                            inner = rhs[1:-1]
+                            if "+" in inner or "`" in inner or "${" in inner or q in inner:
+                                return False
+                        return True
+
+                    if _all_benign_static_nav(resp.text):
+                        continue
                 if re.search(sink, resp.text):
                     self.results.append({
                         "endpoint": page,

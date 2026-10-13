@@ -81,6 +81,14 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
         logger.error(f"Invalid target: {target}")
         print(f"Error: Invalid target '{target}'. Please provide a valid URL or IP address.")
         return 1
+
+    if login_url:
+        from core.authenticator import validate_login_url
+        valid, err_msg = validate_login_url(login_url, target)
+        if not valid:
+            logger.error(f"Invalid --login-url: {err_msg}")
+            print(f"\n[ERROR] {err_msg}")
+            return 1
     
     allowed, reason = is_target_allowed(target)
     if not allowed:
@@ -316,6 +324,8 @@ def main():
     testbed_parser = subparsers.add_parser("testbed", help="Launch the local vulnerable sandbox testbed")
     testbed_parser.add_argument("--port", type=int, default=8080, help="Port to run testbed on (default: 8080)")
     testbed_parser.add_argument("--host", default="127.0.0.1", help="Host address (default: 127.0.0.1)")
+    testbed_parser.add_argument("--app", choices=["1", "2", "app", "app2"], default="app", help="Select testbed app (app or app2, default: app)")
+    testbed_parser.add_argument("--app2", action="store_true", help="Launch testbed app2 instead of app")
     
     args = parser.parse_args()
     
@@ -358,8 +368,12 @@ def main():
         list_plugins()
         return 0
     elif args.command == "testbed":
-        from testbed.app import run_testbed
-        run_testbed(host=args.host, port=args.port)
+        if getattr(args, "app2", False) or getattr(args, "app", "app") in ("2", "app2"):
+            from testbed.app2 import run_testbed as run_testbed2
+            run_testbed2(host=args.host, port=args.port)
+        else:
+            from testbed.app import run_testbed
+            run_testbed(host=args.host, port=args.port)
         return 0
     elif args.command == "server":
         from ui.app import app

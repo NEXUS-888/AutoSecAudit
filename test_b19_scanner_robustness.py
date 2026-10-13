@@ -155,10 +155,10 @@ class TestAud64ResponseSizeAndTimeLimits(unittest.TestCase):
 
         @app.route("/fast_oversized")
         def fast_oversized():
-            chunk = b"X" * (32 * 1024)
+            chunk = b"X" * (128 * 1024)
 
             def generate():
-                for _ in range(10):  # 320 KiB
+                for _ in range(3):  # 384 KiB
                     yield chunk
 
             return Response(generate(), content_type="text/plain")
@@ -167,7 +167,7 @@ class TestAud64ResponseSizeAndTimeLimits(unittest.TestCase):
         def fast_drip():
             def generate():
                 yield b"part1"
-                time.sleep(2.0)
+                time.sleep(2.5)
                 yield b"part2"
 
             return Response(generate(), content_type="text/plain")
@@ -358,7 +358,7 @@ class TestAud64ResponseSizeAndTimeLimits(unittest.TestCase):
             politeness=PolitenessEngine(request_interval_ms=0, max_jitter_ms=0),
         )
         with patch.object(config, "MAX_RESPONSE_BYTES", 64 * 1024), \
-             patch.object(config, "MAX_REQUEST_SECONDS", 1):
+             patch.object(config, "MAX_REQUEST_SECONDS", 1.5):
 
             def call_one(idx: int):
                 if idx < 25:

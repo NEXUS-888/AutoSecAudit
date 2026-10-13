@@ -394,6 +394,8 @@ class APIAbuseScanner(BaseScanner):
                             ),
                             raw_output=resp.text[:500],
                             owasp_tag="A01:2021 Broken Access Control",
+                            endpoint=path,
+                            method="GET",
                         )
 
                 # Scan every successful response body for sensitive data
@@ -681,9 +683,20 @@ class APIAbuseScanner(BaseScanner):
         self, base_url: str, host: str, port: int
     ) -> None:
         """Try accessing admin endpoints without authentication."""
-        for path in ADMIN_ENDPOINTS:
+        tested = set()
+        candidates = list(ADMIN_ENDPOINTS)
+        for ep in self.discovered_endpoints or []:
+            p = ep.get("path", "") if isinstance(ep, dict) else str(ep)
+            if p and any(kw in p.lower() for kw in ("admin", "debug", "_debug", "internal", "config")):
+                if p not in candidates:
+                    candidates.append(p)
+
+        for path in candidates:
+            if path in tested:
+                continue
+            tested.add(path)
             url = base_url + path
-            resp = self._safe_get(url)
+            resp = self._safe_get(url, anonymous=True, allow_redirects=False)
             if resp is None:
                 continue
 
@@ -694,17 +707,19 @@ class APIAbuseScanner(BaseScanner):
                     host=host,
                     port=port,
                     description=(
-                        f"The administrative endpoint {path} returned HTTP 200 "
+                        f"The administrative/debug endpoint {path} returned HTTP 200 "
                         "without requiring authentication. An attacker could "
                         "access privileged functions directly."
                     ),
                     raw_output=resp.text[:500],
                     owasp_tag="A01:2021 Broken Access Control",
+                    endpoint=path,
+                    method="GET",
                 )
             elif resp.status_code in (301, 302, 307, 308):
                 # Redirect may indicate a login page — low concern
                 pass
-            elif resp.status_code == 403:
+            elif resp.status_code in (401, 403):
                 # Properly denied — no finding
                 pass
 

@@ -484,6 +484,7 @@ class ScanHttpClient:
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[Union[float, Tuple[float, float]]] = None,
         allow_redirects: bool = True,
+        anonymous: bool = False,
         **kwargs: Any,
     ) -> Optional[requests.Response]:
         """
@@ -540,6 +541,7 @@ class ScanHttpClient:
                             headers=headers,
                             timeout=req_timeout,
                             allow_redirects=allow_redirects,
+                            anonymous=anonymous,
                             **kwargs,
                         )
                 except requests.RequestException as exc:
@@ -805,12 +807,21 @@ class ScanHttpClient:
         headers: Optional[Dict[str, str]] = None,
         timeout: Any = DEFAULT_TIMEOUT,
         allow_redirects: bool = True,
+        anonymous: bool = False,
         **kwargs: Any,
     ) -> Optional[requests.Response]:
         """
         Execute request, following redirects manually one hop at a time while checking scope.
         """
-        self._mount_watchdog_adapters(self.session)
+        if anonymous:
+            anon_session = requests.Session()
+            self._mount_watchdog_adapters(anon_session)
+            anon_session.headers.update({"User-Agent": DEFAULT_USER_AGENT})
+            anon_session.verify = False
+            active_session = anon_session
+        else:
+            self._mount_watchdog_adapters(self.session)
+            active_session = self.session
 
         current_method = method.upper()
         current_url = url
@@ -820,6 +831,8 @@ class ScanHttpClient:
         history: List[requests.Response] = []
 
         req_headers = dict(headers or {})
+        if anonymous:
+            req_headers = {k: v for k, v in req_headers.items() if k.lower() not in ("authorization", "cookie")}
         if "User-Agent" not in req_headers:
             req_headers["User-Agent"] = DEFAULT_USER_AGENT
 
@@ -851,9 +864,12 @@ class ScanHttpClient:
                     data=current_data,
                     headers=req_headers,
                 )
-                prepared = self.session.prepare_request(req)
+                prepared = active_session.prepare_request(req)
                 # Ensure constant User-Agent
                 prepared.headers["User-Agent"] = DEFAULT_USER_AGENT
+                if anonymous:
+                    prepared.headers.pop("Authorization", None)
+                    prepared.headers.pop("Cookie", None)
 
                 remaining_req = max(0.05, req_deadline - now)
                 if self.deadline is not None:
@@ -874,7 +890,7 @@ class ScanHttpClient:
                         send_kwargs[k] = kwargs[k]
 
                 try:
-                    resp = self.session.send(prepared, **send_kwargs)
+                    resp = active_session.send(prepared, **send_kwargs)
                 except (
                     requests.exceptions.Timeout,
                     urllib3.exceptions.TimeoutError,

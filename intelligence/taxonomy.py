@@ -361,8 +361,8 @@ FALLBACK_RULES = [
     ),
     # 17. Info Disclosure
     (re.compile(r"\b(information disclosure|info disclosure|verbose error|stack trace leak)\b", re.IGNORECASE), VulnType.INFO_DISCLOSURE.value),
-    # 18. API Abuse
-    (re.compile(r"\b(api abuse|rate limit|missing rate limit)\b", re.IGNORECASE), VulnType.API_ABUSE.value),
+    # 18. API Abuse / API Documentation Exposure
+    (re.compile(r"\b(api abuse|rate limit|missing rate limit|api documentation|swagger|openapi)\b", re.IGNORECASE), VulnType.API_ABUSE.value),
 ]
 
 

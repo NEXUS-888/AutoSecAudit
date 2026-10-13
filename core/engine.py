@@ -97,11 +97,9 @@ class Engine:
                     key = (str(ep.get("method", "GET")).upper(), str(ep.get("path", "")), str(ep.get("param", "")))
                     if key not in seen:
                         seen.add(key)
-                        merged.append({
-                            "path": ep.get("path", ""),
-                            "param": ep.get("param", ""),
-                            "method": str(ep.get("method", "GET")).upper(),
-                        })
+                        merged_ep = dict(ep)
+                        merged_ep["method"] = str(ep.get("method", "GET")).upper()
+                        merged.append(merged_ep)
             plugin.set_discovered_endpoints(merged)
 
     def _probe_and_import_openapi(self) -> List[Dict[str, Any]]:
@@ -378,11 +376,11 @@ class Engine:
                 key = (m, p, param)
                 if key not in seen_keys:
                     seen_keys.add(key)
-                    all_endpoints.append({
-                        "path": p,
-                        "param": param,
-                        "method": m,
-                    })
+                    merged_ep = dict(ep)
+                    merged_ep["method"] = m
+                    merged_ep["path"] = p
+                    merged_ep["param"] = param
+                    all_endpoints.append(merged_ep)
 
         # Calibrate SPA soft-404 detector once in real mode and share across plugins
         if not self.mock_mode and self.target and not self.spa_detector:

@@ -131,6 +131,64 @@ class AuthResult:
         }
 
 
+def validate_login_url(login_url: Optional[str], base_url: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate explicit login_url against target base_url.
+
+    Must be a path starting with '/' or an absolute http(s) URL on target origin.
+    Drive-letter paths, backslashes, and off-origin URLs are rejected with descriptive messages.
+    """
+    if not login_url:
+        return True, None
+
+    url_str = str(login_url).strip()
+
+    # 1. Windows drive-letter path check (e.g. C:/Program Files/Git/login/ or D:\...)
+    if re.match(r"^[a-zA-Z]:", url_str):
+        return False, (
+            f"Invalid login_url '{url_str}': Windows drive-letter path detected. "
+            f"The shell may have automatically rewritten the path. "
+            f"Use MSYS_NO_PATHCONV=1 or prefix with // (e.g. '//login/')."
+        )
+
+    # 2. Backslash path check (e.g. ..\login, \login)
+    if "\\" in url_str:
+        return False, (
+            f"Invalid login_url '{url_str}': Backslash path separators are not permitted. "
+            f"Use forward slashes (e.g. '/login')."
+        )
+
+    # 3. Absolute http(s) URL check
+    if url_str.startswith(("http://", "https://")):
+        parsed_target = urllib.parse.urlparse(base_url if "://" in base_url else f"http://{base_url}")
+        parsed_login = urllib.parse.urlparse(url_str)
+
+        target_scheme = (parsed_target.scheme or "http").lower()
+        target_host = (parsed_target.hostname or "").lower()
+        target_port = parsed_target.port or (443 if target_scheme == "https" else 80)
+
+        login_scheme = (parsed_login.scheme or "http").lower()
+        login_host = (parsed_login.hostname or "").lower()
+        login_port = parsed_login.port or (443 if login_scheme == "https" else 80)
+
+        if (login_scheme, login_host, login_port) != (target_scheme, target_host, target_port):
+            return False, (
+                f"Invalid login_url '{url_str}': Off-origin URL pointing to '{login_scheme}://{parsed_login.netloc}'. "
+                f"Must match target origin '{target_scheme}://{parsed_target.netloc}'."
+            )
+        return True, None
+
+    # 4. Path starting with '/' (e.g. /login/, //login/)
+    if url_str.startswith("/"):
+        return True, None
+
+    # 5. Any relative path not starting with '/' (e.g. '..\login', 'login', '../auth')
+    return False, (
+        f"Invalid login_url '{url_str}': Must be a relative path starting with '/' "
+        f"or an absolute http(s) URL matching target origin."
+    )
+
+
 class _LoginFormParser(HTMLParser):
     """Parses HTML to extract login forms, input field names, and hidden CSRF tokens."""
 
@@ -215,6 +273,16 @@ class AutoAuthenticator:
         if not self.username or not self.password:
             return AuthResult(success=False, message="Missing username or password.")
 
+        if self.explicit_login_url:
+            valid, err_msg = validate_login_url(self.explicit_login_url, self.base_url)
+            if not valid:
+                logger.error(f"[AutoAuth] {err_msg}")
+                return AuthResult(
+                    success=False,
+                    login_url=self.explicit_login_url,
+                    message=err_msg or f"Invalid login_url: {self.explicit_login_url}"
+                )
+
         self.credential_submissions_count = 0
 
         # Snapshot anonymous baseline of verify_url prior to authentication
@@ -266,7 +334,10 @@ class AutoAuthenticator:
         """Resolve ordered list of candidate URLs to test."""
         deny_re = re.compile(DEFAULT_DENY_PATTERN, re.IGNORECASE)
         if self.explicit_login_url:
-            full_url = urllib.parse.urljoin(f"{self.base_url}/", self.explicit_login_url.lstrip("/"))
+            if self.explicit_login_url.startswith(("http://", "https://")):
+                return [self.explicit_login_url]
+            clean_path = "/" + self.explicit_login_url.lstrip("/")
+            full_url = urllib.parse.urljoin(f"{self.base_url}/", clean_path.lstrip("/"))
             return [full_url]
 
         candidates = []
