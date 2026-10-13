@@ -411,7 +411,109 @@ The 2026-10-11 real full-profile scan produced 39 findings, about 25 of them uni
 
 ---
 
-## Deferred (not in the loop — do after B18)
+## B19 — Form-aware injection testing (from external-testbed scans, 2026-10-13)
+
+Evidence: scanning pygoat (Django) while logged in discovered 37 forms and 69 injectable endpoints yet reported **no** SQLi,
+command injection, SSRF, SSTI or IDOR. All of those labs are POST forms. The injection plugins only exercise URL query
+parameters, JSON bodies and a fixed list of login paths.
+
+### Safety rules for active form testing (apply to B19, B20, B21; the verifier checks them)
+- Same origin only: never submit to a form whose resolved action is on another origin. `is_target_allowed()` is never bypassed.
+- Never submit a form whose action path, form id/name, or any field name/label matches `core.crawler.DEFAULT_DENY_PATTERN`
+  (`logout|log-out|signout|sign-out|logoff|delete|remove|destroy`) or `reset|drop|purge|unsubscribe|deactivate|close-account|password`.
+  Such forms are reported as discovered but are not probed.
+- Payloads: reuse the existing benign payload sets. Add no destructive payloads (no `DROP`, `DELETE`, `UPDATE`, `rm`, shutdown, etc.).
+- Request caps: per plugin per scan, probe at most 8 forms and 6 fields per form (named constants in `config.py`), most promising first
+  (password/search/id/name/query/url/file/command-like field names).
+- Tests start local fixture apps on `127.0.0.1` with `werkzeug.serving.make_server("127.0.0.1", 0, app)` in a thread and never contact any other host.
+  Shared fixture helpers go in a new `testsupport.py` (not named `test_*.py`). Fixture apps must **simulate** command execution, SSRF and file
+  reads (return canned output when a marker is present); they must never run a shell, fetch a URL, or read a file.
+
+### AUD-51 · Discovered forms lose everything except field names
+- **Files:** `core/crawler.py` (`_LinkFormParser`, `DiscoveredEndpoint`, `CrawlResult.get_injectable_endpoints`), `plugins/base_plugin.py`
+- **Problem:** a form becomes `{"path", "param", "method"}` per input. Hidden fields (Django `csrfmiddlewaretoken`), default values, `<select>` options, `enctype` and the page the form was found on are dropped. A POST rebuilt from that is rejected (403/400) or exercises a different code path than a real submission.
+- **Required fix:** extend the injectable-endpoint dicts with `fields` (name → default value, including hidden inputs and the first `<option>` of each select), `enctype`, `form_page` (URL where the form was found) and `source: "form"`. Keep the existing keys (`path`, `param`, `method`) unchanged. Add `BaseScanner.submit_form_probe(endpoint, param, value)` that builds the request from `fields` with only `param` replaced, encodes per `enctype` (urlencoded or multipart), re-fetches `form_page` first when a CSRF-like hidden field is present (names in `core.authenticator.CSRF_TOKEN_NAMES`) and uses the fresh token, sends through `_safe_request`, and refuses (returns `None`, sends nothing) when the action is cross-origin or matches the deny rules above.
+- **Acceptance:** with a local fixture app (CSRF-protected POST form with a hidden token, a select and a text input): (1) crawler output contains `fields` including the hidden token and the select default; (2) `submit_form_probe` with a benign value gets HTTP 200 on the CSRF-protected form (not 400/403); (3) a form whose action is on another origin → `None`, no request sent; (4) a form at `/account/delete` and a form whose field is named in the deny list → not probed (`None`); (5) existing tests still pass unchanged.
+
+### AUD-52 · SQLi and XSS plugins skip POST form fields
+- **Files:** `plugins/sqli_plugin.py`, `plugins/xss_plugin.py`, `config.py`
+- **Problem:** `<form method=post action=/sql_lab><input name=name><input name=pass>` is never injected. Only GET query parameters, JSON bodies and the fixed login list are tested.
+- **Required fix:** for every discovered endpoint with `method == "POST"` (and form-sourced GET endpoints) use `submit_form_probe`, keeping the existing control-vs-payload verification (SQL error signature absent from the control; XSS reflection counted only in HTML-rendered responses, per AUD-49). Apply the caps and safety rules above; add the cap constants to `config.py`.
+- **Acceptance:** fixture app with (a) a POST form that leaks a SQL error signature on a quote, (b) a POST form that reflects input unescaped as `text/html`, (c) a POST form that echoes input HTML-escaped, (d) a POST form that handles quotes safely. The scan reports (a) and (b) exactly once each with the form path and field, and reports nothing for (c) and (d). A fixture with 20 forms receives no more probe requests than the caps allow (assert on a server-side request counter).
+
+### AUD-53 · Command injection, SSTI, SSRF and path traversal skip POST form fields
+- **Files:** `plugins/command_injection_plugin.py`, `plugins/ssti_plugin.py`, `plugins/ssrf_plugin.py`, `plugins/path_traversal_plugin.py`
+- **Problem:** same gap as AUD-52. pygoat's `cmd_lab`, `ssti/lab`, `ssrf_lab` and similar POST forms produced nothing.
+- **Required fix:** use `submit_form_probe` for POST/form-sourced endpoints in all four plugins. Keep the evidence rules from AUD-48/49 (control comparison; SSRF needs evidence tied to the fetched URL, not mere reflection). Apply the caps and safety rules.
+- **Acceptance:** fixture POST forms that *simulate* (a) command execution (returns a unique marker only when the payload contains the echo-marker command), (b) SSTI (`render_template_string(f"Hello {name}")`), (c) SSRF (returns a canned internal banner only for loopback URLs), (d) path traversal (returns canned passwd text for `..` input). Each is reported exactly once. A form that merely echoes its input yields none of the four. Existing GET/JSON detections are unchanged.
+
+---
+
+## B20 — Crawler coverage (from the pygoat and vulpy scans)
+
+Evidence: pygoat links its labs only through `<button onclick="window.location.href='/xssL'">`; the crawl cap of 20 pages was spent on intro pages before any lab was reached; vulpy once crawled 0 pages (13 s, no retry) and another run crawled 7. The form safety rules from B19 apply.
+
+### AUD-54 · Navigation in inline event handlers is invisible to the crawler
+- **Files:** `core/crawler.py`
+- **Problem:** only `href`, `src` and `action` attributes are followed. Pages reached through `onclick` navigation are never visited.
+- **Required fix:** extract same-origin URLs from `on*` attributes (`location`, `location.href`, `window.location(.href)`, `location.assign()/replace()`, `window.open()`), `data-href`/`data-url`, `formaction`, and `<meta http-equiv="refresh">`, and treat them as links. Use regex over attribute values only; never execute JS. `javascript:` and cross-origin URLs are ignored. The existing deny pattern applies.
+- **Acceptance:** a fixture page using each of the patterns above → each target path is discovered. `javascript:void(0)`, `https://other.example/x` and `onclick="location.href='/logout'"` → not followed. Existing crawler tests pass.
+
+### AUD-55 · Crawl budget hard-coded to 20 pages / depth 3
+- **Files:** `core/crawler.py` (`WebCrawler(max_pages=20, max_depth=3)` in the module helper), `core/engine.py`, `config.py`
+- **Problem:** pygoat has ~90 reachable pages; the budget ran out on intro pages. Raising it manually took the crawl from 0 to 37 forms and 69 injectable endpoints.
+- **Required fix:** `config.CRAWL_MAX_PAGES` (default 100), `CRAWL_MAX_DEPTH` (default 4), `CRAWL_MAX_SECONDS` (default 60), each overridable by `AUTOSEC_CRAWL_MAX_PAGES/DEPTH/SECONDS`; invalid or out-of-range values (pages 1–500, depth 1–8, seconds 5–600) fall back to the default with a logged warning. The BFS must not let repeated URL templates eat the budget: after 5 pages with the same path template (numeric or hex-id segments normalized, e.g. `/post/1` … `/post/40`), further matches are skipped. Stop at the time cap.
+- **Acceptance:** fixture of 30 intro pages each linking to one distinct lab page, plus 40 `/post/<n>` pages → with defaults all 30 labs are visited and at most 5 `/post/<n>` pages; env overrides are honored and invalid values fall back; a slow fixture server stops the crawl at the time cap (use a patched clock or a tiny cap, not a real 60 s wait).
+
+### AUD-56 · The crawler gives up silently
+- **Files:** `core/crawler.py`
+- **Problem:** a scan of vulpy logged "visited 0 pages, found 0 endpoints" with no retry and no indication in the report; another run of the same app visited 7 pages.
+- **Required fix:** retry the start URL up to 3 times with 1 s then 2 s backoff, following redirects from it (e.g. `/` → `/posts`) so the redirect target counts as page 1. Add `CrawlResult.errors` (list of short strings), `CrawlResult.fetch_failures` (int) and `CrawlResult.start_ok` (bool). Never raise to the caller.
+- **Acceptance:** a server failing the first 2 requests then succeeding → `start_ok` True and pages visited > 0; a server that always fails → `start_ok` False, `errors` non-empty, no exception; a `/` that redirects to `/posts` → `/posts` is visited and its links followed. Tests must patch the sleep so they run in well under a second.
+
+---
+
+## B21 — API discovery and detection recall
+
+Evidence: VAmPI serves `/openapi.json`; the scanner reported "API documentation exposed" but tested none of the 17 documented endpoints without `--openapi`. vulpy returns a bare HTTP 500 for a quote in the login field and the SQLi plugin only recognises DB error text. One VAmPI scan hit the 300 s engine deadline ("Request skipped: scan deadline exceeded") and still reported success; under machine load another run lost 4 findings silently.
+
+### AUD-57 · An exposed OpenAPI/Swagger spec is reported but never used
+- **Files:** `core/engine.py`, `core/openapi.py`, `plugins/api_abuse_plugin.py`
+- **Problem:** endpoints are imported from a spec only when the user passes `--openapi`.
+- **Required fix:** when no spec was supplied, probe `/openapi.json`, `/swagger.json`, `/v2/api-docs`, `/v3/api-docs`, `/api-docs`, `/openapi.yaml` on the target origin through the shared client. If a valid spec is found, import it with the existing `OpenAPIImporter` and merge the endpoints into the discovered endpoints (deduplicated with the crawler's). Only the target origin is ever requested: ignore `servers:` entries that point elsewhere. An explicit `--openapi` wins and the auto-probe is skipped.
+- **Acceptance:** fixture serving `/openapi.json` with 3 paths → the injection plugins receive those 3 endpoints; a spec whose `servers` lists `http://evil.example` → every request still goes to the fixture origin; invalid JSON → ignored without error; explicit spec supplied → the probe makes no spec requests.
+
+### AUD-58 · SQL injection missed when the server answers with a bare 500
+- **Files:** `plugins/sqli_plugin.py`
+- **Problem:** a quote in vulpy's login username returns HTTP 500 with a generic page. The plugin only reports when a database error signature appears in the body.
+- **Required fix:** add a paired differential check for GET params, JSON fields and form fields (via `submit_form_probe`): control value → normal response; value with a lone `'` → 5xx; value with a doubled `''` (a valid SQL string) → normal response again. All three must hold. Report as medium confidence "Possible SQL injection (error status differential)". Signature-based detection stays as is.
+- **Acceptance:** fixture endpoints: (a) 500 on `'` and 200 on `''` → reported at medium confidence; (b) always 500 → not reported; (c) 500 on any special character including `''` → not reported; (d) the existing signature-based detections still pass.
+
+### AUD-59 · Coverage loss is silent
+- **Files:** `core/engine.py`, `core/http_client.py`, `core/models.py` (`Report`), `core/pipeline.py`, `reports/` templates, `main.py`, `config.py`
+- **Problem:** hitting the engine deadline, plugin timeouts, or failed requests do not appear anywhere in the result; a degraded scan looks identical to a complete one.
+- **Required fix:** add `Report.coverage` (dict, included in `to_dict`/`from_dict`; old reports without it must still load) with: `requests_total`, `requests_failed` (network/timeout), `requests_skipped_deadline`, `plugins_timed_out`, `plugins_skipped`, `crawl` (pages_visited, forms, fetch_failures, start_ok), `duration_seconds`, `per_plugin_seconds`, and `degraded` (true if the deadline was hit, any plugin timed out, or failed+skipped requests exceed 5% of total). Counters come from `ScanHttpClient` and must be thread-safe. The CLI prints a visible warning line when degraded; the HTML report shows a banner; the JSON carries the dict. Make the engine deadline configurable via `config.SCAN_DEADLINE_SECONDS` / `AUTOSEC_SCAN_DEADLINE_SECONDS` (default 300, range 30–3600, invalid → default with a warning).
+- **Acceptance:** a fake slow plugin that exceeds a tiny deadline → `degraded` true and the CLI warning is printed; a clean mock scan → `degraded` false; counters stay exact under 100 concurrent threads; `Report` round-trips with and without `coverage`; the HTML report contains the banner text only when degraded.
+
+---
+
+## B22 — Regression testbed and a CLI argument check
+
+### AUD-60 · Second built-in testbed that reproduces the gaps seen on external apps
+- **Files:** `testbed/app2.py` (new), `main.py` (testbed subcommand option to select it), `test_b22_regression_testbed.py` (new)
+- **Problem:** every end-to-end regression check uses `testbed/app.py`, which is GET/JSON based. The external apps showed bugs it cannot reproduce, so the same regressions can come back unnoticed.
+- **Required fix:** add `testbed/app2.py`, a Flask app bound to `127.0.0.1` by default, with: a login form (CSRF token) gating the lab pages; navigation to the labs only through `onclick="window.location.href=..."` buttons; POST forms with (1) a simulated SQL error leak, (2) reflected XSS, (3) simulated command execution, (4) SSTI via `render_template_string`; an endpoint returning a bare 500 only for a lone `'`; a same-site slash redirect `/go` → `/go/?next=<echo>` (a decoy, must NOT be reported); `/openapi.json` documenting an unauthenticated `/api/v1/_debug` that returns user records; a session cookie set without HttpOnly/SameSite. Put a ground-truth table (real vs decoy) in the module docstring. No real command execution, file access, or network fetches.
+- **Acceptance:** the test starts `app2` on a free loopback port, runs a real full-profile pipeline scan **with login credentials** (restrict plugins or profile so the test finishes in under 90 s and does not require nmap/nikto), and asserts: each planted vulnerability is reported exactly once; the decoys produce no findings; `coverage.degraded` is false; no request is made to any host other than the fixture.
+
+### AUD-61 · A mangled `--login-url` fails silently
+- **Files:** `core/authenticator.py`, `main.py`
+- **Problem:** passing `--login-url /login/` from Git Bash on Windows reaches the scanner as `C:/Program Files/Git/login/`. The authenticator probes that string and logs only "GET probe failed"; the scan continues unauthenticated with no clear error.
+- **Required fix:** validate `login_url` before use: it must be a path starting with `/` or an absolute `http(s)` URL on the target origin. A drive-letter path (`C:/...`), a backslash path, or an off-origin URL → a clear error naming the offending value and, for the drive-letter case, a hint that the shell rewrote it (use `MSYS_NO_PATHCONV=1` or `//login/`). The CLI prints the error and exits non-zero; library callers get `AuthResult(success=False, message=...)`.
+- **Acceptance:** `C:/Program Files/Git/login/`, `..\login`, and `http://other.example/login` are rejected with messages containing the value; `/login/` and `http://127.0.0.1:5103/login/` (target origin) are accepted; the CLI exit code is non-zero on a rejected value.
+
+---
+
+## Deferred (not in the loop — do after B22)
 - Move the ~2,000 lines of inline HTML in `ui/app.py` into `ui/templates/`.
 - Replace per-plugin `_get_mock_output` with a recorded-fixture replay layer.
 - Move scan jobs to a proper worker/task queue behind a WSGI server.
