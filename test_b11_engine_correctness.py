@@ -65,7 +65,8 @@ class TestB11EngineCorrectness(unittest.TestCase):
         engine.plugins = [slow_plugin]
 
         with patch.object(engine, "_execute_plugin", side_effect=lambda p: (time.sleep(6), {"findings": []})[1]), \
-             patch("config.SCAN_TIMEOUT", 2):
+             patch("config.SCAN_TIMEOUT", 2), \
+             patch("config.SCAN_DEADLINE_SECONDS", 2):
             start = time.monotonic()
             results = engine.run_plugins()
             elapsed = time.monotonic() - start

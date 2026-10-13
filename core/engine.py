@@ -6,6 +6,8 @@ from typing import List, Dict, Any, Optional
 import time
 import dataclasses
 from concurrent.futures import ThreadPoolExecutor, wait
+import threading
+import urllib.parse
 from datetime import datetime
 
 import config
@@ -44,6 +46,7 @@ class Engine:
         self.scan_results: List[ScanResult] = []
         self.target: str = ""
         self.spa_detector: Optional[SPADetector] = None
+        self._lock = threading.Lock()
 
         if politeness is not None:
             client_politeness = politeness
@@ -65,13 +68,22 @@ class Engine:
         self.previous_report: Optional[Dict[str, Any]] = None
         self.crawl_result = None  # populated by run_plugins
         self.imported_endpoints: List[Dict[str, Any]] = []
+        self.explicit_openapi: bool = False
+        self.scan_start_time: float = 0.0
+        self.scan_duration_seconds: float = 0.0
+        self.per_plugin_seconds: Dict[str, float] = {}
+        self.plugins_timed_out: int = 0
+        self.plugins_skipped: int = 0
+        self.scan_deadline_hit: bool = False
         self.dev_environment: Optional[str] = None
         self.auth_credentials: Optional[Dict[str, Any]] = None
         self.auth_result: Optional[Any] = None
         self.custom_headers: Dict[str, str] = {}
 
-    def add_endpoints(self, endpoints: List[Dict[str, Any]]) -> None:
+    def add_endpoints(self, endpoints: List[Dict[str, Any]], explicit: bool = True) -> None:
         """Add endpoints (e.g. from OpenAPI spec) to be scanned by plugins."""
+        if explicit:
+            self.explicit_openapi = True
         if not endpoints:
             return
         self.imported_endpoints.extend(endpoints)
@@ -91,6 +103,46 @@ class Engine:
                             "method": str(ep.get("method", "GET")).upper(),
                         })
             plugin.set_discovered_endpoints(merged)
+
+    def _probe_and_import_openapi(self) -> List[Dict[str, Any]]:
+        """Probe common OpenAPI/Swagger paths on the target origin and import endpoints."""
+        probe_paths = [
+            "/openapi.json",
+            "/swagger.json",
+            "/v2/api-docs",
+            "/v3/api-docs",
+            "/api-docs",
+            "/openapi.yaml",
+        ]
+        from core.openapi import OpenAPIImporter
+
+        for path in probe_paths:
+            try:
+                target_url = urllib.parse.urljoin(self.target, path)
+                resp = self.http_client.request("GET", target_url)
+                if resp is None or resp.status_code != 200:
+                    continue
+
+                spec_data = None
+                try:
+                    spec_data = resp.json()
+                except Exception:
+                    try:
+                        import yaml
+                        spec_data = yaml.safe_load(resp.text)
+                    except Exception:
+                        pass
+
+                if isinstance(spec_data, dict) and ("paths" in spec_data or "swagger" in spec_data or "openapi" in spec_data):
+                    importer = OpenAPIImporter(spec_data=spec_data)
+                    endpoints = importer.get_endpoints()
+                    if endpoints:
+                        logger.info(f"Auto-probed OpenAPI spec at {path}, discovered {len(endpoints)} endpoints")
+                        return endpoints
+            except Exception as exc:
+                logger.debug(f"[Engine] OpenAPI probe failed for {path}: {exc}")
+
+        return []
 
     def set_auth_credentials(self, username: str, password: str, login_url: Optional[str] = None) -> None:
         """Configure test credentials for automated login."""
@@ -244,6 +296,17 @@ class Engine:
             return []
 
         self.scan_results = []
+        self.scan_start_time = time.monotonic()
+        self.per_plugin_seconds = {}
+        self.plugins_timed_out = 0
+        self.plugins_skipped = 0
+        self.scan_deadline_hit = False
+        timeout = self.scan_timeout if self.scan_timeout is not None else getattr(config, "SCAN_DEADLINE_SECONDS", 300)
+        if self.http_client:
+            self.http_client.requests_total = 0
+            self.http_client.requests_failed = 0
+            self.http_client.requests_skipped_deadline = 0
+            self.http_client.deadline = self.scan_start_time + timeout
         timestamp = get_timestamp()
 
         # Automated Authentication if credentials configured
@@ -268,6 +331,9 @@ class Engine:
                     logger.warning(f"Automated authentication failed on {self.target}: {self.auth_result.message}")
             except Exception as e:
                 logger.error(f"Error during automated login: {e}", exc_info=True)
+
+        # Setup shared HTTP client early so crawler and openapi probe can use it
+        self.setup_shared_http_client(auth_headers=auth_headers, auth_cookies=auth_cookies)
 
         # Run web crawler first to discover real endpoints (including authenticated paths)
         crawler = WebCrawler(
@@ -295,6 +361,12 @@ class Engine:
             except Exception as exc:
                 logger.debug(f"Dev environment detection failed: {exc}")
 
+        # Probe and auto-import OpenAPI specs if no spec was explicitly provided
+        if not self.explicit_openapi and not self.imported_endpoints and not self.mock_mode and self.target:
+            probed_endpoints = self._probe_and_import_openapi()
+            if probed_endpoints:
+                self.imported_endpoints.extend(probed_endpoints)
+
         # Merge crawler endpoints with imported OpenAPI endpoints (dedupe on method+path+param)
         all_endpoints = []
         seen_keys = set()
@@ -316,8 +388,7 @@ class Engine:
         if not self.mock_mode and self.target and not self.spa_detector:
             self.calibrate_spa_detector()
 
-        # Configure and inject shared HTTP client, auth, discovered endpoints, and dev environment
-        self.setup_shared_http_client(auth_headers=auth_headers, auth_cookies=auth_cookies)
+        # Update discovered endpoints, dev environment, and spa detector on plugins
         for plugin in self.plugins:
             plugin.set_discovered_endpoints(all_endpoints)
             if self.dev_environment and hasattr(plugin, "set_dev_environment"):
@@ -325,9 +396,11 @@ class Engine:
             if self.spa_detector and hasattr(plugin, "set_spa_detector"):
                 plugin.set_spa_detector(self.spa_detector)
 
-        timeout = getattr(config, "SCAN_TIMEOUT", 300) if self.scan_timeout is None else self.scan_timeout
+        timeout = self.scan_timeout if self.scan_timeout is not None else getattr(config, "SCAN_DEADLINE_SECONDS", 300)
+        time_elapsed = time.monotonic() - self.scan_start_time
+        remaining_timeout = max(0.01, timeout - time_elapsed)
         if self.http_client:
-            self.http_client.deadline = time.monotonic() + timeout
+            self.http_client.deadline = self.scan_start_time + timeout
 
         logger.info(f"Running {len(self.plugins)} plugins on {self.target} (timeout: {timeout}s)")
 
@@ -338,7 +411,11 @@ class Engine:
                 for plugin in self.plugins
             }
 
-            done, not_done = wait(future_to_plugin.keys(), timeout=timeout)
+            done, not_done = wait(future_to_plugin.keys(), timeout=remaining_timeout)
+
+            if not_done:
+                self.scan_deadline_hit = True
+                self.plugins_timed_out = len(not_done)
 
             for future in done:
                 plugin = future_to_plugin[future]
@@ -347,6 +424,8 @@ class Engine:
                     if result:
                         status = result.get("status", "success")
                         error = result.get("error")
+                        if status == "skipped":
+                            self.plugins_skipped += 1
                         scan_result = ScanResult(
                             tool_name=result.get("tool_name", plugin.__class__.__name__),
                             target=self.target,
@@ -388,6 +467,7 @@ class Engine:
                     error=f"Timeout after {timeout}s"
                 ))
         finally:
+            self.scan_duration_seconds = round(time.monotonic() - self.scan_start_time, 4)
             try:
                 executor.shutdown(wait=False, cancel_futures=True)
             except TypeError:
@@ -397,6 +477,7 @@ class Engine:
 
     def _execute_plugin(self, plugin: Any) -> Dict[str, Any]:
         """Execute a single plugin and return results."""
+        start_t = time.monotonic()
         try:
             plugin.configure(self.target)
             output = plugin.get_standardized_output()
@@ -412,6 +493,11 @@ class Engine:
                 "error": str(e),
                 "raw_output": f"Plugin failed with error: {str(e)}"
             }
+        finally:
+            elapsed = time.monotonic() - start_t
+            p_name = getattr(plugin, "_get_tool_name", lambda: plugin.__class__.__name__)() or plugin.__class__.__name__
+            with self._lock:
+                self.per_plugin_seconds[p_name] = round(elapsed, 4)
 
     def _dict_to_findings(self, findings_data: List[Dict]) -> List[Finding]:
         """Convert dictionary data to Finding objects."""
@@ -474,6 +560,47 @@ class Engine:
         rep_id = getattr(self, "report_id", None) or generate_report_id()
         self.report_id = rep_id
 
+        total_reqs = self.http_client.requests_total if hasattr(self, "http_client") else 0
+        failed_reqs = self.http_client.requests_failed if hasattr(self, "http_client") else 0
+        skipped_deadline = self.http_client.requests_skipped_deadline if hasattr(self, "http_client") else 0
+
+        deadline_hit = bool(getattr(self, "scan_deadline_hit", False) or skipped_deadline > 0)
+        plugins_timed_out = self.plugins_timed_out
+        high_failures = False
+        if total_reqs > 0:
+            fail_skip_ratio = (failed_reqs + skipped_deadline) / total_reqs
+            if fail_skip_ratio > 0.05:
+                high_failures = True
+
+        degraded = bool(deadline_hit or plugins_timed_out > 0 or high_failures)
+
+        if self.crawl_result is not None:
+            crawl_info = {
+                "pages_visited": getattr(self.crawl_result, "pages_visited", 0),
+                "forms": len(getattr(self.crawl_result, "forms", []) or []),
+                "fetch_failures": getattr(self.crawl_result, "fetch_failures", 0),
+                "start_ok": getattr(self.crawl_result, "start_ok", True),
+            }
+        else:
+            crawl_info = {
+                "pages_visited": 0,
+                "forms": 0,
+                "fetch_failures": 0,
+                "start_ok": True,
+            }
+
+        coverage = {
+            "requests_total": total_reqs,
+            "requests_failed": failed_reqs,
+            "requests_skipped_deadline": skipped_deadline,
+            "plugins_timed_out": plugins_timed_out,
+            "plugins_skipped": self.plugins_skipped,
+            "crawl": crawl_info,
+            "duration_seconds": self.scan_duration_seconds,
+            "per_plugin_seconds": dict(self.per_plugin_seconds),
+            "degraded": degraded,
+        }
+
         report = Report(
             target=self.target,
             timestamp=get_timestamp(),
@@ -485,6 +612,7 @@ class Engine:
             auth_status=auth_status,
             throttled_requests=throttled,
             report_id=rep_id,
+            coverage=coverage,
         )
 
         return report

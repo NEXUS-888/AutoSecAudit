@@ -237,6 +237,9 @@ class ScanHttpClient:
         self._throttled_count: int = 0
         self._responses_truncated: int = 0
         self._requests_timed_out: int = 0
+        self._requests_total: int = 0
+        self._requests_failed: int = 0
+        self._requests_skipped_deadline: int = 0
         self._max_response_bytes: Optional[int] = kwargs.pop("max_response_bytes", None)
         self._max_request_seconds: Optional[float] = kwargs.pop("max_request_seconds", None)
         self.timing_controller = timing_controller or global_timing_controller
@@ -325,6 +328,60 @@ class ScanHttpClient:
         with self._lock:
             self._requests_timed_out += 1
             return self._requests_timed_out
+
+    @property
+    def requests_total(self) -> int:
+        """Thread-safe getter for total requests count."""
+        with self._lock:
+            return self._requests_total
+
+    @requests_total.setter
+    def requests_total(self, val: int) -> None:
+        """Thread-safe setter for total requests count."""
+        with self._lock:
+            self._requests_total = val
+
+    def increment_requests_total(self, delta: int = 1) -> int:
+        """Atomically increment and return total requests count."""
+        with self._lock:
+            self._requests_total += delta
+            return self._requests_total
+
+    @property
+    def requests_failed(self) -> int:
+        """Thread-safe getter for failed requests count."""
+        with self._lock:
+            return self._requests_failed
+
+    @requests_failed.setter
+    def requests_failed(self, val: int) -> None:
+        """Thread-safe setter for failed requests count."""
+        with self._lock:
+            self._requests_failed = val
+
+    def increment_requests_failed(self, delta: int = 1) -> int:
+        """Atomically increment and return failed requests count."""
+        with self._lock:
+            self._requests_failed += delta
+            return self._requests_failed
+
+    @property
+    def requests_skipped_deadline(self) -> int:
+        """Thread-safe getter for skipped requests count due to deadline."""
+        with self._lock:
+            return self._requests_skipped_deadline
+
+    @requests_skipped_deadline.setter
+    def requests_skipped_deadline(self, val: int) -> None:
+        """Thread-safe setter for skipped requests count due to deadline."""
+        with self._lock:
+            self._requests_skipped_deadline = val
+
+    def increment_requests_skipped_deadline(self, delta: int = 1) -> int:
+        """Atomically increment and return skipped requests count due to deadline."""
+        with self._lock:
+            self._requests_skipped_deadline += delta
+            return self._requests_skipped_deadline
 
     @property
     def max_response_bytes(self) -> int:
@@ -433,11 +490,13 @@ class ScanHttpClient:
         Execute an HTTP request with politeness pacing, manual scope-checked redirects,
         and automatic 429/503 exponential backoff. Never raises exceptions to plugins.
         """
+        self.increment_requests_total()
         try:
             if json_data is None and "json" in kwargs:
                 json_data = kwargs.pop("json")
             # 0. Initial scope and deadline check
             if self.deadline is not None and time.monotonic() > self.deadline:
+                self.increment_requests_skipped_deadline()
                 logger.warning(f"[ScanHttpClient] Request skipped: scan deadline exceeded for {url}")
                 return None
 
@@ -452,6 +511,7 @@ class ScanHttpClient:
             if self.deadline is not None:
                 remaining = self.deadline - time.monotonic()
                 if remaining <= 0:
+                    self.increment_requests_skipped_deadline()
                     return None
                 if isinstance(req_timeout, (int, float)):
                     req_timeout = min(req_timeout, max(0.1, remaining))
@@ -460,6 +520,7 @@ class ScanHttpClient:
 
             while True:
                 if self.deadline is not None and time.monotonic() > self.deadline:
+                    self.increment_requests_skipped_deadline()
                     return None
                 # Wait if another thread is currently running serialized timing verification
                 self.timing_controller.wait_if_timing_active()
@@ -482,13 +543,19 @@ class ScanHttpClient:
                             **kwargs,
                         )
                 except requests.RequestException as exc:
+                    self.increment_requests_failed()
                     logger.debug(f"[ScanHttpClient] Request failed for {url}: {exc}")
                     return None
                 except Exception as exc:
+                    self.increment_requests_failed()
                     logger.debug(f"[ScanHttpClient] Unexpected error executing request for {url}: {exc}")
                     return None
 
                 if resp is None:
+                    if self.deadline is not None and time.monotonic() > self.deadline:
+                        self.increment_requests_skipped_deadline()
+                    else:
+                        self.increment_requests_failed()
                     return None
 
                 # 3. Handle rate-limiting (429 or 503)
@@ -511,6 +578,7 @@ class ScanHttpClient:
                         continue
                     else:
                         self.increment_throttled_count()
+                        self.increment_requests_failed()
                         logger.warning(
                             f"[ScanHttpClient] Target persistent {resp.status_code} after {self.max_retries_on_429} retries on {url}. "
                             f"Suppressing response from detection logic."
@@ -520,6 +588,7 @@ class ScanHttpClient:
                 # Normal response received
                 return resp
         except Exception as exc:
+            self.increment_requests_failed()
             logger.debug(f"[ScanHttpClient] Request unhandled exception for {url}: {exc}")
             return None
 

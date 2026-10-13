@@ -137,6 +137,11 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
     print(f"\n{'='*50}")
     print(f"Scan Complete! [{mode_label}]")
     print(f"{'='*50}")
+
+    if report.coverage and report.coverage.get("degraded"):
+        print("\n[WARNING] Scan coverage is degraded! Some plugins timed out, deadline was reached, or request error rate was elevated.")
+        logger.warning("[Coverage] Scan coverage is degraded.")
+
     summary = report.summary or {}
     print(f"Total Findings: {summary.get('total', len(report.all_findings))}")
     print(f"  Critical: {summary.get('critical', 0)}")

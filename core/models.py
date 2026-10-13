@@ -224,6 +224,7 @@ class Report:
     throttled_requests: int = 0
     report_id: Optional[str] = None
     owner: Optional[str] = None
+    coverage: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -239,6 +240,7 @@ class Report:
             "throttled_requests": self.throttled_requests,
             "report_id": self.report_id,
             "owner": self.owner,
+            "coverage": self.coverage,
         }
 
     @classmethod

@@ -305,6 +305,7 @@ All runtime behavior can be configured via `AUTOSEC_*` environment variables (de
 | `AUTOSEC_LOGIN_PASS` | *(unset)* | Fallback password for authenticated target scanning when `--login-user` is used without `--login-pass`. |
 | `AUTOSEC_HTTP_TIMEOUT` | `10` | Per-request connect/read timeout in seconds for scanner HTTP probes. |
 | `AUTOSEC_SCAN_TIMEOUT` | `300` | Maximum overall wall-clock timeout in seconds for a single plugin execution. |
+| `AUTOSEC_SCAN_DEADLINE_SECONDS` | `300` | Overall wall-clock deadline in seconds for the entire scan execution (range `30`–`3600`). |
 | `AUTOSEC_THREAD_COUNT` | `4` | Number of concurrent worker threads used by the scan engine `ThreadPoolExecutor`. |
 | `AUTOSEC_MAX_RESPONSE_BYTES` | `5242880` (5 MiB) | Maximum HTTP response body size read by `core/http_client.py` before truncation. |
 | `AUTOSEC_MAX_REQUEST_SECONDS` | `30` | Hard wall-clock deadline in seconds for streaming an individual HTTP response. |

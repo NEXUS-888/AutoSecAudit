@@ -124,6 +124,28 @@ class SQLiScanner(BaseScanner):
                 return sig
         return None
 
+    def _check_status_differential(self, probe_func) -> bool:
+        """
+        Check for error status differential:
+        1. control value ("safe123") -> normal response (< 500)
+        2. lone quote ("'") -> 5xx (>= 500)
+        3. doubled quote ("''") -> normal response (< 500)
+        All three must hold.
+        """
+        resp_ctrl = probe_func("safe123")
+        if resp_ctrl is None or resp_ctrl.status_code >= 500:
+            return False
+
+        resp_single = probe_func("'")
+        if resp_single is None or resp_single.status_code < 500:
+            return False
+
+        resp_double = probe_func("''")
+        if resp_double is None or resp_double.status_code >= 500:
+            return False
+
+        return True
+
     # ------------------------------------------------------------------
     # Core scanning logic
     # ------------------------------------------------------------------
@@ -175,6 +197,31 @@ class SQLiScanner(BaseScanner):
                     logger.debug(
                         f"[SQLi] SQL error found but baseline unchanged at {path}?{param} — skipping"
                     )
+
+        # Paired error status differential check if no signature hit
+        def probe_get(val: str):
+            return self._safe_request(
+                "GET",
+                url,
+                params={param: val},
+                headers=HEADERS,
+                timeout=REQUEST_TIMEOUT,
+                allow_redirects=True,
+            )
+
+        if self._check_status_differential(probe_get):
+            self.results.append({
+                "endpoint": f"{path}?{param}=<payload>",
+                "param": param,
+                "payload": "'",
+                "matched_signature": "error_status_differential",
+                "status_code": 500,
+                "evidence": "Lone quote returned 5xx while control and doubled quote returned normal status.",
+                "type": "status_differential",
+                "verified": True,
+                "confidence": "medium",
+            })
+            logger.info(f"[SQLi] Detected error status differential at {path}?{param}")
 
     def _test_login_endpoints(self, base_url: str) -> None:
         """POST common login forms with SQL injection payloads using both JSON and form encoding."""
@@ -330,6 +377,33 @@ class SQLiScanner(BaseScanner):
                 if hit:
                     break
 
+            if not hit:
+                for mode_name, kwargs_builder in modes:
+                    def probe_login(val: str):
+                        return self._safe_request(
+                            "POST",
+                            url,
+                            timeout=REQUEST_TIMEOUT,
+                            allow_redirects=False,
+                            **kwargs_builder({user_field: val, pass_field: "wrong_password_999"}),
+                        )
+
+                    if self._check_status_differential(probe_login):
+                        self.results.append({
+                            "endpoint": login_path,
+                            "param": user_field,
+                            "payload": "'",
+                            "matched_signature": "error_status_differential",
+                            "status_code": 500,
+                            "evidence": f"Login {mode_name} probe lone quote returned 5xx while control and doubled quote returned normal status.",
+                            "type": "status_differential",
+                            "verified": True,
+                            "confidence": "medium",
+                        })
+                        logger.info(f"[SQLi] Detected login error status differential at {login_path} ({user_field})")
+                        hit = True
+                        break
+
     def _test_url_path_injection(self, base_url: str) -> None:
         """Try path-based injection on REST-style numeric IDs."""
         paths = ["/api/Products/", "/users/", "/api/users/", "/items/"]
@@ -401,8 +475,29 @@ class SQLiScanner(BaseScanner):
             {"path": "/api/search", "body": {"query": {"term": "product", "filter": "active"}}},
             {"path": "/api/filter", "body": {"category": "all", "sort": "asc"}},
         ]
+
+        # Include any discovered non-form POST/PUT/PATCH endpoints as JSON targets
+        discovered_json_eps = {}
+        for ep in (self.discovered_endpoints or []):
+            m = str(ep.get("method") or "GET").upper()
+            if m in ("POST", "PUT", "PATCH") and not self._is_form_endpoint(ep):
+                p = str(ep.get("path") or "")
+                param = ep.get("param")
+                if p:
+                    if p not in discovered_json_eps:
+                        discovered_json_eps[p] = {"path": p, "body": {}}
+                    if param:
+                        discovered_json_eps[p]["body"][str(param)] = "test"
+        for d_ep in discovered_json_eps.values():
+            if not d_ep["body"]:
+                d_ep["body"] = {"id": "1", "data": "test"}
+            json_endpoints.append(d_ep)
+
+        from core.fuzzer import extract_json_leaf_paths, mutate_json_at_path
+
         for ep in json_endpoints:
             url = f"{base_url}{ep['path']}"
+            endpoint_reported = False
             for payload in ["' OR 1=1--", "' OR '1'='1"]:
                 fuzz_results = self._fuzz_json_body(url, "POST", ep["body"], payload)
                 for mutated_path, resp in fuzz_results:
@@ -420,7 +515,32 @@ class SQLiScanner(BaseScanner):
                                 "confidence": "high",
                             })
                             logger.info(f"[SQLi] Verified JSON body SQLi at {ep['path']} on {mutated_path}")
-                            return
+                            endpoint_reported = True
+                            break
+                if endpoint_reported:
+                    break
+
+            if not endpoint_reported:
+                # Paired differential check for JSON leaf fields
+                leaves = extract_json_leaf_paths(ep["body"])
+                for leaf_path, _ in leaves:
+                    def probe_json(val: str, lp=leaf_path):
+                        mutated_body = mutate_json_at_path(ep["body"], lp, val)
+                        return self._safe_request("POST", url, json_data=mutated_body, headers=HEADERS)
+
+                    if self._check_status_differential(probe_json):
+                        self.results.append({
+                            "endpoint": f"{ep['path']} (JSON body: {leaf_path})",
+                            "payload": "'",
+                            "matched_signature": "error_status_differential",
+                            "status_code": 500,
+                            "evidence": f"JSON body probe on {leaf_path}: lone quote returned 5xx while control and doubled quote returned normal status.",
+                            "type": "status_differential",
+                            "verified": True,
+                            "confidence": "medium",
+                        })
+                        logger.info(f"[SQLi] Verified JSON body error status differential at {ep['path']} ({leaf_path})")
+                        break
 
     def _test_form_endpoints(self, form_endpoints: List[Dict[str, Any]]) -> None:
         """Probe discovered HTML forms (POST and form-sourced GET) via submit_form_probe."""
@@ -474,6 +594,28 @@ class SQLiScanner(BaseScanner):
                         f"with payload: {payload!r}"
                     )
                     break
+
+            if (path, param) not in reported_pairs:
+                def probe_form(val: str):
+                    return self.submit_form_probe(ep, param, val)
+
+                if self._check_status_differential(probe_form):
+                    self.results.append({
+                        "endpoint": path,
+                        "param": param,
+                        "method": method,
+                        "payload": "'",
+                        "matched_signature": "error_status_differential",
+                        "status_code": 500,
+                        "evidence": "Form probe lone quote returned 5xx while control and doubled quote returned normal status.",
+                        "type": "status_differential",
+                        "verified": True,
+                        "confidence": "medium",
+                    })
+                    reported_pairs.add((path, param))
+                    logger.info(
+                        f"[SQLi] Verified form error status differential at {method} {path} ({param})"
+                    )
 
     # ------------------------------------------------------------------
     # run() – main entry point
@@ -531,12 +673,14 @@ class SQLiScanner(BaseScanner):
         findings: List[Dict[str, Any]] = []
 
         for idx, result in enumerate(self.results, start=1):
-            severity = "Critical" if result["type"] == "login_bypass" else "High"
+            severity = "Critical" if result["type"] == "login_bypass" else ("Medium" if result["type"] == "status_differential" else "High")
             finding_id = f"SQLI-{idx:03d}"
 
             # Confidence: prefer baseline-verified confidence, else use heuristic
             if result.get("verified") and result.get("confidence"):
                 confidence = result["confidence"]
+            elif result["type"] == "status_differential":
+                confidence = "medium"
             elif result.get("matched_signature") == "authentication_bypass_heuristic":
                 confidence = "low"
             elif result["type"] in ("error_based", "path_injection"):
@@ -544,18 +688,27 @@ class SQLiScanner(BaseScanner):
             else:
                 confidence = "medium"
 
-            description = (
-                f"SQL Injection detected at endpoint {result['endpoint']}.\n"
-                f"Payload: {result['payload']}\n"
-                f"Matched signature: {result['matched_signature']}\n"
-                f"HTTP status: {result['status_code']}\n"
-                f"Type: {result['type']}"
-            )
+            if result["type"] == "status_differential":
+                description = (
+                    f"Possible SQL injection (error status differential) detected at endpoint {result['endpoint']}.\n"
+                    f"Payload: {result['payload']}\n"
+                    f"HTTP status: {result['status_code']}\n"
+                    f"Type: error status differential"
+                )
+            else:
+                description = (
+                    f"SQL Injection detected at endpoint {result['endpoint']}.\n"
+                    f"Payload: {result['payload']}\n"
+                    f"Matched signature: {result['matched_signature']}\n"
+                    f"HTTP status: {result['status_code']}\n"
+                    f"Type: {result['type']}"
+                )
 
             title_map = {
                 "error_based": f"SQL Injection – Error-Based ({result['endpoint']})",
                 "login_bypass": f"SQL Injection – Login Bypass ({result['endpoint']})",
                 "path_injection": f"SQL Injection – Path Injection ({result['endpoint']})",
+                "status_differential": f"Possible SQL injection (error status differential) ({result['endpoint']})",
             }
             title = title_map.get(
                 result["type"],

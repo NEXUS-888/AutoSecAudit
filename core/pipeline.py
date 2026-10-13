@@ -214,6 +214,7 @@ def run_scan_pipeline(
 
     # 5. OpenAPI
     if openapi_spec:
+        engine.explicit_openapi = True
         from core.openapi import OpenAPIImporter
         importer = OpenAPIImporter(openapi_spec, headers=header_dict)
         if importer.load_spec():

@@ -130,7 +130,9 @@ class OpenAPIImporter:
         # Determine base path from Swagger basePath or OpenAPI 3 servers[0]
         base_path = ""
         if "basePath" in self.spec_data:
-            base_path = str(self.spec_data.get("basePath") or "")
+            raw_bp = str(self.spec_data.get("basePath") or "")
+            parsed_bp = urllib.parse.urlparse(raw_bp)
+            base_path = parsed_bp.path if parsed_bp.netloc else raw_bp
         elif "servers" in self.spec_data:
             servers = self.spec_data.get("servers")
             if isinstance(servers, list) and servers and isinstance(servers[0], dict):
@@ -146,6 +148,9 @@ class OpenAPIImporter:
                 continue
 
             full_path = f"{base_path}{path_str}" if base_path else path_str
+            parsed_fp = urllib.parse.urlparse(full_path)
+            if parsed_fp.netloc or parsed_fp.scheme:
+                full_path = parsed_fp.path or "/"
             if not full_path.startswith("/"):
                 full_path = "/" + full_path
 
