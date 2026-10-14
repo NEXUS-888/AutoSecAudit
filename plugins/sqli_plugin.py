@@ -241,6 +241,10 @@ class SQLiScanner(BaseScanner):
 
         for login_path in login_paths:
             url = f"{base_url}{login_path}"
+            # Warm up the form with a GET first, as a browser (and the authenticator) does: some apps
+            # serve the real login handler only after the form has been fetched in the same session,
+            # and return 404/error for a cold POST. Without this, a genuine login SQLi is missed.
+            self._safe_request("GET", url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
             disc_fields = fields_by_path.get(login_path, [])
             candidate_pairs = []
             if disc_fields:
