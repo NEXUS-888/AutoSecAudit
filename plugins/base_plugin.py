@@ -27,6 +27,15 @@ FORM_DENY_PATTERN = (
 )
 FORM_DENY_REGEX = re.compile(FORM_DENY_PATTERN, re.IGNORECASE)
 
+
+def is_state_changing_path(path: str) -> bool:
+    """True if a path looks state-changing (logout, delete, password, reset, ...).
+
+    Active probes (form submissions and parameter probes such as open-redirect GETs) must skip
+    these: probing /logout would end the scanner's own authenticated session mid-scan.
+    """
+    return bool(path) and bool(FORM_DENY_REGEX.search(path))
+
 PROMISING_FIELD_KEYWORDS = (
     "pass", "pwd", "search", "id", "name", "query", "q",
     "url", "uri", "file", "path", "command", "cmd", "exec",

@@ -8,7 +8,14 @@ from core.utils import format_severity
 from plugins.base_plugin import BaseScanner
 
 logger = logging.getLogger(__name__)
-PAYLOADS = ["{{7*7}}", "${7*7}", "<%= 7*7 %>", "*{7*7}"]
+# Each payload multiplies two distinctive 4-digit numbers so the evaluated result (SSTI_MARKER) is a
+# 7-digit string that is very unlikely to appear by chance in page markup, ids, hashes or timestamps.
+# The old "7*7 -> 49" check matched the two digits "49" anywhere on the page and raised false positives.
+SSTI_BASE_A = 1409
+SSTI_BASE_B = 1423
+SSTI_MARKER = str(SSTI_BASE_A * SSTI_BASE_B)  # "2005007"
+_EXPR = f"{SSTI_BASE_A}*{SSTI_BASE_B}"
+PAYLOADS = ["{{" + _EXPR + "}}", "${" + _EXPR + "}", "<%= " + _EXPR + " %>", "*{" + _EXPR + "}"]
 DEFAULT_ENDPOINTS = [{"path": "/greet", "param": "name", "method": "GET"}, {"path": "/render", "param": "template", "method": "POST"}]
 
 
@@ -64,10 +71,10 @@ class SSTIScanner(BaseScanner):
                 if response is None:
                     continue
                 if (
-                    "49" in response.text
+                    SSTI_MARKER in response.text
                     and payload not in response.text
                     and _html_mod.escape(payload) not in response.text
-                    and "49" not in ctrl_text
+                    and SSTI_MARKER not in ctrl_text
                 ):
                     self.results.append({
                         "endpoint": f"{path}?{param}=<payload>" if method == "GET" else path,
@@ -95,10 +102,10 @@ class SSTIScanner(BaseScanner):
                 if response is None:
                     continue
                 if (
-                    "49" in response.text
+                    SSTI_MARKER in response.text
                     and payload not in response.text
                     and _html_mod.escape(payload) not in response.text
-                    and "49" not in ctrl_text
+                    and SSTI_MARKER not in ctrl_text
                 ):
                     self.results.append({
                         "endpoint": path,
@@ -135,11 +142,11 @@ class SSTIScanner(BaseScanner):
         _, host, port = self._parse_target(self.target)
         return {"tool_name": "ssti_scanner", "findings": [{
             "id": "SSTI-001", "title": "Server-Side Template Injection (/greet?name=<payload>)", "severity": "Critical",
-            "host": host, "port": port, "description": "The expression {{7*7}} was evaluated to 49 by the server-side template engine.", "raw_output": "Hello 49",
+            "host": host, "port": port, "description": "The expression {{" + _EXPR + "}} was evaluated to " + SSTI_MARKER + " by the server-side template engine.", "raw_output": "Hello 49",
             "owasp_tag": "A03:2021 Injection", "tool_name": "ssti_scanner", "confidence": "high",
             "vuln_type": "ssti",
             "endpoint": "/greet",
             "param": "name",
             "method": "GET",
-            "evidence": "Hello 49",
+            "evidence": f"Hello {SSTI_MARKER}",
         }]}

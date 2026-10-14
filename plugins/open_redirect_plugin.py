@@ -16,7 +16,7 @@ from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse, urljoin, parse_qs, urlencode
 import requests
 
-from plugins.base_plugin import BaseScanner
+from plugins.base_plugin import BaseScanner, is_state_changing_path
 
 logger = logging.getLogger(__name__)
 
@@ -59,12 +59,19 @@ class OpenRedirectScanner(BaseScanner):
         logger.info(f"[OpenRedirect] Scanning for open redirect flaws on {base_url}")
         self.results = []
 
-        test_endpoints = ["/login", "/logout", "/redirect", "/auth/callback", "/navigate", "/goto"]
+        test_endpoints = ["/login", "/redirect", "/auth/callback", "/navigate", "/goto"]
         if self.discovered_endpoints:
             for ep in self.discovered_endpoints[:15]:
                 p = ep.get("path", "")
                 if p and p not in test_endpoints:
                     test_endpoints.append(p)
+
+        # Never probe a state-changing path: an open-redirect GET to /logout?next=... would end the
+        # scanner's own authenticated session, and /password/change, /account/delete, etc. are unsafe.
+        skipped = [p for p in test_endpoints if is_state_changing_path(urlparse(p).path)]
+        if skipped:
+            logger.info(f"[OpenRedirect] Skipping {len(skipped)} state-changing path(s): {', '.join(skipped)}")
+        test_endpoints = [p for p in test_endpoints if not is_state_changing_path(urlparse(p).path)]
 
         for path in test_endpoints:
             parsed_path = urlparse(path)
