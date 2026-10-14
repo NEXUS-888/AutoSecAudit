@@ -13,6 +13,25 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Regex patterns for detecting sensitive data in HTTP responses
 # ---------------------------------------------------------------------------
+API_DOC_PATHS = frozenset({"/swagger.json", "/api-docs", "/openapi.json", "/v2/api-docs",
+                           "/v3/api-docs", "/openapi.yaml"})
+
+# Documentation/placeholder email domains and local-parts: a match on these is a sample, not a leak.
+_PLACEHOLDER_EMAIL_DOMAINS = ("example.com", "example.org", "example.net", "example.edu",
+                              "mail.com", "test.com", "domain.com", "email.com", "sample.com")
+_PLACEHOLDER_EMAIL_LOCALPARTS = ("test", "user", "example", "sample", "admin", "foo", "bar",
+                                 "name", "email", "your", "someone", "john.doe", "jane.doe")
+
+
+def _is_placeholder_email(addr: str) -> bool:
+    local, _, domain = addr.lower().rpartition("@")
+    if domain in _PLACEHOLDER_EMAIL_DOMAINS:
+        return True
+    # "mail1@mail.com" / "user2@..." — a known placeholder local-part, optionally with trailing digits.
+    stem = local.rstrip("0123456789")
+    return stem in _PLACEHOLDER_EMAIL_LOCALPARTS
+
+
 SENSITIVE_PATTERNS: Dict[str, re.Pattern] = {
     "email": re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}", re.IGNORECASE),
     "credit_card": re.compile(
@@ -398,8 +417,9 @@ class APIAbuseScanner(BaseScanner):
                             method="GET",
                         )
 
-                # Scan every successful response body for sensitive data
-                if resp.status_code == 200 and resp.text:
+                # Scan every successful response body for sensitive data, except API documentation
+                # itself: a spec legitimately contains example values (mail1@mail.com) that are not a leak.
+                if resp.status_code == 200 and resp.text and path not in API_DOC_PATHS:
                     self._scan_for_sensitive_data(resp.text, path, host, port)
 
         return discovered
@@ -737,6 +757,10 @@ class APIAbuseScanner(BaseScanner):
         """Apply regex patterns to response body for sensitive data leakage."""
         for pattern_name, pattern in SENSITIVE_PATTERNS.items():
             matches = pattern.findall(body)
+            if pattern_name == "email":
+                # Drop documentation placeholders (example.com, …@example.*, test@/user@…) so a sample
+                # address in docs or a template is not reported as leaked personal data.
+                matches = [m for m in matches if not _is_placeholder_email(m)]
             if matches:
                 # De-duplicate and cap sample size
                 unique_matches = list(set(matches))[:5]
