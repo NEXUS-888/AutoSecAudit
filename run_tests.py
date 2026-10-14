@@ -50,6 +50,10 @@ SLOW_FIRST = (
 RUN_ALONE = (
     "test_b09_shared_http_client",
     "test_b19_scanner_robustness",
+    # The heaviest end-to-end module (real plugin runs against a fixture; ~3-5 min) flakes worst under
+    # parallel CPU contention, and retrying it after a parallel failure doubles that large cost, so run
+    # it alone from the start. The other e2e modules stay parallel and rely on the alone-retry fallback.
+    "test_b25_regression_testbed",
 )
 
 LOOPBACK_PROBE_SECONDS = 0.3

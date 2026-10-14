@@ -312,6 +312,8 @@ All runtime behavior can be configured via `AUTOSEC_*` environment variables (de
 | `AUTOSEC_CRAWL_MAX_PAGES` | `100` | Maximum number of pages visited by `WebCrawler` per crawl session (range `1`–`500`). |
 | `AUTOSEC_CRAWL_MAX_DEPTH` | `4` | Maximum link traversal depth for `WebCrawler` BFS discovery (range `1`–`8`). |
 | `AUTOSEC_CRAWL_MAX_SECONDS` | `60` | Maximum wall-clock time in seconds for a `WebCrawler` session before stopping (range `5`–`600`). |
+| `AUTOSEC_MAX_FORMS_PER_PLUGIN` | `20` | Maximum number of discovered forms an injection plugin will probe per scan (range `1`–`100`). |
+| `AUTOSEC_MAX_FIELDS_PER_FORM` | `6` | Maximum number of fields probed per form, most promising first (range `1`–`30`). |
 | `AUTOSEC_MAX_CONCURRENT_SCANS` | `2` | Maximum number of simultaneous active dashboard background scans (`HTTP 429` when exceeded). |
 | `AUTOSEC_SCAN_JOB_TTL` | `3600` | Time-to-live in seconds for completed/failed async scan jobs before eviction. |
 | `AUTOSEC_NMAP_PATH` | `nmap` (or Windows Nmap path) | Path to the `nmap` executable used by `NmapPlugin`. |

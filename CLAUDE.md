@@ -41,9 +41,10 @@ AutoSecAudit is an automated Dynamic Application Security Testing (DAST) framewo
 - `data/reports/`: Saved JSON, HTML, and PDF scan artifacts.
 
 ## Development & Testing Commands
-- **Run Full Test Suite** (120 tests):
+- **Run Full Test Suite** (~490 tests; runs test modules in parallel, ~2 min):
   ```bash
-  python run_tests.py
+  python run_tests.py            # parallel (default)
+  python run_tests.py --serial   # one process, for debugging
   ```
 - **Run Single Test Module**:
   ```bash
