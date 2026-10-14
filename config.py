@@ -172,9 +172,21 @@ MAX_REQUEST_SECONDS = _load_bounded_int(
     MAX_MAX_REQUEST_SECONDS,
 )
 
-# Form injection probe limits (AUD-52)
-MAX_FORMS_PER_PLUGIN = 8
-MAX_FIELDS_PER_FORM = 6
+# Form injection probe limits (AUD-52; raised from 8 after the 2026-10-13 retest, where apps with
+# ~12-36 equally-promising forms dropped real vulnerabilities below an 8-form cap). Env-overridable.
+def _bounded_int(env_name, default, low, high):
+    raw = os.environ.get(env_name)
+    if raw is not None:
+        try:
+            val = int(raw)
+            if low <= val <= high:
+                return val
+        except (TypeError, ValueError):
+            pass
+    return default
+
+MAX_FORMS_PER_PLUGIN = _bounded_int("AUTOSEC_MAX_FORMS_PER_PLUGIN", 20, 1, 100)
+MAX_FIELDS_PER_FORM = _bounded_int("AUTOSEC_MAX_FIELDS_PER_FORM", 6, 1, 30)
 FORM_PROBE_MAX_FORMS = MAX_FORMS_PER_PLUGIN
 FORM_PROBE_MAX_FIELDS = MAX_FIELDS_PER_FORM
 MAX_FORM_PROBES = MAX_FORMS_PER_PLUGIN
