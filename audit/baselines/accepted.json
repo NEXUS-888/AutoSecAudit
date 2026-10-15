@@ -1,0 +1,14 @@
+[
+  {"tool": "bandit", "rule": "B501", "file": "core/engine.py",
+   "reason": "A DAST scanner must be able to scan targets with self-signed certificates; verification is disabled deliberately."},
+  {"tool": "bandit", "rule": "B501", "file": "core/utils.py",
+   "reason": "Target reachability probe against local/private practice targets, which commonly use self-signed certificates."},
+  {"tool": "bandit", "rule": "B501", "file": "core/http_client.py",
+   "reason": "The shared scan client scans targets with self-signed certificates by design."},
+  {"tool": "bandit", "rule": "B324", "file": "core/spa_detector.py",
+   "reason": "MD5 is used only to fingerprint page bodies for equality, not for any security purpose."},
+  {"tool": "bandit", "rule": "B108", "file": "plugins/misconfig_plugin.py",
+   "reason": "'/tmp' is a list of URL paths to probe on the target, not a temporary file on this machine."},
+  {"tool": "bandit", "rule": "B314", "file": "plugins/nmap_plugin.py",
+   "reason": "Parses XML produced by the local nmap binary; a scanned host cannot inject a DTD into it."}
+]
