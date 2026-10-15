@@ -22,6 +22,9 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import loop_lib  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 AUDIT = ROOT / "audit"
 STATE = AUDIT / "STATE.md"
@@ -31,7 +34,9 @@ LAST_BATCH = 29
 MAX_ROUNDS = 8
 SONNET_BATCHES = {"01", "06", "17"}  # mechanical batches; everything else is verified by Opus
 PROTECTED = ("audit/BACKLOG.md", "audit/VERIFIER.md", "audit/run_loop.py",
-             "audit/show_batch.py", "audit/wait_for_status.py", "audit/supervise.py", ".claude/")
+             "audit/show_batch.py", "audit/wait_for_status.py", "audit/supervise.py", "audit/loop_lib.py",
+             "audit/discover.py", "audit/autopilot.py", "audit/release_gate.py", "audit/validate_candidate.py",
+             "audit/baselines/", "audit/candidates/", "test_audit_tooling.py", "test_cand_", ".claude/")
 TEST_FILE_RE = re.compile(r"(^|/)test_[^/]*\.py$")
 SKIP_RE = re.compile(r"unittest\.skip|skipTest\(|expectedFailure|pytest\.mark\.(skip|xfail)|@skip")
 VERIFIER_TOOLS = ["Read", "Grep", "Glob", "Bash(git diff:*)", "Bash(git show:*)", "Bash(git log:*)",
@@ -94,6 +99,12 @@ def state_tampered() -> bool:
 def batch_ids(batch: str) -> str:
     text = run([sys.executable, "audit/show_batch.py", batch, "--no-rules"]).stdout
     return ", ".join(re.findall(r"### (AUD-\d+)", text))
+
+
+def last_batch() -> int:
+    """Highest batch number in BACKLOG.md (new batches can be appended without touching this file)."""
+    numbers = [int(k) for k in loop_lib.parse_backlog((AUDIT / "BACKLOG.md").read_text(encoding="utf-8"))]
+    return max(numbers) if numbers else LAST_BATCH
 
 
 def model_for(batch: str, round_no: int) -> str:
@@ -251,26 +262,43 @@ def build_prompt(state: dict, summary: str) -> str:
 
 
 def verify_with_claude(state: dict, summary: str, model: str):
-    claude = shutil.which("claude")
-    if not claude:
-        raise RuntimeError("`claude` CLI not found on PATH")
+    """Agentic review (Claude may read files). Used only when the diff is too large to send whole."""
     prompt = build_prompt(state, summary)
-    cmd = [claude, "-p", "--model", model, "--permission-mode", "dontAsk",
-           "--no-session-persistence", "--output-format", "text", "--allowedTools", *VERIFIER_TOOLS]
+    tag = f"B{state['batch']}-R{state['round']}-{model}-agentic"
+    reply = loop_lib.claude_ask(prompt, model, tag=tag, tools=VERIFIER_TOOLS, timeout=VERIFIER_TIMEOUT)
+    (RUNTIME / f"verifier-{tag}.txt").write_text(reply.text, encoding="utf-8")
+    return loop_lib.parse_verdict(reply.text)
+
+
+def diff_for_review(base: str) -> str:
+    """Everything the fixer changed (new files included) except loop bookkeeping and generated files."""
     try:
-        result = run(cmd, timeout=VERIFIER_TIMEOUT, input_text=prompt)
-        output = result.stdout
-    except subprocess.TimeoutExpired:
-        output = ""
-    tag = f"B{state['batch']}-R{state['round']}-{model}"
-    (RUNTIME / f"verifier-{tag}.txt").write_text(output, encoding="utf-8")
-    match = re.search(r"^VERDICT:\s*(PASS|REVISE)\b", output, re.MULTILINE)
-    review = output[output.find("# Review"):] if "# Review" in output else output
-    verdict = match.group(1) if match else None
-    # A PASS whose own table reports FAIL/PARTIAL is treated as REVISE.
-    if verdict == "PASS" and re.search(r"\|\s*(FAIL|PARTIAL)\s*\|", review):
-        verdict = "REVISE"
-    return verdict, review.strip() + "\n"
+        git("add", "-N", "--", ".")  # intent-to-add: untracked files show up in the diff
+        return git("diff", base, "--no-color", "-U10", "--", ".", ":(exclude)audit", ":(exclude)data",
+                   ":(exclude)*.png", ":(exclude)*.pdf", ":(exclude)*.docx", ":(exclude)*.zip")
+    except RuntimeError:
+        return ""
+
+
+def verify_diff_only(state: dict, summary: str, model: str, diff: str):
+    """Cheap review: the acceptance criteria, the handoff and the diff go in one prompt; no tools."""
+    batch, round_no = state["batch"], int(state["round"])
+    handoff_path = AUDIT / "handoffs" / f"B{batch}-R{round_no}.md"
+    handoff = handoff_path.read_text(encoding="utf-8") if handoff_path.exists() else "(no handoff file)"
+    section = run([sys.executable, "audit/show_batch.py", batch, "--no-rules"]).stdout
+    instructions = (AUDIT / "VERIFIER.md").read_text(encoding="utf-8")
+    prompt = loop_lib.build_diff_prompt(instructions, section, handoff, diff, summary,
+                                        {"batch": batch, "round": round_no})
+    tag = f"B{batch}-R{round_no}-{model}-diff"
+    reply = loop_lib.claude_ask(prompt, model, tag=tag, timeout=VERIFIER_TIMEOUT)
+    (RUNTIME / f"verifier-{tag}.txt").write_text(reply.text, encoding="utf-8")
+    return loop_lib.parse_verdict(reply.text)
+
+
+def log_usage() -> None:
+    s = loop_lib.usage_summary()
+    log(f"Claude usage so far: ${s['total_usd']:.2f} of ${loop_lib.default_budget_usd():.2f} budget "
+        f"in {s['calls']} call(s)")
 
 
 # ---------------------------------------------------------------------------
@@ -307,25 +335,55 @@ def review_round(state: dict, dry_run: bool) -> None:
     log(f"B{batch} R{round_no}: running precheck...")
     hard, summary, total = precheck(state)
     log("Precheck:\n   " + summary.replace("\n", "\n   "))
+    meta = loop_lib.parse_backlog((AUDIT / "BACKLOG.md").read_text(encoding="utf-8")).get(batch)
+    mechanical = bool(meta and meta.verification == "mechanical")
+    checks = [c for issue in meta.issues for c in issue.checks] if meta else []
     if dry_run:
-        log(f"Dry run: would send {len(build_prompt(state, summary))} chars to Claude ({model_for(batch, round_no)}).")
+        route = "mechanical checks (no Claude)" if mechanical else "diff-only review"
+        log(f"Dry run: B{batch} would be verified by {route}.")
         return
+
+    # Check commands run first. They decide alone for a mechanical batch, and a failing check sends any
+    # batch back without spending a Claude token.
+    gate = None
+    if checks and not hard:
+        gate = loop_lib.mechanical_review(batch, round_no, loop_lib.run_checks(checks, ROOT))
 
     if hard:
         verdict, review, model = "REVISE", auto_review(batch, round_no, hard), "precheck"
+    elif gate is not None and (mechanical or gate[0] == "REVISE"):
+        log(f"B{batch} R{round_no}: {len(checks)} check command(s) -> {gate[0]} (no Claude call)")
+        verdict, review = gate
+        model = "mechanical"
     else:
-        model = model_for(batch, round_no)
-        log(f"B{batch} R{round_no}: verifying with Claude ({model})...")
-        verdict, review = verify_with_claude(state, summary, model)
-        if verdict is None and model != "opus":
-            log("No verdict returned; retrying with opus.")
-            model = "opus"
-            verdict, review = verify_with_claude(state, summary, model)
+        model = loop_lib.STRONG_MODEL
+        try:
+            diff = diff_for_review(state["base"])
+            files = [f for f in changed_files(state["base"]) if not f.startswith(("audit/", "data/"))]
+            if diff and len(diff) <= loop_lib.DIFF_CHAR_BUDGET:
+                model = loop_lib.pick_model(files, len(diff), round_no)
+                log(f"B{batch} R{round_no}: diff-only review by {model} ({len(diff)} chars of diff)...")
+                verdict, review = verify_diff_only(state, summary, model, diff)
+                if verdict is None and model != loop_lib.STRONG_MODEL:
+                    log("No verdict returned; retrying with the strong model.")
+                    model = loop_lib.STRONG_MODEL
+                    verdict, review = verify_diff_only(state, summary, model, diff)
+            else:
+                model = loop_lib.STRONG_MODEL
+                log(f"B{batch} R{round_no}: diff too large to send whole; agentic review by {model}...")
+                verdict, review = verify_with_claude(state, summary, model)
+        except loop_lib.BudgetExceeded as exc:
+            write_state(status="blocked")
+            log(f"Loop BLOCKED: {exc}. Raise AUTOSEC_LOOP_BUDGET_USD to continue.")
+            return
+        except loop_lib.ClaudeError as exc:
+            verdict, review, model = None, f"Claude call failed: {exc}\n", model if "model" in dir() else "?"
+        log_usage()
         if verdict is None:
             (AUDIT / "reviews").mkdir(exist_ok=True)
             (AUDIT / "reviews" / f"B{batch}-R{round_no}.md").write_text(review, encoding="utf-8")
             write_state(status="blocked")
-            log("Verifier produced no verdict twice. Loop blocked; see .git/audit-loop/verifier-*.txt")
+            log("Verifier produced no verdict. Loop blocked; see .git/audit-loop/verifier-*.txt")
             return
 
     (AUDIT / "reviews").mkdir(exist_ok=True)
@@ -335,9 +393,10 @@ def review_round(state: dict, dry_run: bool) -> None:
         git("add", "-A")
         ids = batch_ids(batch)
         git("commit", "-m", f"fix(audit): resolve batch B{batch} ({ids})\n\n"
-                            f"Fixed by Antigravity; verified by Claude ({model}) in round {round_no}.")
+                            f"Fixed by Antigravity; verified by "
+                            f"{'mechanical checks' if model == 'mechanical' else 'Claude (' + model + ')'} in round {round_no}.")
         head = git("rev-parse", "HEAD").strip()
-        if int(batch) >= LAST_BATCH:
+        if int(batch) >= last_batch():
             write_state(status="done", base=head, tests=total)
         else:
             write_state(batch=f"{int(batch) + 1:02d}", round="1", status="ready_for_fix", base=head, tests=total)
