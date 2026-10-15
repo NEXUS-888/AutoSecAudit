@@ -1,0 +1,5 @@
+[
+  {"name": "tests", "cmd": ["{py}", "run_tests.py"], "required": true, "timeout": 2400},
+  {"name": "static analysis and dependency audit", "cmd": ["{py}", "audit/discover.py", "--fail-on-findings"], "required": true, "timeout": 1200},
+  {"name": "tests on Python 3.10 (set AUTOSEC_PY310 to an interpreter with the requirements installed)", "cmd": ["{py310}", "run_tests.py"], "required": false, "timeout": 2400}
+]

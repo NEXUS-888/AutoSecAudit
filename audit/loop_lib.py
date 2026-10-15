@@ -28,8 +28,8 @@ USAGE_LOG = RUNTIME / "usage.jsonl"
 LIGHT_MODEL = "sonnet"
 STRONG_MODEL = "opus"
 LIGHT_MAX_DIFF_CHARS = 25_000
-MAX_PROMPT_CHARS = 90_000
-DIFF_CHAR_BUDGET = 70_000
+MAX_PROMPT_CHARS = 150_000
+DIFF_CHAR_BUDGET = 120_000
 SECURITY_SENSITIVE = ("core/utils.py", "core/auth.py", "core/http_client.py", "core/authenticator.py",
                       "ui/app.py", "mcp_server.py")
 
@@ -152,7 +152,8 @@ def build_diff_prompt(instructions: str, section: str, handoff: str, diff: str, 
         f"`# Review B{ctx.get('batch')} round {ctx.get('round')}`, a table with one row per issue "
         "(`| Issue | Verdict | Evidence (file:line) |`, verdict PASS/PARTIAL/FAIL), and, if REVISE, "
         "a numbered `## Required changes` list where each item names the file, what is wrong and how it will be "
-        "re-checked.\n\n---\n\n"
+        "re-checked. Be terse: at most 40 words of evidence per issue, no preamble and no summary after the "
+        "table; output tokens are the main cost.\n\n---\n\n"
         f"# Batch under review\n\n{section}\n\n---\n\n"
         f"# Handoff from the fixer\n\n{handoff}\n\n---\n\n"
         f"# Precheck summary\n{summary}\n\n---\n\n"

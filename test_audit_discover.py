@@ -147,6 +147,19 @@ class TestBatchGeneration(unittest.TestCase):
         self.assertEqual(once, twice)
 
 
+class TestFailOnFindings(unittest.TestCase):
+    def test_exit_code_reflects_remaining_findings_for_use_as_a_release_gate(self):
+        original = D.collect
+        try:
+            D.collect = lambda: D.parse_ruff(RUFF, root="/repo")
+            self.assertEqual(D.main(["--fail-on-findings"]), 1)
+            self.assertEqual(D.main([]), 0)              # listing alone never fails
+            D.collect = lambda: []
+            self.assertEqual(D.main(["--fail-on-findings"]), 0)
+        finally:
+            D.collect = original
+
+
 class TestCheck(unittest.TestCase):
     def test_check_passes_only_when_the_candidate_is_gone(self):
         cands = D.parse_ruff(RUFF, root="/repo")

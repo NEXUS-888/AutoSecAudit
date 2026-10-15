@@ -180,6 +180,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--write", action="store_true", help="append new findings to audit/BACKLOG.md")
     parser.add_argument("--check", metavar="CAND_ID", help="exit 0 when this finding no longer exists")
     parser.add_argument("--per-batch", type=int, default=3)
+    parser.add_argument("--fail-on-findings", action="store_true", help="exit 1 when any finding remains (release gate)")
     args = parser.parse_args(argv)
     try:
         cands = collect()
@@ -202,7 +203,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if numbers:
             BACKLOG.write_text(new_text, encoding="utf-8", newline="\n")
             print(f"appended batch(es): {', '.join('B%02d' % n for n in numbers)}")
-    return 0
+    return 1 if (args.fail_on_findings and cands) else 0
 
 
 if __name__ == "__main__":
