@@ -63,6 +63,9 @@ Every issue needs at least one `Check:` command (`{py}` is the interpreter; exit
 | `validate_candidate.py` | proves or rejects an explorer's finding by running its failing test |
 | `release_gate.py`, `release_gates.json` | the release gates and the release itself |
 | `autopilot.py` | the state machine that chains all of the above |
+| `ux_check.py` | headless-Chrome UI/UX audit: 3 screen sizes x 2 themes, accessibility, contrast, overflow, tap targets, error and empty states; `--quick`, `--features`, screenshots in `data/ux_shots/` |
+| `ux_iterations.py` | validates that a self-iterating batch really has 3+ consecutive logs, starting non-zero and ending at zero |
+| `baselines/ux_accepted.json` | UX issues accepted on purpose, each with a written reason (only the owner edits it) |
 | `antigravity/audit-fix.md` | copy of the Antigravity workflow (the live one is in `~/.gemini/antigravity/global_workflows`) |
 
 The fixer may not edit any of these, nor `BACKLOG.md`, nor candidate tests (`test_cand_*`).
@@ -73,3 +76,10 @@ The fixer may not edit any of these, nor `BACKLOG.md`, nor candidate tests (`tes
 - Tools and tests find what they can express. Explorer findings are only as good as the failing test that proves
   them; a defect nobody writes a test for is not found.
 - Release gates cannot judge whether the product is *good*, only that it is green, clean and reproducible.
+
+## Self-iterating UI/UX batches (B30, B31)
+Some work is judged by looking at the result, so the fixer iterates on its own: measure with `ux_check.py`,
+look at the screenshots, fix, write `audit/handoffs/B<n>-ITER-<k>.md`, repeat until the measurement says 0.
+Claude spends tokens only once, after every `Check:` (including a clean `ux_check.py` run and a valid iteration
+history) already passes; a failing check sends the batch back with no Claude call. Needs Google Chrome and
+`pip install -r requirements-dev.txt`.

@@ -1,0 +1,2 @@
+# Developer / audit tooling only (not needed to run the scanner)
+playwright==1.64.0   # audit/ux_check.py drives your installed Google Chrome; no browser download needed

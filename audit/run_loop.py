@@ -36,6 +36,7 @@ SONNET_BATCHES = {"01", "06", "17"}  # mechanical batches; everything else is ve
 PROTECTED = ("audit/BACKLOG.md", "audit/VERIFIER.md", "audit/run_loop.py",
              "audit/show_batch.py", "audit/wait_for_status.py", "audit/supervise.py", "audit/loop_lib.py",
              "audit/discover.py", "audit/autopilot.py", "audit/release_gate.py", "audit/validate_candidate.py",
+             "audit/ux_check.py", "audit/ux_iterations.py",
              "audit/baselines/", "audit/candidates/", "test_audit_", "test_cand_", ".claude/")
 TEST_FILE_RE = re.compile(r"(^|/)test_[^/]*\.py$")
 SKIP_RE = re.compile(r"unittest\.skip|skipTest\(|expectedFailure|pytest\.mark\.(skip|xfail)|@skip")

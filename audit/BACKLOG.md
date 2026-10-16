@@ -629,6 +629,90 @@ Goal: replace "it seems to work" with numbers that can be re-run after every cha
 
 ---
 
+## B30 — UI/UX quality pass (Antigravity iterates on its own; Claude verifies once at the end)
+
+The fixer works through this batch in **self-iterations** before handing it over. One iteration is: measure,
+look, fix, write a log. Do at least **3 iterations** and keep going until the measurement says `0 issues`.
+Claude is only asked to review after every `Check:` below already passes, so hand in only when they do.
+
+How to measure (run these yourself, they take about a minute):
+- `python audit/ux_check.py --fail-on-issues` starts a private copy of the dashboard in demo mode, opens it in
+  headless Chrome at desktop, tablet and phone sizes in the dark and light themes, walks the real flows (wrong
+  password, bad target, unreachable target, empty history, demo scan) and prints every issue with a stable id.
+  Use `--quick` while iterating and run the full command before you hand in.
+- It saves screenshots to `data/ux_shots/<page>-<size>-<theme>.png`. **Open them and look.** The checker cannot
+  see confusing wording, weak hierarchy, inconsistent buttons or spacing, dead ends, or a page that looks broken.
+  Also start the dashboard on a free port yourself and use the pages in your own browser, at phone width too.
+- Never edit `audit/ux_check.py`, `audit/ux_iterations.py` or `audit/baselines/`. Do not hide or delete elements,
+  shrink text below 12px, or remove features to make a number go down. Fix the cause. Keep both themes working.
+
+Every iteration writes `audit/handoffs/B30-ITER-<n>.md` (n = 1, 2, 3, ...) in this shape:
+
+    # UX iteration <n>
+    ux_check issues: <count the checker printed at the START of this iteration>
+    ## Own visual review
+    <what you saw in the screenshots / live pages, page by page, including problems the checker cannot detect>
+    ## Fixed
+    - <what you changed and where>
+    ## Remaining
+    - <what is still wrong, or "none">
+
+The first iteration records the count for the unmodified UI (it will not be 0). The last one must say 0.
+
+### AUD-76 · Checker-clean UI on every page, size and theme
+- **Files:** `ui/app.py` (inline `HTML_FORM`), `ui/templates/*.html`, `reports/templates/report.html`
+- **Problem:** the automated check of the current dashboard reports 87 issues: no `<main>` landmark on five pages, 73 text-contrast failures (mostly the light theme, as low as 1.6:1, for example the Medium and High severity labels), 7 controls smaller than 24x24 px, an unlabeled input, and the landing page is wider than a phone screen (it is laid out 472px wide and shrunk).
+- **Required fix:** fix the causes: one `<main>` per page, accessible colours in both themes (change the colour tokens, keep the design), a label for every input, tap targets of at least 24x24 px (padding, not bigger text), no horizontal overflow at 375px, no console errors, no duplicate ids. Keep the visual design recognisable.
+- **Acceptance:** `python audit/ux_check.py --fail-on-issues` exits 0 with nothing accepted by a baseline; the screenshots of every page still show an intact layout in both themes.
+- **Check:** `{py} audit/ux_check.py --fail-on-issues --no-screenshots`
+
+### AUD-77 · The batch was genuinely iterated
+- **Files:** `audit/handoffs/B30-ITER-*.md`
+- **Problem:** a single pass rarely finds everything; fixes in one theme or size often break another.
+- **Required fix:** follow the iteration procedure above and write one log per pass, at least three, ending clean.
+- **Acceptance:** at least three consecutive iteration logs; the first records a non-zero count, the last records 0; each has a real visual review.
+- **Check:** `{py} audit/ux_iterations.py --batch 30 --min 3`
+
+### AUD-78 · Failure and empty states stay readable
+- **Files:** `ui/app.py`, `ui/templates/*.html`
+- **Problem:** these behaviours are verified by the checker's flows and must not regress while the UI is reworked: a wrong password shows a visible error, an invalid or unreachable target shows a plain-English message on the page (never `alert()`, never `Errno`, `Traceback` or raw JSON), an empty history tells the user what to do, a demo-mode report says it is simulated.
+- **Required fix:** keep all four working; if a flow fails after your changes, fix the UI, not the flow.
+- **Acceptance:** `ux_check.py` prints no `flow-login-error`, `flow-empty-history`, `flow-bad-target`, `flow-unreachable-target`, `flow-demo-banner` or `flow-demo-scan` issue, and `test_demo_polish` still passes.
+- **Check:** `{py} -m unittest test_demo_polish`
+
+---
+
+## B31 — Everyday-use features (finding triage, scan comparison, scan cancel)
+
+Same working style as B30: iterate yourself, run `python audit/ux_check.py --quick --features` and your tests after every
+change, and look at the screenshots. Write `audit/handoffs/B31-ITER-<n>.md` logs in the same shape (at least 2 iterations).
+With `--features` the checker also looks for the controls named below, so use exactly these test ids. The B30 rules
+(accessible, no overflow, both themes) apply to everything you add.
+
+### AUD-79 · Mark a finding as false positive or accepted risk
+- **Files:** `ui/app.py`, `reports/templates/report.html`, new `test_ux_finding_triage.py`
+- **Problem:** a user who knows a finding is not a real problem has no way to say so, so every report stays noisy.
+- **Required fix:** add a per-finding control with `data-testid="finding-triage"` on the report page: states `open` (default), `false_positive`, `accepted_risk`, with an optional note. Persist it per report next to the report (a sidecar JSON file in the reports directory, never inside the original scan JSON). The change goes through a CSRF-protected POST endpoint that only the report owner or an admin may call and that validates the finding id, the state and the note length (cap 500 characters). The report shows the state as a badge, counts triaged findings in the summary, and has a "hide triaged" toggle. The security grade and the original JSON/PDF downloads do not change.
+- **Acceptance:** tests in `test_ux_finding_triage.py` cover: default state is open; setting and clearing a state; persistence across a fresh app and test client; a user who does not own the report gets 404 or 403; a missing CSRF token is rejected; an invalid state, an unknown finding id and a 501-character note are rejected with 400; the saved scan JSON is byte-identical before and after; the report HTML contains `data-testid="finding-triage"` for each finding.
+- **Check:** `{py} -m unittest test_ux_finding_triage`
+
+### AUD-80 · Compare two scans from the history page
+- **Files:** `ui/app.py`, `ui/templates/history.html`, `intelligence/delta.py` (reuse it, do not rewrite it), new `test_ux_compare_scans.py`
+- **Problem:** delta analysis exists but is reachable only by uploading a previous report by hand when starting a scan.
+- **Required fix:** on the history page let the user pick two of their scans (a control with `data-testid="compare-scans"`, disabled until exactly two are selected) and open `/compare/<older>/<newer>`. That page uses `DeltaAnalyzer` and lists New, Fixed and Unchanged findings with severity, title and endpoint, shows both scan dates and targets, and warns when the two scans have different targets. Both reports must be accessible to the current user (otherwise 404, no information leak); unknown or malformed ids return 404 and are validated like the existing report routes.
+- **Acceptance:** tests in `test_ux_compare_scans.py` cover: two owned scans give 200 with New, Fixed and Unchanged sections and correct counts for a prepared pair; swapping the order swaps New and Fixed; another user's report gives 404; unknown and malformed ids give 404; different targets show the warning; the history page contains `data-testid="compare-scans"`.
+- **Check:** `{py} -m unittest test_ux_compare_scans`
+
+### AUD-81 · Cancel a running scan
+- **Files:** `ui/app.py`, the scanner page template, new `test_ux_cancel_scan.py`
+- **Problem:** once a scan starts it cannot be stopped; a wrong target means waiting for the whole deadline.
+- **Required fix:** show a Cancel button with `data-testid="cancel-scan"` on the progress screen from the moment the scan starts. It calls a CSRF-protected POST endpoint (for example `/scan/cancel/<scan_id>`) that only the scan's owner or an admin may use. The engine stops at the next safe point using the existing cancel mechanism (`cancel_check`); no partial report is saved as complete; the progress screen then says "Scan cancelled" and offers to start a new one. Cancelling an unknown or finished scan returns a clear 404 or 409 JSON error, never a 500. The concurrency slot is freed.
+- **Acceptance:** tests in `test_ux_cancel_scan.py` cover: cancelling a running (slow fixture) scan ends it as cancelled within a few seconds; no report is listed in history for it; another user cannot cancel it; an unknown id gives 404; cancelling twice is harmless; a new scan can start right after; a missing CSRF token is rejected. The whole UI must still pass the full checker.
+- **Check:** `{py} -m unittest test_ux_cancel_scan`
+- **Check:** `{py} audit/ux_check.py --fail-on-issues --features --no-screenshots`
+
+---
+
 ## Deferred (not in the loop — do after B29)
 - Move the ~2,000 lines of inline HTML in `ui/app.py` into `ui/templates/`.
 - Replace per-plugin `_get_mock_output` with a recorded-fixture replay layer.
