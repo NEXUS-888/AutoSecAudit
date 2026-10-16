@@ -239,6 +239,7 @@ class Report:
     report_id: Optional[str] = None
     owner: Optional[str] = None
     coverage: Optional[Dict[str, Any]] = None
+    scan_mode: Optional[str] = None  # "demo" (simulated) or "real"; None for reports saved before this field existed
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -255,6 +256,7 @@ class Report:
             "report_id": self.report_id,
             "owner": self.owner,
             "coverage": self.coverage,
+            "scan_mode": self.scan_mode,
         }
 
     @classmethod

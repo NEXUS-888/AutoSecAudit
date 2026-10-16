@@ -213,6 +213,9 @@ class ReportGenerator:
         ts_val = saxutils.escape(str(report_data.get('timestamp', 'N/A')))
         story.append(Paragraph(f'<b>Target:</b> {target_val} &nbsp;|&nbsp; <b>Timestamp:</b> {ts_val}', sub_style))
         story.append(Spacer(1, 8))
+        if report_data.get('scan_mode') == 'demo':
+            story.append(Paragraph('<b>DEMO MODE - simulated results.</b> No live scan was run against this target.', sub_style))
+            story.append(Spacer(1, 8))
 
         summary = report_data.get('summary', {})
         findings = report_data.get('all_findings') or report_data.get('findings') or []

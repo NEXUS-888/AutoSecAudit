@@ -1586,6 +1586,9 @@
                 <div class="hero-icon">
                     <img src="/static/logo.jpg" alt="AutoSecAudit Logo">
                 </div>
+                {% if report.scan_mode == 'demo' %}
+                <div data-testid="demo-banner" role="status" style="display:inline-block;margin:0 0 12px;padding:8px 14px;border:1px solid #f59e0b;border-radius:8px;background:rgba(245,158,11,.14);color:#f59e0b;font-weight:600;font-size:13px;">DEMO MODE &mdash; simulated results. No live scan was run against this target.</div>
+                {% endif %}
                 <h1 class="hero-title">Security Audit Report</h1>
                 <div class="hero-target">{{ report.target }}</div>
                 <div class="hero-meta">
@@ -1905,7 +1908,7 @@
                     <button class="filter-btn" data-filter-severity="info" onclick="filterFindings()" style="--btn-color: var(--severity-info);">Info</button>
                 </div>
                 <div style="flex: 1; min-width: 180px;">
-                    <input type="text" id="findingSearch" placeholder="Search findings..." oninput="filterFindings()" style="width: 100%; padding: 7px 12px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--fg); font-size: 13px; font-family: var(--font-sans); outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                    <input type="text" id="findingSearch" aria-label="Search findings" placeholder="Search findings..." oninput="filterFindings()" style="width: 100%; padding: 7px 12px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--fg); font-size: 13px; font-family: var(--font-sans); outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
                 </div>
                 <span id="filterCount" style="font-size: 12px; color: var(--fg-muted); font-family: var(--font-mono);"></span>
             </div>

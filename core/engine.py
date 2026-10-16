@@ -611,6 +611,7 @@ class Engine:
             throttled_requests=throttled,
             report_id=rep_id,
             coverage=coverage,
+            scan_mode="demo" if self.mock_mode else "real",
         )
 
         return report

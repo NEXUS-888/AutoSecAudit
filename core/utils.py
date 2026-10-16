@@ -192,7 +192,10 @@ def is_target_allowed(target: str) -> Tuple[bool, str]:
     try:
         addrinfo = socket.getaddrinfo(hostname, None)
     except (socket.gaierror, socket.herror) as e:
-        return False, f"Cannot resolve hostname '{hostname}': {e}"
+        return False, (
+            f"Cannot resolve hostname '{hostname}'. Check the address, for example "
+            "http://127.0.0.1:8080 or http://192.168.1.10."
+        )
     except Exception as e:
         return False, f"Resolution error for '{hostname}': {e}"
 
