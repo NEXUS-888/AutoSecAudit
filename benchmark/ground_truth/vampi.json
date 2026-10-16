@@ -1,0 +1,103 @@
+{
+  "target": "vampi",
+  "description": "VAmPI - Vulnerable REST API with OWASP API Security Top 10 vulnerabilities (https://github.com/erev0s/VAmPI pinned at commit f16052dce83f05847133ec98f01c5193a41de7d8)",
+  "items": [
+    {
+      "id": "vampi-sqli-user",
+      "vuln_type": "sqli",
+      "endpoint": "/users/v1/{username}",
+      "classification": "real",
+      "detectable": true,
+      "source": "api_views/users.py:get_by_username",
+      "description": "SQLi Injection"
+    },
+    {
+      "id": "vampi-unauthorized-password-change",
+      "vuln_type": "auth",
+      "endpoint": "/users/v1/{username}/password",
+      "classification": "real",
+      "detectable": true,
+      "source": "api_views/users.py:update_password",
+      "description": "Unauthorized Password Change"
+    },
+    {
+      "id": "vampi-bola-books",
+      "vuln_type": "idor",
+      "endpoint": "/books/v1/{book_title}",
+      "classification": "real",
+      "detectable": true,
+      "source": "api_views/books.py:get_by_title",
+      "description": "Broken Object Level Authorization"
+    },
+    {
+      "id": "vampi-mass-assignment",
+      "vuln_type": "api_abuse",
+      "endpoint": "/users/v1/register",
+      "classification": "real",
+      "detectable": false,
+      "source": "api_views/users.py:register_user",
+      "description": "Mass Assignment"
+    },
+    {
+      "id": "vampi-debug-exposure",
+      "vuln_type": "api_abuse",
+      "endpoint": "/users/v1/_debug",
+      "classification": "real",
+      "detectable": true,
+      "source": "api_views/users.py:debug",
+      "description": "Excessive Data Exposure through debug endpoint"
+    },
+    {
+      "id": "vampi-user-password-enumeration",
+      "vuln_type": "auth",
+      "endpoint": "/users/v1/login",
+      "classification": "real",
+      "detectable": false,
+      "source": "api_views/users.py:login_user",
+      "description": "User and Password Enumeration"
+    },
+    {
+      "id": "vampi-regexdos-email",
+      "vuln_type": "api_abuse",
+      "endpoint": "/users/v1/{username}/email",
+      "classification": "real",
+      "detectable": false,
+      "source": "api_views/users.py:update_email",
+      "description": "RegexDOS (Denial of Service)"
+    },
+    {
+      "id": "vampi-rate-limit",
+      "vuln_type": "api_abuse",
+      "endpoint": "/users/v1/login",
+      "classification": "real",
+      "detectable": false,
+      "source": "api_views/users.py:login_user",
+      "description": "Lack of Resources & Rate Limiting"
+    },
+    {
+      "id": "vampi-jwt-weak-key",
+      "vuln_type": "auth",
+      "endpoint": "/me",
+      "classification": "real",
+      "detectable": false,
+      "source": "config.py:SECRET_KEY",
+      "description": "JWT authentication bypass via weak signing key"
+    },
+    {
+      "id": "vampi-decoy-redirect",
+      "vuln_type": "open_redirect",
+      "endpoint": "/books/v1",
+      "classification": "decoy",
+      "detectable": true,
+      "source": "api_views/books.py:get_all_books",
+      "description": "Books API returns structured JSON, not an open redirect"
+    }
+  ],
+  "informational": [
+    "misconfig",
+    "port_scan",
+    "info_disclosure",
+    "ssl_tls",
+    "api_abuse"
+  ]
+}

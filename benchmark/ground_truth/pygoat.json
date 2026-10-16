@@ -1,0 +1,111 @@
+{
+  "target": "pygoat",
+  "description": "OWASP PyGoat intentionally vulnerable Django application (https://github.com/adeyosemanputra/pygoat pinned at commit 19d17cc8874861142b330636d068bbde54e86b85)",
+  "items": [
+    {
+      "id": "pygoat-sqli-lab",
+      "vuln_type": "sqli",
+      "endpoint": "/sql_lab",
+      "classification": "real",
+      "detectable": true,
+      "source": "urls.py:sql_lab:views.sql_lab",
+      "description": "SQL Injection in user search lab"
+    },
+    {
+      "id": "pygoat-xss-reflected",
+      "vuln_type": "xss",
+      "endpoint": "/xssL",
+      "classification": "real",
+      "detectable": true,
+      "source": "urls.py:xssL:views.xss_lab",
+      "description": "Reflected Cross-Site Scripting lab"
+    },
+    {
+      "id": "pygoat-xss-stored",
+      "vuln_type": "xss",
+      "endpoint": "/xssL2",
+      "classification": "real",
+      "detectable": true,
+      "source": "urls.py:xssL2:views.xss_lab2",
+      "description": "Stored Cross-Site Scripting lab"
+    },
+    {
+      "id": "pygoat-cmdi-lab",
+      "vuln_type": "command_injection",
+      "endpoint": "/cmd_lab",
+      "classification": "real",
+      "detectable": true,
+      "source": "urls.py:cmd_lab:views.cmd_lab",
+      "description": "Operating system command execution in ping lab"
+    },
+    {
+      "id": "pygoat-ssti-lab",
+      "vuln_type": "ssti",
+      "endpoint": "/ssti/lab",
+      "classification": "real",
+      "detectable": true,
+      "source": "urls.py:ssti/lab:views.ssti_lab",
+      "description": "Server-Side Template Injection via render template"
+    },
+    {
+      "id": "pygoat-ssrf-lab",
+      "vuln_type": "ssrf",
+      "endpoint": "/ssrf_lab",
+      "classification": "real",
+      "detectable": true,
+      "source": "urls.py:ssrf_lab:views.ssrf_lab",
+      "description": "Server-Side Request Forgery webhook tester"
+    },
+    {
+      "id": "pygoat-ba-lab",
+      "vuln_type": "idor",
+      "endpoint": "/ba_lab",
+      "classification": "real",
+      "detectable": true,
+      "source": "urls.py:ba_lab:views.ba_lab",
+      "description": "Broken Access Control lab (IDOR/BAC)"
+    },
+    {
+      "id": "pygoat-pickle-deserialization",
+      "vuln_type": "generic",
+      "endpoint": "/insec_des_lab",
+      "classification": "real",
+      "detectable": false,
+      "source": "urls.py:insec_des_lab:views.insec_des_lab",
+      "description": "Insecure deserialization via Python pickle payload (requires multi-step crafted object)"
+    },
+    {
+      "id": "pygoat-auth-lab",
+      "vuln_type": "auth",
+      "endpoint": "/auth_lab",
+      "classification": "real",
+      "detectable": false,
+      "source": "urls.py:auth_lab:views.auth_lab",
+      "description": "Multi-step authentication and password reset logic flaw"
+    },
+    {
+      "id": "pygoat-broken-auth-lab",
+      "vuln_type": "auth",
+      "endpoint": "/bau_lab",
+      "classification": "real",
+      "detectable": false,
+      "source": "urls.py:bau_lab:views.bau_lab",
+      "description": "Broken authentication lab"
+    },
+    {
+      "id": "pygoat-decoy-csrf",
+      "vuln_type": "csrf",
+      "endpoint": "/auth_lab/login",
+      "classification": "decoy",
+      "detectable": true,
+      "source": "urls.py:auth_lab/login:views.auth_lab_login",
+      "description": "Django CSRF-protected authentication form (not vulnerable to CSRF)"
+    }
+  ],
+  "informational": [
+    "misconfig",
+    "port_scan",
+    "info_disclosure",
+    "ssl_tls"
+  ]
+}

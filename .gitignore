@@ -22,8 +22,10 @@ env/
 *.swo
 
 # Project specific
+.env
 data/
 graphify-out/
+benchmark/results/
 
 # OS
 .DS_Store

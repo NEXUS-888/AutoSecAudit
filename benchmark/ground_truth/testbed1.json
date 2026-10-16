@@ -1,0 +1,148 @@
+{
+  "target": "testbed1",
+  "description": "AutoSecAudit Vulnerable Testbed Sandbox Application 1 (testbed/app.py)",
+  "items": [
+    {
+      "id": "tb1-sqli-search",
+      "vuln_type": "sqli",
+      "endpoint": "/search",
+      "classification": "real",
+      "source": "testbed/app.py:search",
+      "description": "OperationalError syntax error signature in search query parameter 'q'"
+    },
+    {
+      "id": "tb1-xss-search",
+      "vuln_type": "xss",
+      "endpoint": "/search",
+      "classification": "real",
+      "source": "testbed/app.py:search",
+      "description": "Reflected Cross-Site Scripting in search query parameter 'q'"
+    },
+    {
+      "id": "tb1-ssti-search",
+      "vuln_type": "ssti",
+      "endpoint": "/search",
+      "classification": "real",
+      "source": "testbed/app.py:search",
+      "description": "Server-Side Template Injection via render_template_string in /search"
+    },
+    {
+      "id": "tb1-sqli-login",
+      "vuln_type": "sqli",
+      "endpoint": "/login",
+      "classification": "real",
+      "source": "testbed/app.py:login",
+      "description": "SQL injection authentication bypass in login username"
+    },
+    {
+      "id": "tb1-csrf-login",
+      "vuln_type": "csrf",
+      "endpoint": "/login",
+      "classification": "real",
+      "source": "testbed/app.py:login",
+      "description": "Missing anti-CSRF token in login form"
+    },
+    {
+      "id": "tb1-cookie-login",
+      "vuln_type": "insecure_cookie",
+      "endpoint": "/login",
+      "classification": "real",
+      "source": "testbed/app.py:login",
+      "description": "Insecure session cookie session_id missing HttpOnly and SameSite"
+    },
+    {
+      "id": "tb1-redirect",
+      "vuln_type": "open_redirect",
+      "endpoint": "/redirect",
+      "classification": "real",
+      "source": "testbed/app.py:open_redirect",
+      "description": "Unvalidated open redirect via query parameters next/url/redirect"
+    },
+    {
+      "id": "tb1-idor-users",
+      "vuln_type": "idor",
+      "endpoint": "/api/users/{id}",
+      "classification": "real",
+      "source": "testbed/app.py:get_user_profile",
+      "description": "Broken Object Level Authorization (BOLA/IDOR) on /api/users/<id>"
+    },
+    {
+      "id": "tb1-ssrf-fetch",
+      "vuln_type": "ssrf",
+      "endpoint": "/fetch",
+      "classification": "real",
+      "source": "testbed/app.py:ssrf_fetch",
+      "description": "Server-Side Request Forgery via loopback reflection in /fetch"
+    },
+    {
+      "id": "tb1-ssti-template",
+      "vuln_type": "ssti",
+      "endpoint": "/template",
+      "classification": "real",
+      "source": "testbed/app.py:ssti_render",
+      "description": "Server-Side Template Injection via render_template_string in /template"
+    },
+    {
+      "id": "tb1-xss-template",
+      "vuln_type": "xss",
+      "endpoint": "/template",
+      "classification": "real",
+      "source": "testbed/app.py:ssti_render",
+      "description": "Reflected XSS in /template parameter 'name'"
+    },
+    {
+      "id": "tb1-traversal-view",
+      "vuln_type": "path_traversal",
+      "endpoint": "/view",
+      "classification": "real",
+      "source": "testbed/app.py:path_traversal",
+      "description": "Local file inclusion / path traversal via 'file' parameter"
+    },
+    {
+      "id": "tb1-xss-view",
+      "vuln_type": "xss",
+      "endpoint": "/view",
+      "classification": "real",
+      "source": "testbed/app.py:path_traversal",
+      "description": "Reflected XSS in /view parameter 'file'"
+    },
+    {
+      "id": "tb1-secret-env",
+      "vuln_type": "secret_exposure",
+      "endpoint": "/.env",
+      "classification": "real",
+      "source": "testbed/app.py:env_leak",
+      "description": "Exposed environment configuration file /.env"
+    },
+    {
+      "id": "tb1-sqli-orders",
+      "vuln_type": "sqli",
+      "endpoint": "/api/orders",
+      "classification": "real",
+      "source": "testbed/app.py:json_orders",
+      "description": "SQL injection in JSON body customer.name"
+    },
+    {
+      "id": "tb1-cmdi-exec",
+      "vuln_type": "command_injection",
+      "endpoint": "/api/exec",
+      "classification": "real",
+      "source": "testbed/app.py:exec_service",
+      "description": "Simulated OS command execution in /api/exec"
+    },
+    {
+      "id": "tb1-auth-admin",
+      "vuln_type": "auth",
+      "endpoint": "/admin",
+      "classification": "real",
+      "source": "testbed/app.py:admin_panel",
+      "description": "Unprotected admin control panel at /admin"
+    }
+  ],
+  "informational": [
+    "misconfig",
+    "port_scan",
+    "info_disclosure",
+    "ssl_tls"
+  ]
+}

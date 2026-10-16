@@ -2521,7 +2521,7 @@ def register():
     """User registration endpoint supporting HTML form and AJAX JSON requests."""
     raw_next = request.args.get("next") or request.form.get("next")
     next_url = _safe_next_url(raw_next)
-    allow_reg = os.environ.get("AUTOSEC_ALLOW_REGISTRATION", "").lower() == "true"
+    allow_reg = os.environ.get("AUTOSEC_ALLOW_REGISTRATION", "").lower() in ("true", "1", "yes")
     if not allow_reg:
         msg = "Registration is disabled."
         if request.is_json:

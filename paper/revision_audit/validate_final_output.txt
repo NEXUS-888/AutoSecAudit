@@ -20,41 +20,39 @@ PASS  Fig. 4. referenced in text
 PASS  reference list size :: 19
 PASS  all references 1..19 cited in body :: missing: []
 PASS  no citation beyond list :: 19
-PASS  Table III speedups recomputed :: {1: 1.0, 2: 1.8, 4: 2.58, 8: 2.84, 16: 2.79}
-PASS  64.8% latency reduction :: 64.82%
-PASS  Table IV column sums = totals row :: TP=46 FP=1 raw=76 cons=47
-PASS  Table IV row consolidated = TP+FP
-PASS  precision 97.9% :: 97.87
-PASS  recall 88.5% :: 88.46
-PASS  F1 92.9% :: 92.93
-PASS  alert reduction 38.2% :: 38.16
-PASS  delta arithmetic 47-10+3=40, 40-14=26
-PASS  abstract contains 184.2
-PASS  abstract contains 64.8%
-PASS  abstract contains 2.84x
-PASS  abstract contains 76
-PASS  abstract contains 47
-PASS  abstract contains 97.9%
-PASS  abstract contains 88.5%
-PASS  abstract contains 52
-PASS  conclusion contains 64.8%
-PASS  conclusion contains 2.84x
-PASS  conclusion contains 97.9%
-PASS  conclusion contains 88.5%
-PASS  conclusion contains 38.2%
-PASS  results text gives F1 and FN
+PASS  Table III has one row per thread count :: 5
+PASS  Table III matches raw scaling.json (mean, SD, median, range, speedup)
+PASS  Table IV matches raw accuracy.json
+PASS  accuracy runs all report 17 of 17 plugins run
+PASS  delta v1_to_v2 counts appear in text (4/3/15)
+PASS  delta v2_to_v3 counts appear in text (3/4/15)
+PASS  delta v1_to_v2 counts appear in text (2/0/25)
+PASS  delta v2_to_v3 counts appear in text (0/2/25)
+PASS  delta run 2 is exact (2 new,0 fixed then 0 new,2 fixed)
+PASS  abstract states testbed 1 complete-run count :: 3
+PASS  abstract states the 17/8 planted vulnerabilities
+PASS  abstract withdraws the speedup claim
+PASS  abstract discloses the false positive seen in the test-suite run
+PASS  conclusion states complete-run count
+PASS  old Juice Shop figures are not reported as results
+PASS  old results are explicitly withdrawn
+PASS  test count in text matches the recorded run (578, 577 passed, 1 failed)
 PASS  no 'false alarms are eliminated'
 PASS  no '100% classification fidelity'
 PASS  no 'Autonomous AI Remediation' claim
 PASS  no 'guarantee reliable'
-PASS  no unqualified 'compound-key deduplication'
+PASS  no 'compound-key deduplication' wording
 PASS  no 'breadth-first' except negation
 PASS  no autosec_list_scanners
 PASS  no embedded offline CVE dictionary claim except negation
 PASS  no 'weak HMAC secrets' except negation
 PASS  no 'stored XSS' claim
-PASS  timing formula matches code (0.70, 0.35; no 3*sigma)
+PASS  timing formula matches code (max(3*sigma, 0.70*tau); control 0.35*tau)
 PASS  thread default disclosed (4)
+PASS  scope guard described as resolution-based, not lexical
+PASS  delta described as fingerprint-based, not identifier-based
+PASS  no stale test counts (165/161/492)
+PASS  MCP default-mock caveat kept (Table II and Sec. V)
 PASS  Table II lists exactly 4 MCP tools
 PASS  built on the IJARCCE template styles :: {'IEEE Title': 3, 'IEEE Author Affiliation': 3, 'Normal': 3, 'IEEE Abtract': 1, 'IEEE Heading 1': 9, 'IEEE Paragraph': 60, 'IEEE Heading 2': 12, 'IEEE Table Caption': 4, 'IEEE Figure': 4, 'IEEE Figure Caption Multi-Lines': 4, 'IEEE Reference Item': 19}
 PASS  one IEEE Title for the title plus author line
@@ -79,4 +77,4 @@ PASS  PDF text contains [19] DefectDojo
 PASS  PDF has no replacement characters
 PASS  PDF contains 4 figure images :: 4
 
-80/80 checks passed
+78/78 checks passed

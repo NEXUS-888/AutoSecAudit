@@ -1,0 +1,57 @@
+{
+  "target": "vulpy",
+  "description": "OWASP Vulpy intentionally vulnerable Flask web application (https://github.com/fportantier/vulpy pinned at commit 5249cc8b05a1c37f6b2f757b1cf16a509c327122)",
+  "items": [
+    {
+      "id": "vulpy-sqli-login",
+      "vuln_type": "sqli",
+      "endpoint": "/user/login",
+      "classification": "real",
+      "detectable": true,
+      "source": "bad/mod_user.py:do_login",
+      "description": "SQL injection on user login credentials"
+    },
+    {
+      "id": "vulpy-xss-posts",
+      "vuln_type": "xss",
+      "endpoint": "/posts/",
+      "classification": "real",
+      "detectable": true,
+      "source": "bad/mod_posts.py:do_view",
+      "description": "Stored Cross-Site Scripting in post text parameter rendered safe"
+    },
+    {
+      "id": "vulpy-cookie-session",
+      "vuln_type": "insecure_cookie",
+      "endpoint": "/user/login",
+      "classification": "real",
+      "detectable": true,
+      "source": "bad/mod_user.py:do_login",
+      "description": "Session cookie issued without HttpOnly or SameSite flags"
+    },
+    {
+      "id": "vulpy-csrf-chpasswd",
+      "vuln_type": "csrf",
+      "endpoint": "/user/chpasswd",
+      "classification": "real",
+      "detectable": false,
+      "source": "bad/mod_user.py:do_chpasswd",
+      "description": "Cross-Site Request Forgery on password change endpoint"
+    },
+    {
+      "id": "vulpy-decoy-redirect",
+      "vuln_type": "open_redirect",
+      "endpoint": "/posts/",
+      "classification": "decoy",
+      "detectable": true,
+      "source": "bad/mod_posts.py:do_create",
+      "description": "Post submission handles local redirects safely without open redirect"
+    }
+  ],
+  "informational": [
+    "misconfig",
+    "port_scan",
+    "info_disclosure",
+    "ssl_tls"
+  ]
+}

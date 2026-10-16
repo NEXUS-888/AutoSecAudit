@@ -59,41 +59,78 @@ chk("reference list size", n_refs == 19, str(n_refs))
 chk("all references 1..19 cited in body", set(range(1, 20)) <= cited, "missing: " + str(sorted(set(range(1, 20)) - cited)))
 chk("no citation beyond list", max(cited) <= n_refs, str(max(cited)))
 
-# ---- tables: recompute from the document itself
+# ---- tables: recompute from the document itself and from the raw experiment output
+import json
+import os
+import statistics
+
+
 def table_rows(t):
     return [[c.text.strip() for c in r.cells] for r in t.rows]
 
+
+def load(name):
+    with open(os.path.join("benchmark", "results", "paper", name + ".json"), encoding="utf8") as fh:
+        return json.load(fh)
+
+
+sc, acc, dl2, dl1 = load("scaling"), load("accuracy"), load("delta"), load("delta_run1")
+
 t3 = table_rows(d.tables[2])
-lat = {int(re.match(r"(\d+)", r[0]).group(1)): float(r[1].split()[0]) for r in t3[1:]}
-spd = {int(re.match(r"(\d+)", r[0]).group(1)): float(r[2].rstrip("x")) for r in t3[1:]}
-chk("Table III speedups recomputed", all(round(lat[1] / lat[k], 2) == spd[k] for k in lat), str({k: round(lat[1] / lat[k], 2) for k in lat}))
-red = (lat[1] - lat[8]) / lat[1] * 100
-chk("64.8% latency reduction", round(red, 1) == 64.8, f"{red:.2f}%")
+ks = sorted(int(k) for k in sc["runs"])
+sec = {k: [r["seconds"] for r in sc["runs"][str(k)]] for k in ks}
+chk("Table III has one row per thread count", len(t3) == len(ks) + 1, str(len(t3) - 1))
+ok_rows = True
+for row, k in zip(t3[1:], ks):
+    mean, sd = statistics.fmean(sec[k]), statistics.stdev(sec[k])
+    med = statistics.median(sec[k])
+    ok_rows &= row[1] == f"{mean:.1f} +/- {sd:.1f}" and row[2] == f"{med:.1f}"
+    ok_rows &= row[3] == f"{min(sec[k]):.1f}-{max(sec[k]):.1f}"
+    ok_rows &= row[4] == f"{statistics.median(sec[ks[0]]) / med:.2f}x"
+chk("Table III matches raw scaling.json (mean, SD, median, range, speedup)", ok_rows)
 
 t4 = table_rows(d.tables[3])
-rows = t4[1:-1]
-tot = t4[-1]
-tp = sum(int(r[1]) for r in rows); fp = sum(int(r[2]) for r in rows); raw = sum(int(r[3]) for r in rows); cor = sum(int(r[4]) for r in rows)
-chk("Table IV column sums = totals row", (tp, fp, raw) == (int(tot[1]), int(tot[2]), int(tot[3])) and cor == int(tot[4].split()[0]), f"TP={tp} FP={fp} raw={raw} cons={cor}")
-chk("Table IV row consolidated = TP+FP", all(int(r[4]) == int(r[1]) + int(r[2]) for r in rows))
-GT = 52
-prec, rec = tp / (tp + fp), tp / GT
-f1 = 2 * prec * rec / (prec + rec)
-chk("precision 97.9%", round(prec * 100, 1) == 97.9, f"{prec*100:.2f}")
-chk("recall 88.5%", round(rec * 100, 1) == 88.5, f"{rec*100:.2f}")
-chk("F1 92.9%", round(f1 * 100, 1) == 92.9, f"{f1*100:.2f}")
-chk("alert reduction 38.2%", round((raw - cor) / raw * 100, 1) == 38.2, f"{(raw-cor)/raw*100:.2f}")
-chk("delta arithmetic 47-10+3=40, 40-14=26", 47 - 10 + 3 == 40 and 40 - 14 == 26)
+ok4 = True
+for row, name in zip(t4[1:], ("testbed1", "testbed2")):
+    runs = acc["runs"][name]
+    tp = [r["tp"] for r in runs]
+    complete = [r for r in runs if r["tp"] == r["total_real"]]
+    raw = statistics.fmean(r["raw_alerts"] for r in complete)
+    merged = statistics.fmean(r["raw_findings"] for r in complete)
+    ok4 &= row[1] == str(len(runs)) and row[2] == str(runs[0]["total_real"])
+    ok4 &= row[3] == f"{statistics.fmean(tp):.1f} ({min(tp)}-{max(tp)})"
+    ok4 &= row[4] == str(sum(r["fp"] for r in runs))
+    ok4 &= row[6] == f"{statistics.fmean(r['recall'] for r in runs):.2f}"
+    ok4 &= row[7].startswith(f"{raw:.0f} to {merged:.0f}")
+chk("Table IV matches raw accuracy.json", ok4)
+chk("accuracy runs all report 17 of 17 plugins run", all(r["plugins_run"] == 17 for n in acc["runs"] for r in acc["runs"][n]))
+
+# delta numbers in the text equal the raw delta files
+dtxt = main_text
+for dd in (dl1, dl2):
+    for key in ("v1_to_v2", "v2_to_v3"):
+        sm = dd[key]["summary"]
+        chk(f"delta {key} counts appear in text ({sm['new_count']}/{sm['fixed_count']}/{sm['unchanged_count']})",
+            f"{sm['new_count']} new" in dtxt and f"{sm['fixed_count']} fixed" in dtxt)
+chk("delta run 2 is exact (2 new,0 fixed then 0 new,2 fixed)",
+    (dl2["v1_to_v2"]["summary"]["new_count"], dl2["v1_to_v2"]["summary"]["fixed_count"],
+     dl2["v2_to_v3"]["summary"]["new_count"], dl2["v2_to_v3"]["summary"]["fixed_count"]) == (2, 0, 0, 2))
 
 # ---- cross-section agreement of headline numbers
 abstract = next(t for t in paras if t.startswith("Abstract"))
 concl_i = next(i for i, t in enumerate(paras) if t.strip() == "CONCLUSION AND FUTURE WORK")
 conclusion = paras[concl_i + 1]
-for token in ("184.2", "64.8%", "2.84x", "76", "47", "97.9%", "88.5%", "52"):
-    chk(f"abstract contains {token}", token in abstract)
-for token in ("64.8%", "2.84x", "97.9%", "88.5%", "38.2%"):
-    chk(f"conclusion contains {token}", token in conclusion)
-chk("results text gives F1 and FN", "92.9%" in main_text and "6 FN" in main_text)
+a1, a2 = acc["runs"]["testbed1"], acc["runs"]["testbed2"]
+full1 = sum(1 for r in a1 if r["tp"] == r["total_real"])
+chk("abstract states testbed 1 complete-run count", f"{full1} of {len(a1)} runs" in abstract, str(full1))
+chk("abstract states the 17/8 planted vulnerabilities", "17 and 8 planted" in abstract)
+chk("abstract withdraws the speedup claim", "earlier speedup claim is withdrawn" in abstract)
+chk("abstract discloses the false positive seen in the test-suite run", "one further testbed 2 run" in abstract)
+chk("conclusion states complete-run count", f"{full1} of {len(a1)} runs on testbed 1" in conclusion)
+chk("old Juice Shop figures are not reported as results",
+    not any(tok in main_text for tok in ("184.2", "64.8", "97.9%", "88.5%", "38.2%", "76 raw", "47 findings")))
+chk("old results are explicitly withdrawn", "withdrawn" in main_text)
+chk("test count in text matches the recorded run (578, 577 passed, 1 failed)", "578 tests" in main_text and "577 passed and 1 failed" in main_text)
 
 # ---- claims that must NOT remain (or must be negated)
 def occurrences(pattern):
@@ -103,14 +140,18 @@ chk("no 'false alarms are eliminated'", not occurrences(r"false alarms are elimi
 chk("no '100% classification fidelity'", not occurrences(r"100% classification"))
 chk("no 'Autonomous AI Remediation' claim", not occurrences(r"autonomous ai remediation"))
 chk("no 'guarantee reliable'", not occurrences(r"guarantee"))
-chk("no unqualified 'compound-key deduplication'", all("not part of the released" in main_text[max(0, p - 120):p + 200] or "compound-key merge" in main_text[p:p + 20] for p in occurrences(r"compound-key dedup")))
+chk("no 'compound-key deduplication' wording", not occurrences(r"compound-key dedup"))
 chk("no 'breadth-first' except negation", all("not breadth-first" in main_text[max(0, p - 20):p + 40] for p in occurrences(r"breadth-first")))
 chk("no autosec_list_scanners", "autosec_list_scanners" not in body)
 chk("no embedded offline CVE dictionary claim except negation", all("no embedded offline" in main_text[max(0, p - 30):p + 60] for p in occurrences(r"offline CVE")))
 chk("no 'weak HMAC secrets' except negation", all("does not test weak HMAC" in main_text[max(0, p - 30):p + 60] for p in occurrences(r"weak HMAC")))
 chk("no 'stored XSS' claim", not occurrences(r"stored XSS"))
-chk("timing formula matches code (0.70, 0.35; no 3*sigma)", "rho = 0.70" in main_text and "0.35*tau" in main_text and "3*sigma" not in main_text)
+chk("timing formula matches code (max(3*sigma, 0.70*tau); control 0.35*tau)", "max(3*sigma_base, 0.70*tau)" in main_text and "0.35*tau" in main_text)
 chk("thread default disclosed (4)", "default 4" in main_text)
+chk("scope guard described as resolution-based, not lexical", "resolved through DNS" in main_text and "lexical" not in main_text)
+chk("delta described as fingerprint-based, not identifier-based", "content fingerprint" in main_text and "identifier-based" not in main_text.lower())
+chk("no stale test counts (165/161/492)", not any(t in main_text for t in ("165 tests", "161 tests", "492")))
+chk("MCP default-mock caveat kept (Table II and Sec. V)", any("mock defaults to true" in c.text for r in d.tables[1].rows for c in r.cells) and "autosec_scan tool also defaults to mock" in body)
 chk("Table II lists exactly 4 MCP tools", len(d.tables[1].rows) == 5)
 
 # ---- IJARCCE template compliance (styles, numbering, header/footer, page setup)

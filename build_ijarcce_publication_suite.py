@@ -1,5 +1,7 @@
 import copy
+import json
 import os
+import statistics
 import re
 import shutil
 import docx
@@ -284,6 +286,60 @@ def build_paper():
     # DOCUMENT SECTIONS
     # ---------------------------------------------------------------------------
 
+    # ---------------------------------------------------------------------------
+    # Measured data: every number in Sec. IV and in the abstract comes from the raw
+    # output of `python -m benchmark.paper_experiments all` (benchmark/results/paper).
+    # ---------------------------------------------------------------------------
+    def _load(name):
+        with open(os.path.join('benchmark', 'results', 'paper', name + '.json'), encoding='utf8') as fh:
+            return json.load(fh)
+
+    TEST_COUNT = 578
+    sc = _load('scaling')
+    acc = _load('accuracy')
+    dl2 = _load('delta')
+    dl1 = _load('delta_run1')
+    host = sc['host']
+
+    ks = sorted(int(k) for k in sc['runs'])
+    sec = {k: [r['seconds'] for r in sc['runs'][str(k)]] for k in ks}
+    cpu = {k: [r['cpu_seconds'] for r in sc['runs'][str(k)]] for k in ks}
+    fcount = {k: [r['findings'] for r in sc['runs'][str(k)]] for k in ks}
+    n_reps = len(sec[ks[0]])
+    all_secs = [x for k in ks for x in sec[k]]
+    all_find = [x for k in ks for x in fcount[k]]
+    full_find = max(all_find)
+    FLOOR = 56.0                                   # scans at or below this are on the ~53 s floor
+    n_scans = len(all_secs)
+    n_slow = sum(1 for x in all_secs if x > FLOOR)
+    n_deadline = sum(1 for x in all_secs if x >= 299)
+    n_lost = sum(1 for x in all_find if x < full_find)
+    med = {k: statistics.median(sec[k]) for k in ks}
+    fastest = min(all_secs)
+
+    accs = acc['runs']
+    def _acc_stats(name):
+        runs = accs[name]
+        tp = [r['tp'] for r in runs]
+        total = runs[0]['total_real']
+        complete = [r for r in runs if r['tp'] == r['total_real']]
+        return {
+            'n': len(runs), 'total': total, 'tp': tp, 'fp': sum(r['fp'] for r in runs),
+            'prec': statistics.fmean(r['precision'] for r in runs),
+            'rec': statistics.fmean(r['recall'] for r in runs),
+            'n_complete': len(complete),
+            'raw': statistics.fmean(r['raw_alerts'] for r in complete) if complete else 0.0,
+            'merged': statistics.fmean(r['raw_findings'] for r in complete) if complete else 0.0,
+        }
+    A1, A2 = _acc_stats('testbed1'), _acc_stats('testbed2')
+    red1 = 100.0 * (A1['raw'] - A1['merged']) / A1['raw']
+    red2 = 100.0 * (A2['raw'] - A2['merged']) / A2['raw']
+
+    def _dsum(d, key):
+        return d[key]['summary']
+    d1a, d1b = _dsum(dl1, 'v1_to_v2'), _dsum(dl1, 'v2_to_v3')
+    d2a, d2b = _dsum(dl2, 'v1_to_v2'), _dsum(dl2, 'v2_to_v3')
+
     # 1. Title
     add_title("AutoSecAudit: An Extensible Multi-Scanner Orchestration Framework with AI-Assisted Remediation Guidance, Precision Fuzzing, and Delta Auditing in DevSecOps")
 
@@ -294,13 +350,17 @@ def build_paper():
     abstract_text = (
         "Automating security verification in fast-paced continuous integration and continuous deployment (CI/CD) pipelines creates operational friction: studies of developer tool adoption report that noisy output and missing actionable guidance discourage the use of automated analysis tools [13]. "
         "This paper presents AutoSecAudit, an open, extensible dynamic application security testing (DAST) orchestration framework with remediation guidance, designed for CI/CD pipelines and AI developer tooling. "
-        "It combines (1) attack-surface discovery through a depth-limited recursive crawler, regular-expression JavaScript route extraction, OpenAPI JSON parsing, and pre-flight reachability checks; "
-        "(2) concurrent execution of 19 scanner plugins with heuristic false-positive reduction (baseline-response comparison, a two-phase statistical timing check, single-page-application filtering, and adaptive politeness with backoff on HTTP 429/503); "
-        "(3) an intelligence layer that cross-references findings, enriches CVE-tagged findings with CVSS data, maps findings to OWASP Top 10 (2021), CWE, and PCI DSS v4.0 by keyword rules, and assigns plain-English business-risk categories and a five-level posture grade; and "
-        "(4) delivery features: predefined multi-framework fix recipes, identifier-based delta comparison between scans, severity gating through exit codes, and a Model Context Protocol (MCP) server with four tools for AI coding assistants. "
-        "The MCP server supplies scan results and recipes; applying patches is left to the assistant or developer, and closed-loop remediation is not evaluated. "
-        "In a preliminary single-configuration evaluation on OWASP Juice Shop, eight worker threads reduced scan latency from 184.2 s to 64.8 s (64.8% reduction, 2.84x speedup), and the reported run consolidated 76 raw alerts into 47 findings with precision 97.9% (46/47) and recall 88.5% (46/52) against 52 labelled vulnerabilities. "
-        "These measurements are author-reported and unreplicated, apply to one benchmark only, and are not evidence of production performance."
+        "It combines (1) attack-surface discovery through a depth-limited recursive crawler, JavaScript route extraction, OpenAPI import, and a scope guard that checks every resolved address; "
+        "(2) concurrent execution of 19 scanner plugins with heuristic false-positive reduction (baseline-response comparison, a two-phase statistical timing check, single-page-application filtering, and adaptive politeness with retry on HTTP 429/503); "
+        "(3) an intelligence layer that merges duplicate findings on a canonical key, enriches CVE-tagged findings with CVSS data, maps findings to OWASP Top 10 (2021), CWE, and PCI DSS v4.0 by keyword rules, and assigns plain-English business-risk categories and a five-level posture grade; and "
+        "(4) delivery features: predefined multi-framework fix recipes, fingerprint-based delta comparison between scans, severity gating through exit codes, and a Model Context Protocol (MCP) server with four tools for AI coding assistants. "
+        "Applying patches is left to the assistant or developer, and closed-loop remediation is not evaluated. "
+        f"We evaluate the tool on two purpose-built test applications with {A1['total']} and {A2['total']} planted vulnerabilities, using {n_reps} repetitions per setting on one Windows machine. "
+        f"Testbed 2 was fully detected with no false positive in all {A2['n']} runs, whereas testbed 1 was fully detected in {A1['n_complete']} of {A1['n']} runs (mean recall {100*A1['rec']:.0f}%) because some scans reached the 300 s scan deadline. None of these measured runs reported a false positive, but one further testbed 2 run inside the test suite did (a missing-SameSite cookie finding that matched no planted item). "
+        f"Merging reduced raw plugin alerts by {red1:.0f}% and {red2:.0f}% on complete scans. "
+        f"Increasing worker threads from 1 to 16 did not shorten scans (median {med[1]:.0f} s at k=1 and {med[16]:.0f} s at k=16), so an earlier speedup claim is withdrawn, and {n_slow} of {n_scans} scans ran longer than the {FLOOR:.0f} s floor. "
+        "Delta comparison was exact on two complete scans but produced spurious changes when scans were incomplete. "
+        "These results come from one machine and small applications written alongside the tool; they say nothing about performance on production applications."
     )
     keywords_text = "Vulnerability Assessment, DevSecOps, Scanner Orchestration, Model Context Protocol (MCP), AI-Assisted Remediation, Statistical Timing Verification, Compliance Mapping, Delta Auditing, Web Security, API Security."
     add_abstract(abstract_text, keywords_text)
@@ -334,7 +394,7 @@ def build_paper():
         bold_prefix="5) Stateless Scans Lacking Regression Awareness: "
     )
     add_p(
-        "To address these challenges, we present AutoSecAudit, an extensible multi-scanner security orchestration framework with remediation guidance for AI-assisted workflows. AutoSecAudit combines automated attack surface discovery, concurrent execution of 19 scanner plugins, false-positive reduction mechanisms, plain-English business danger translation, predefined multi-framework fix recipes, identifier-based delta comparison between scans, and an MCP tool server in one DevSecOps engine. The contributions are the integrated design and its open implementation; the evaluation in Section IV is preliminary."
+        "To address these challenges, we present AutoSecAudit, an extensible multi-scanner security orchestration framework with remediation guidance for AI-assisted workflows. AutoSecAudit combines automated attack surface discovery, concurrent execution of 19 scanner plugins, false-positive reduction mechanisms, plain-English business danger translation, predefined multi-framework fix recipes, fingerprint-based delta comparison between scans, and an MCP tool server in one DevSecOps engine. The contributions are the integrated design and its open implementation; the evaluation in Section IV is small-scale, uses two built-in test applications, and is reproducible from the repository."
     )
 
     # 5. Section II: RELATED WORK
@@ -356,7 +416,7 @@ def build_paper():
     )
     add_h2("D.  AI Coding Assistants and Agentic Protocols")
     add_p(
-        "Recent advances in AI-assisted software engineering have produced agentic developer tools (such as Cursor, Claude Code, and Antigravity). The Model Context Protocol (MCP) [14] standardizes how such agents call external tools over JSON-RPC 2.0, and MCP integrations now exist for other security tools, including a Burp Suite extension [17] and an alpha-stage ZAP add-on [18]. AutoSecAudit implements an MCP stdio server that lets an agent initiate scans, inspect findings with business-risk annotations, and retrieve predefined fix recipes. The protocol is not a contribution of this work. The server does not edit source code itself, and the agent-driven loop of patching, re-scanning, and checking for regressions is not evaluated in this paper."
+        "Recent advances in AI-assisted software engineering have produced agentic developer tools (such as Cursor, Claude Code, and Antigravity). The Model Context Protocol (MCP) [14] standardizes how such agents call external tools over JSON-RPC 2.0, and MCP integrations now exist for other security tools, including a Burp Suite extension [17] and a ZAP MCP integration add-on [18]. AutoSecAudit implements an MCP stdio server that lets an agent initiate scans, inspect findings with business-risk annotations, and retrieve predefined fix recipes. The protocol is not a contribution of this work. The server does not edit source code itself, and the agent-driven loop of patching, re-scanning, and checking for regressions is not evaluated in this paper."
     )
 
     # Table I
@@ -364,15 +424,15 @@ def build_paper():
     t1_rows = [
         ["Primary role", "Focused scanners (ports, web server, templates)", "Intercepting proxy and scanner", "Findings-management platform; does not run scans", "Plugin-based DAST orchestrator"],
         ["Parallelism", "Tool-specific", "Configurable scanner threads", "Not applicable", "Plugin-level ThreadPool (default 4, configurable)"],
-        ["Surface discovery", "Tool-specific; limited crawling", "Spider; OpenAPI import via add-on [16]", "Not applicable (imports reports)", "Recursive HTML crawl, regex JS routes; OpenAPI JSON parser (see Sec. III-A)"],
-        ["Scanner breadth", "Single purpose or template-defined", "Built-in rules plus add-ons", "None built in; imports third-party reports", "19 built-in plugins (compact, benchmark-tuned)"],
+        ["Surface discovery", "Tool-specific; limited crawling", "Spider; OpenAPI import via add-on [16]", "Not applicable (imports reports)", "Recursive HTML crawl, regex JS routes; OpenAPI import feeds the plugins (see Sec. III-A)"],
+        ["Scanner breadth", "Single purpose or template-defined", "Built-in rules plus add-ons", "None built in; imports third-party reports", "19 built-in plugins (compact)"],
         ["False-positive handling", "Tool-specific matchers", "Rule thresholds and alert filters", "Deduplication and triage statuses", "Baseline comparison; 2-phase timing check; SPA filter"],
         ["Vulnerability intelligence", "Template metadata (Nuclei)", "Alert references (CWE, OWASP)", "Stores imported CVE/CWE/CVSS data", "NVD/CIRCL CVSS lookup for CVE-tagged findings"],
         ["Compliance mapping", "Template tags (Nuclei)", "Alert references", "Imported metadata and reports", "Keyword rules to OWASP 2021, CWE, PCI DSS v4.0"],
         ["Business-risk view", "Not provided", "Risk levels only", "Dashboards and metrics", "Plain-English danger categories, 5-level grade (heuristic)"],
         ["Fix guidance", "Tool-specific advice", "Per-alert solution text", "Imported guidance; Jira integration", "Predefined recipes (Node, Python, Nginx, WAF) and Markdown tickets"],
-        ["AI-agent interface", "Not assessed", "MCP add-on (alpha) [18]", "REST API", "MCP stdio server, 4 tools"],
-        ["Cross-build comparison", "Not built in", "Not assessed", "Re-import closes and reopens findings [19]", "Identifier-based delta (Sec. III-C)"],
+        ["AI-agent interface", "Not assessed", "MCP integration add-on [18]", "REST API", "MCP stdio server, 4 tools"],
+        ["Cross-build comparison", "Not built in", "Not assessed", "Re-import closes and reopens findings [19]", "Fingerprint-based delta (Sec. III-C)"],
         ["CI/CD gating", "Exit status or output parsed by pipeline scripts", "Automation Framework exit-status job [16]", "Through API and integrations", "--fail-on severity threshold, exit code 1"]
     ]
     add_table_data("TABLE I   COMPARISON OF BUILT-IN CAPABILITIES ACROSS SECURITY TESTING PARADIGMS", t1_headers, t1_rows, highlight_col=4, widths=[1.15, 1.3, 1.3, 1.3, 1.6])
@@ -394,7 +454,7 @@ def build_paper():
         "Given a target hostname, IP address, or URL, the surface discovery subsystem seeds an endpoint pool E before initiating active scans. The design is motivated by [11], [12] but does not implement state-aware crawling or RESTler-style stateful fuzzing:"
     )
     add_p(
-        "Before a scan starts, the function is_target_allowed() accepts only (i) a fixed list of local and intentionally vulnerable practice-target hostnames (for example localhost, juice-shop, dvwa, and webgoat), (ii) hostnames beginning with RFC 1918 prefixes (10., 172.16.-172.31., 192.168.), and (iii) loopback addresses. All other hosts are rejected before any request is sent. This is a guardrail against accidental scanning of public systems, not an authorization mechanism: it does not verify that the operator is permitted to test the target. Matching is lexical rather than resolution-based, so a DNS name that merely starts with a private prefix (for example 10.example.com) or carries an allowlisted suffix is also accepted; address-based validation after DNS resolution is a known gap (Sec. V). The Juice Shop container used in Sec. IV is accepted as a local practice target. In real-scan mode, an HTTP reachability probe (HEAD, falling back to GET, with a raw TCP fallback) confirms that the server responds before plugins are scheduled; the probe is skipped in mock mode.",
+        "Before a scan starts, is_target_allowed() parses the target host. An IP literal is accepted only if it is private (RFC 1918 / RFC 4193) or loopback; a hostname is resolved through DNS and accepted only if every address it resolves to is private or loopback (IPv4 and IPv6). The check is enforced when the engine sets its target, so the CLI, the dashboard, and the MCP server share it, and a name that merely looks private (for example 10.example.com) is rejected when it resolves to a public address. This is a guardrail against accidental scanning of public systems, not an authorization mechanism: it does not verify that the operator may test the target, and a DNS answer could change between the check and the scan. HTTP redirects are followed manually and only to same-origin, in-scope locations, and each response is bounded in size (5 MiB by default) and in time (30 s per request by default). In real-scan mode, an HTTP reachability probe (HEAD, falling back to GET, with a raw TCP fallback) confirms that the server responds before plugins are scheduled; the probe is skipped in mock mode.",
         bold_prefix="1) Target Scope Guardrail and Pre-Flight Liveness: "
     )
     add_p(
@@ -402,7 +462,7 @@ def build_paper():
         bold_prefix="2) Recursive Web Crawler and Client-Side JS Route Extraction: "
     )
     add_p(
-        "For headless REST backends, the OpenAPIImporter reads an OpenAPI 2.0 or 3.x specification supplied as a JSON file or URL and extracts paths, HTTP methods (GET, POST, PUT, DELETE, PATCH), and declared parameters, including path variables. YAML specifications, $ref resolution, and request-body schemas are not handled. In the current CLI and web UI the extracted list is stored on the engine object but is not consumed by the scanner plugins, so OpenAPI ingestion is implemented and covered by a test but not yet integrated into scan-time endpoint seeding.",
+        "For headless REST backends, the OpenAPIImporter reads an OpenAPI 2.0 or 3.x specification supplied as a JSON or YAML file or URL and extracts paths, HTTP methods (GET, POST, PUT, DELETE, PATCH), declared parameters (including path variables), local $ref targets, and top-level JSON request-body properties. The imported endpoints are handed to the scanner plugins, and when no specification is supplied the engine also looks for one at common locations (for example /swagger.json, /v2/api-docs, /v3/api-docs, and /api-docs) and imports it automatically. Remote $ref targets and full request-body schema validation are not handled.",
         bold_prefix="3) OpenAPI / Swagger Ingestion: "
     )
     add_p(
@@ -414,7 +474,7 @@ def build_paper():
         "Algorithm 1: Attack Surface Discovery (as implemented: depth-first, bounded)",
         "Input: Target URL u0, Max Depth D_max, Page Budget P_max, Auth Credentials A (optional)\n"
         "Output: Discovered Endpoint Pool E (forms, links, parameters, JS routes)\n"
-        "1: If not IsTargetAllowed(u0): Abort('Target not permitted')\n"
+        "1: If not IsTargetAllowed(u0) [every resolved address]: Abort('Target not permitted')\n"
         "2: If real mode and not CheckLiveness(u0): Abort('Host unreachable')\n"
         "3: Session S = InitializeSession()\n"
         "4: If A is provided: S = AutoAuthenticate(u0, A)\n"
@@ -429,13 +489,13 @@ def build_paper():
         "13:      E = E U {LinkEndpoint(l)}  (with query parameters, if any)\n"
         "14:      Crawl(l, d+1)\n"
         "15: Return E\n"
-        "Note: ParseOpenAPISpec(Omega) is a separate importer; its output is not merged into E by the engine."
+        "Note: endpoints imported from an OpenAPI document (supplied or auto-discovered) are added to E before the plugins run."
     )
 
     add_h2("B.  Core Engine, 19 Scanner Plugins, and Precision Mechanisms")
     add_p(
         "Each scanner module extends the abstract BaseScanner interface. Standardized findings use the tuple model: "
-        "F = <id, title, severity, host, port, description, raw_output, c, M>, where c in {low, medium, high} is a heuristic confidence label assigned by the plugin and M holds optional CVE/CVSS, OWASP, CWE, PCI DSS, and remediation fields. The record has no separate endpoint field; endpoint details appear in the title, description, or raw output."
+        "F = <id, title, severity, host, port, description, raw_output, c, M, t, e, m, q>, where c in {low, medium, high} is a heuristic confidence label assigned by the plugin, M holds optional CVE/CVSS, OWASP, CWE, PCI DSS, and remediation fields, and t, e, m, and q are the vulnerability type, normalized endpoint path, HTTP method, and parameter that identify the finding across tools and across scans."
     )
     add_p(
         "AutoSecAudit organizes 19 scanner plugins across four operational domains:\n"
@@ -445,40 +505,42 @@ def build_paper():
         "• Reconnaissance & Infrastructure: SecretExposureScanner (sensitive paths such as /.env and /.git/config), SSLTLSScanner (certificate validity and expiry, HSTS, obsolete TLS versions), DirBruteScanner (a 50-entry curated path list that includes several Juice Shop-specific entries), NiktoPlugin and NmapPlugin (wrappers around the external nikto and nmap executables, which must be installed)."
     )
     add_p(
-        "The engine supports four scan profiles, defined in config.py and verified by loading each profile: 'full' (all 19 plugins), 'owasp' (11 plugins: SQLi, XSS, CSRF, SSRF, Auth, Misconfig, CommandInjection, PathTraversal, SSTI, SecretExposure, OpenRedirect), 'api' (7 plugins: BOLAIdor, JWT, CORS, APIAbuse, Auth, SQLi, XSS), and 'recon' (6 plugins: SSLTLS, Misconfig, DirBrute, Nikto, Nmap, SecretExposure). The recon profile is labelled 'passive' in the configuration, but it is better described as reconnaissance-oriented: Nmap performs port scanning, and Nikto, DirBrute, Misconfig, and SecretExposure issue active HTTP requests to the target. It is non-exploitative rather than passive. Plugins run concurrently through a thread pool whose size is set by AUTOSEC_THREAD_COUNT (default 4); the evaluation in Sec. IV used 8.",
+        "The engine supports four scan profiles, defined in config.py and verified by loading each profile: 'full' (all 19 plugins), 'owasp' (11 plugins: SQLi, XSS, CSRF, SSRF, Auth, Misconfig, CommandInjection, PathTraversal, SSTI, SecretExposure, OpenRedirect), 'api' (7 plugins: BOLAIdor, JWT, CORS, APIAbuse, Auth, SQLi, XSS), and 'recon' (6 plugins: SSLTLS, Misconfig, DirBrute, Nikto, Nmap, SecretExposure). The recon profile is described in the configuration as reconnaissance with low-impact active probing: Nmap performs port scanning, and Nikto, DirBrute, Misconfig, and SecretExposure issue active HTTP requests, so it is non-exploitative but not passive. Plugins run concurrently through a thread pool whose size is set by AUTOSEC_THREAD_COUNT (default 4); the evaluation in Sec. IV sweeps it from 1 to 16.",
         bold_prefix="Scan Profiles: "
     )
     add_p(
         "AutoSecAudit includes four mechanisms intended to reduce false positives and target load. They lower, but do not eliminate, false-positive risk:\n"
-        "1) Two-Phase Statistical Timing Check (core/timing.py): Blind time-based probes (for example SLEEP(3) or sleep 2) are prone to false positives from latency spikes. BaseScanner measures m benign requests (m = 2 in the plugin configuration) to estimate a baseline mean mu_base and sample standard deviation sigma_base. For a probe with injected delay tau, phase 1 requires T_delay >= mu_base + rho*tau with rho = 0.70. If phase 1 passes, phase 2 sends a zero-delay control payload; if T_control <= mu_base + 0.35*tau the finding is assigned high confidence, otherwise (or if no control probe is supplied) it is still reported with medium confidence. The decision rule does not use sigma_base, which is recorded for reporting only, and with m = 2 the variance estimate is coarse. The check is therefore a heuristic: a latency spike that persists across both phases can still produce a medium-confidence false positive. It is applied by the SQLi and command-injection plugins only.\n"
+        "1) Two-Phase Statistical Timing Check (core/timing.py): Blind time-based probes (for example SLEEP(3) or sleep 2) are prone to false positives from latency spikes. BaseScanner measures m = 2 benign requests to estimate a baseline mean mu_base and sample standard deviation sigma_base. For a probe with injected delay tau, the delay must reach mu_base + max(3*sigma_base, 0.70*tau) on a first probe and again on a second, independent delay probe. If a zero-delay control payload is supplied, phase 2 requires it to return within mu_base + 0.35*tau, and the finding is then graded high confidence; without a control probe a reproduced delay is graded medium, and a slow control probe rejects the finding. With m = 2 the variance estimate is coarse and the check remains a heuristic. Timing probes are serialized across plugins so that concurrent scanning does not contaminate the measurements, and the check is applied by the SQLi and command-injection plugins only.\n"
         "2) Baseline Response Comparison: The SQLi plugin requests a benign baseline response and compares each probe response against it; a change in HTTP status or a response-length change above 20% is treated as evidence, graded high, medium, or low by the magnitude of the change. Other plugins use their own matching logic.\n"
         "3) SPA and Development-Server Filtering (core/spa_detector.py, core/dev_detector.py): Responses that look like single-page-application catch-all pages are filtered to avoid findings caused by soft-404 behavior, and development-server artifacts are tagged.\n"
-        "4) Adaptive Politeness (core/politeness.py): Each plugin adds randomized 0-20 ms jitter between requests. On HTTP 429 or 503 the plugin sleeps for min(2^(n-1), 8) seconds, where n is the count of consecutive throttled responses, before continuing; the throttled response itself is not retried.\n"
+        "4) Adaptive Politeness (core/politeness.py): Each plugin adds randomized 0-20 ms jitter between requests. All plugins share one HTTP client; on HTTP 429 or 503 it honors Retry-After (capped at 10 s) or backs off exponentially for min(2^(n-1), 8) seconds and retries up to twice, and a response that is still throttled is withheld from detection logic so that a rate-limit page is not reported as evidence. The client also enforces the scope, size, and time limits described in Sec. III-A.\n"
         "A recursive JSON body fuzzer (core/fuzzer.py) enumerates every leaf of a nested JSON request body and replaces one leaf at a time with a payload while preserving the rest of the structure; the SQLi and command-injection plugins use it. Object keys that contain a period are not addressed correctly by its dotted-path scheme, and empty containers have no leaf to mutate.",
         bold_prefix="Precision Mechanisms: "
     )
 
     add_h2("C.  Post-Processing Intelligence Layer")
     add_p(
-        "Following raw scanner execution, the intelligence layer post-processes findings in the steps of Algorithm 2, which reflects the implemented CLI pipeline. The cross-referencing step annotates findings that share a host and port but does not merge or remove any of them; a compound-key merge over host, port, endpoint, and CWE, which would be needed to produce the alert consolidation reported in Sec. IV-B, is not part of the released code path (see Sec. IV-B and Sec. V). Compliance mapping applies keyword rules to finding titles to assign OWASP Top 10 (2021) categories [6] and uses a built-in table for CWE identifiers and PCI DSS v4.0 requirements [7]; CVSS data are looked up from the NVD [8] or CIRCL for findings that carry a CVE identifier."
+        "Following raw scanner execution, the shared pipeline (core/pipeline.py, used by the CLI, the dashboard, and the MCP server) post-processes findings in the steps of Algorithm 2. Findings from different plugins that describe the same weakness are merged on a canonical key <vulnerability type, HTTP method, normalized endpoint, parameter>, in which numeric path segments are replaced by a placeholder and the reporting tool is ignored; the merged finding keeps the highest severity and confidence, the union of the reporting tools, and the combined evidence and references. Remaining findings that share an endpoint and parameter are cross-referenced but not merged. Compliance mapping applies keyword rules to finding titles to assign OWASP Top 10 (2021) categories [6] and uses a built-in table for CWE identifiers and PCI DSS v4.0 requirements [7]; CVSS data are looked up from the NVD [8] or CIRCL for findings that carry a CVE identifier."
     )
 
     add_algo_box(
         "Algorithm 2: Intelligence Post-Processing and Delta Comparison (as implemented)",
         "Input: Raw Findings F_raw, optional Previous Report S_{t-1}\n"
         "Output: Annotated Report S_t, Delta Partition <Delta_NEW, Delta_FIXED, Delta_UNCHANGED>\n"
-        "1: S_t = F_raw\n"
-        "2: Group map G = {}; for each f in S_t: G[<f.host, f.port>] = G[<f.host, f.port>] U {f}\n"
-        "3: For each group g in G with |g| > 1: append 'Related findings: ids' to f.references for each f in g\n"
-        "4: For each f in S_t with f.cve_id: query NVD (2 s timeout), fall back to CIRCL;\n"
-        "5:    set f.cvss_score if unset and merge references; skip silently on failure\n"
-        "6: For each f in S_t: (f.owasp_tag, f.cwe_id, f.pci_dss) = MapCompliance(f)   [keyword rules]\n"
-        "7: Danger category/grade and fix recipes are derived from f when a report or MCP response is built\n"
-        "8: If S_{t-1} is provided, with id(f) the plugin-assigned identifier (f.id):\n"
-        "9:    Delta_NEW = { f in S_t | id(f) not in id(S_{t-1}) }\n"
-        "10:   Delta_FIXED = { f in S_{t-1} | id(f) not in id(S_t) }\n"
-        "11:   Delta_UNCHANGED = { f in S_t | id(f) in id(S_{t-1}) }   (findings with empty id are ignored)\n"
-        "12: Return S_t, <Delta_NEW, Delta_FIXED, Delta_UNCHANGED>"
+        "1: Group F_raw by canonical key k(f) = <f.type, f.method, norm(f.endpoint), f.param>\n"
+        "2: For each group g: S_t = S_t U {Merge(g)}   [max severity, max confidence, union of tools and evidence]\n"
+        "3: For merged findings with equal <endpoint, param>: append 'Related findings: ids' to f.references\n"
+        "4: For each f in S_t: fp(f) = SHA-256(f.tool | f.type | f.method | f.endpoint | f.param)\n"
+        "5: For each f in S_t with f.cve_id: query NVD (2 s timeout), fall back to CIRCL;\n"
+        "6:    set f.cvss_score if unset and merge references; skip silently on failure\n"
+        "7: For each f in S_t: (f.owasp_tag, f.cwe_id, f.pci_dss) = MapCompliance(f)   [keyword rules]\n"
+        "8: Danger category/grade and fix recipes are derived from f when a report or MCP response is built\n"
+        "9: If S_{t-1} is provided: T = scanners that completed successfully in both scans;\n"
+        "10:   keep only findings reported by a scanner in T\n"
+        "11:   Delta_NEW = { f in S_t | fp(f) not in fp(S_{t-1}) }\n"
+        "12:   Delta_FIXED = { f in S_{t-1} | fp(f) not in fp(S_t) }\n"
+        "13:   Delta_UNCHANGED = { f in S_t | fp(f) in fp(S_{t-1}) }\n"
+        "14: Return S_t, <Delta_NEW, Delta_FIXED, Delta_UNCHANGED>"
     )
 
     add_p(
@@ -495,31 +557,27 @@ def build_paper():
         bold_prefix="Fix Recipes and Dev Tickets: "
     )
     add_p(
-        "The DeltaAnalyzer compares two reports by the finding identifier f.id assigned by the scanner plugin (for example SQLI-001 or AUTH-DEFCRED-001); no content hash is computed. With id(S) denoting the set of identifiers in report S, findings are partitioned into three disjoint sets: "
-        "Delta_NEW = { f in S_t | id(f) not in id(S_{t-1}) }, "
-        "Delta_FIXED = { f in S_{t-1} | id(f) not in id(S_t) }, and "
-        "Delta_UNCHANGED = { f in S_t | id(f) in id(S_{t-1}) }. "
-        "The rule has edge cases: most plugins build identifiers from a positional counter, so inserting or removing an earlier finding renumbers later ones and can yield spurious NEW/FIXED pairs; the identifier carries no host or endpoint, so two different findings that share an identifier are reported as UNCHANGED (we confirmed both behaviors with small examples); findings with an empty identifier are dropped; and duplicate identifiers within one report collapse. A secondary dictionary-based variant reports only the new and fixed sets.",
-        bold_prefix="Identifier-Based Delta Comparison: "
+        "The DeltaAnalyzer compares two reports by a content fingerprint: the SHA-256 of the reporting tool, vulnerability type, HTTP method, normalized endpoint, and parameter (Algorithm 2, step 4), so the key does not depend on the order in which a plugin numbers its findings. With fp(S) denoting the set of fingerprints in report S, findings are partitioned into three disjoint sets: Delta_NEW = { f in S_t | fp(f) not in fp(S_{t-1}) }, Delta_FIXED = { f in S_{t-1} | fp(f) not in fp(S_t) }, and Delta_UNCHANGED = { f in S_t | fp(f) in fp(S_{t-1}) }. Only scanners that completed successfully in both scans are compared, so a narrower profile does not report every finding of the missing scanners as fixed. Because the reporting tool is part of the key, a finding that is reported by a different set of plugins in two scans changes fingerprint; Sec. IV-C measures how often this happens.",
+        bold_prefix="Fingerprint-Based Delta Comparison: "
     )
 
     add_h2("D.  AI-Assistant Integration via Model Context Protocol (MCP) and CI/CD Delivery")
     add_p(
-        "AutoSecAudit includes a JSON-RPC 2.0 stdio MCP server (mcp_server.py; protocol revision 2024-11-05) that lets AI developer tools such as Cursor, Claude Code, and Antigravity call the scanner [14]. It implements the initialize, tools/list, tools/call, and ping methods and exposes four tools (Table II). We distinguish four levels of remediation support: (a) generating predefined fix recipes, which is implemented; (b) exposing those recipes to an agent through MCP, which is implemented; (c) an agent applying a change to source code, which is performed by the agent's own editing tools and is outside the server; and (d) re-scanning to show that a change fixed the issue without regressions, which the current verification tool does not do against a live target. Only (a) and (b) are supported by this work."
+        "AutoSecAudit includes a JSON-RPC 2.0 stdio MCP server (mcp_server.py; protocol revision 2024-11-05) that lets AI developer tools such as Cursor, Claude Code, and Antigravity call the scanner [14]. It implements the initialize, tools/list, tools/call, and ping methods and exposes four tools (Table II). We distinguish four levels of remediation support: (a) generating predefined fix recipes, which is implemented; (b) exposing those recipes to an agent through MCP, which is implemented; (c) an agent applying a change to source code, which is performed by the agent's own editing tools and is outside the server; and (d) re-scanning to show that a change fixed the issue, which autosec_verify_fix does against the live target by re-running only the scanners relevant to the vulnerability type; it does not check for regressions elsewhere. Levels (a), (b), and (d) are implemented; none of them is evaluated against agent-applied patches in this paper."
     )
 
     # Table II
     t2_headers = ["MCP Tool Name", "Arguments", "Behavior as implemented", "Limitation in this release"]
     t2_rows = [
-        ["autosec_scan", "target (required), profile, mock", "Runs a scan and returns grade, severity counts, and the threat matrix.", "mock defaults to true, so the default call returns simulated findings."],
-        ["autosec_get_findings", "report_id, view", "Reads a saved scan report and returns findings with business-danger text and fix recipes.", "Reads the key 'findings' while saved reports use 'all_findings'; returned zero findings for a saved report in our check."],
+        ["autosec_scan", "target (required), profile, mock", "Runs a scan and returns grade, severity counts, and the threat matrix.", "mock defaults to true, so a call that omits it returns simulated findings; real scans must request mock=false."],
+        ["autosec_get_findings", "report_id, view", "Reads a saved scan report and returns findings with business-danger text and fix recipes.", "Reads the saved report key 'all_findings' (an earlier release read 'findings' and returned no findings; fixed and covered by tests)."],
         ["autosec_get_fix_recipe", "finding_title (required), framework", "Returns static recipes (nodejs, python, nginx, waf) and a Markdown ticket for a title keyword.", "Keyword lookup; seven finding classes plus a generic fallback."],
-        ["autosec_verify_fix", "target (required), vulnerability_type (required)", "Re-runs a scan and counts findings whose title matches the type; reports RESOLVED or STILL_VULNERABLE.", "Scan runs in mock mode, so the live target is not re-tested."]
+        ["autosec_verify_fix", "target (required), vulnerability_type (required)", "Re-runs only the scanners for the vulnerability type against the target and reports RESOLVED or STILL_VULNERABLE; scan errors or an unreachable target are reported as errors, not as RESOLVED.", "Real by default (mock=false); checks one vulnerability type only and does not detect regressions elsewhere."]
     ]
     add_table_data("TABLE II   AUTOSECAUDIT MCP TOOLS AND THEIR CURRENT LIMITATIONS", t2_headers, t2_rows, widths=[1.6, 1.35, 1.9, 1.8])
 
     add_p(
-        "The server therefore supports recipe delivery and scan access for an AI assistant. It does not edit source files, and this paper does not demonstrate that a recipe or an agent-applied patch removes a vulnerability or avoids regressions; no patch-success rate is reported."
+        "The server therefore supports recipe delivery, scan access, and targeted re-testing for an AI assistant. It does not edit source files, and this paper does not demonstrate that a recipe or an agent-applied patch removes a vulnerability or avoids regressions; no patch-success rate is reported."
     )
     add_p(
         "For CI pipelines, the command-line scan accepts --fail-on with the values low, medium, high, or critical. If any finding meets or exceeds the threshold, the process returns exit code 1; it also returns 1 when the target is invalid or unreachable, and 0 otherwise. Progress is streamed to the web dashboard over Server-Sent Events (SSE), and reports can be exported as HTML, JSON, and ReportLab-generated PDF files."
@@ -528,86 +586,113 @@ def build_paper():
     # 7. Section IV: EVALUATION
     add_h1("IV.  EXPERIMENTAL EVALUATION AND RESULTS")
     add_p(
-        "Evaluation setup. The authors report running AutoSecAudit on an 8-core host with 16 GB RAM running Ubuntu 22.04 LTS against a containerized OWASP Juice Shop instance [15]. The repository's docker-compose file references the image bkimminich/juice-shop:latest, and the exact version tested was not recorded. The run mode is not recorded; real-scan mode is assumed because latency scaling is not meaningful in mock mode. The thread-pool size was set to k through AUTOSEC_THREAD_COUNT. The evaluation addresses four research questions: "
-        "RQ1 (Latency & Concurrency), RQ2 (Accuracy & Alert Consolidation), RQ3 (Delta Comparison Behavior), and RQ4 (Test Suite Status)."
+        f"Evaluation setup. All measurements were taken on one machine ({host['platform']}, {host['cpu_count']} logical CPUs, {host['ram_gb']} GB RAM, Python {host['python']}) that was also running ordinary desktop processes, so it was not an isolated or idle host. "
+        f"The targets are the two built-in testbeds, started on 127.0.0.1 with an ephemeral port for each scan. Testbed 1 is a Flask application with {A1['total']} planted, detectable vulnerabilities (SQL injection, reflected XSS, SSTI, command injection, SSRF, path traversal, open redirect, IDOR, CSRF, insecure cookie, exposed .env file, and an unauthenticated admin page). "
+        f"Testbed 2 requires a login and has {A2['total']} planted vulnerabilities plus two decoys that look vulnerable but are safe. "
+        "Each scan used the full profile with the Nmap and Nikto wrappers excluded, so 17 of the 19 plugins ran. The ground truth for each testbed is a JSON file in benchmark/ground_truth; a finding is a true positive when its vulnerability type and normalized endpoint match a planted item, and a finding that matches a decoy or nothing is a false positive, except for informational findings such as missing security headers. "
+        "The authors wrote the testbeds, the ground truth, and the plugins, so the accuracy results measure how well known cases are handled, not how the tool generalizes. Earlier versions of this paper reported results on OWASP Juice Shop; those figures had no retained raw data and relied on a consolidation step that the released code did not implement, so they are withdrawn and replaced by the measurements below. "
+        "The raw per-run results are stored in benchmark/results/paper and can be regenerated with python -m benchmark.paper_experiments all. The evaluation addresses four research questions: "
+        "RQ1 (Latency & Concurrency), RQ2 (Accuracy & Alert Consolidation), RQ3 (Delta Comparison Behavior), and RQ4 (Test Suite and Safety Checks)."
     )
     add_p(
-        "Evidence status. The latency values (Table III) and the detection counts (Table IV) are author-reported values from a single configuration. The raw run logs, the number of repetitions and the aggregation method, the per-finding labels, and the list of 52 ground-truth vulnerabilities are not included in the repository, so these numbers are preliminary and could not be independently verified. Their derived quantities (speedups, percentages, precision, recall, F1) were recomputed and are arithmetically consistent. Each is a point estimate with no confidence interval."
+        f"Evidence status. Each setting was run {n_reps} times. We report means, standard deviations, medians, and ranges; with this few runs no confidence interval or significance test is claimed, and the runs were not randomized beyond rotating the thread count within each repetition."
     )
 
     add_h2("A.  Concurrency and Execution Latency (RQ1)")
     add_p(
-        "Total audit latency was measured for worker thread counts k in {1, 2, 4, 8, 16}. As shown in Table III and Fig. 2, increasing concurrency from sequential execution (k=1) to k=8 reduced scan time from 184.2 s to 64.8 s, a 64.8% reduction (2.84x speedup; 184.2/64.8 = 2.84). The percentage and the duration in seconds happen to share the value 64.8, but they are different quantities. Performance did not improve beyond k=8. Because concurrency is across 19 plugin tasks, the longest-running plugin bounds the achievable speedup; target-side limits may also contribute, but the cause was not isolated. Whether each table entry is a single run or a mean is not recorded."
+        f"Total scan time of testbed 1 was measured for worker thread counts k in {{{', '.join(str(k) for k in ks)}}}, {n_reps} times each (Table III, Fig. 2). "
+        f"The median time was {med[1]:.1f} s at k=1 and {med[16]:.1f} s at k=16, and the fastest scan at every k was {min(min(v) for v in sec.values()):.1f} s to {max(min(v) for v in sec.values()):.1f} s, so on this target more threads did not make the scan faster. "
+        f"Our earlier report of a 2.84x speedup is therefore not supported and is withdrawn. A plausible reason is that the scan contains a fixed amount of serial work: timing probes are deliberately serialized across plugins (Sec. III-B), and the testbed contains endpoints that sleep on purpose. We did not profile the scan, so this explanation is untested. "
+        f"The timing was also unstable: {n_slow} of {n_scans} scans took longer than {FLOOR:.0f} s, {n_deadline} reached the 300 s scan deadline, and {n_lost} returned fewer than the usual {full_find} findings. These slow scans were spread across thread counts, and we did not isolate the cause (candidates are contention on the desktop, the serialized timing probes, and the plugin time limits). "
+        "The CPU column reports process CPU time, which includes the in-process test server and is not a utilization percentage."
     )
 
     # Table III
-    t3_headers = ["Worker Threads (k)", "Scan Duration (s)", "Speedup", "CPU Utilization (%)"]
-    t3_rows = [
-        ["1 (Sequential)", "184.2 s", "1.00x", "14.2%"],
-        ["2", "102.5 s", "1.80x", "27.8%"],
-        ["4", "71.4 s", "2.58x", "51.3%"],
-        ["8 (best observed)", "64.8 s", "2.84x", "78.4%"],
-        ["16", "66.1 s", "2.79x", "82.1%"]
-    ]
-    add_table_data("TABLE III   AUDIT LATENCY ACROSS CONCURRENCY CONFIGURATIONS (AUTHOR-REPORTED)", t3_headers, t3_rows, highlight_row=3)
+    t3_headers = ["Worker Threads (k)", "Mean +/- SD (s)", "Median (s)", "Min-Max (s)", "Speedup (median)", "Process CPU (s)"]
+    t3_rows = []
+    for k in ks:
+        t3_rows.append([
+            f"{k}" + (" (sequential)" if k == 1 else ""),
+            f"{statistics.fmean(sec[k]):.1f} +/- {statistics.stdev(sec[k]):.1f}",
+            f"{med[k]:.1f}",
+            f"{min(sec[k]):.1f}-{max(sec[k]):.1f}",
+            f"{med[1] / med[k]:.2f}x",
+            f"{statistics.fmean(cpu[k]):.1f}",
+        ])
+    add_table_data(f"TABLE III   SCAN TIME OF TESTBED 1 BY WORKER THREADS (n = {n_reps} SCANS PER ROW)", t3_headers, t3_rows, widths=[1.2, 1.2, 0.8, 1.1, 1.0, 1.0])
 
-    add_figure('paper/figures/fig2_latency.png', "Fig. 2.  Audit execution latency and relative speedup across worker thread allocations (k in {1, 2, 4, 8, 16}).", width_in=4.5)
+    add_figure('paper/figures/fig2_latency.png', f"Fig. 2.  Scan time (mean and standard deviation of {n_reps} scans) and speedup of the mean relative to k=1, by worker thread count.", width_in=4.5)
 
-    add_h2("B.  Detection Accuracy and Noise Reduction (RQ2)")
+    add_h2("B.  Detection Accuracy and Alert Merging (RQ2)")
     add_p(
-        "To assess detection accuracy, findings on the benchmark application were compared with Juice Shop's challenge catalog [15]; the 52 in-scope vulnerabilities form the ground truth. A true positive (TP) is a reported finding matched to a ground-truth vulnerability, a false positive (FP) is a reported finding with no match, and a false negative (FN) is a ground-truth vulnerability with no matching finding. Precision = TP/(TP+FP), recall = TP/(TP+FN), and F1 = 2PR/(P+R). Table IV groups the 19 plugins into five evaluation classes; these classes differ from the four functional domains in Sec. III-B (for example, MisconfigScanner appears under Misconfig & Recon here but under web application plugins there). The procedure for matching findings to challenges and for identifying duplicate raw alerts is not documented in the repository, and no second annotator is documented. Several plugin inputs are specific to Juice Shop (for example DirBruteScanner paths such as /ftp and AuthScanner credentials), so the reported precision and recall are benchmark-specific."
+        "A true positive (TP) is a planted vulnerability matched by at least one finding, a false positive (FP) is a finding that matches a decoy or nothing in the ground truth, and a false negative (FN) is a planted vulnerability with no matching finding. "
+        "Precision = TP/(TP+FP), recall = TP/(TP+FN), and F1 = 2PR/(P+R). Table IV gives the results per testbed. "
+        f"Testbed 2 was fully detected in all {A2['n']} runs with no false positive, and both decoys were suppressed. Testbed 1 was fully detected in {A1['n_complete']} of {A1['n']} runs; the other {A1['n'] - A1['n_complete']} runs found {', '.join(str(x) for x in sorted(t for t in A1['tp'] if t < A1['total']))} of {A1['total']} because plugins hit the 300 s scan deadline, which the engine reports as a degraded scan. "
+        f"None of the ten measured runs reported a false positive. However, an eleventh run of testbed 2, executed by the benchmark regression test during the test-suite run (Sec. IV-D), reported one: a missing-SameSite finding for the session cookie, labelled as CSRF at the root path, which matched no planted item and failed that test's zero-false-positive assertion. So the false-positive count is not stable at zero even here, and with applications whose planted items and decoys we chose ourselves it should not be read as a false-positive rate for real applications."
     )
 
     # Table IV
-    t4_headers = ["Vulnerability Class (Active Plugins)", "True Positives (TP)", "False Positives (FP)", "Raw Alerts", "Consolidated Findings"]
-    t4_rows = [
-        ["Injection (SQLi, CmdInj, SSTI, OpenRedirect)", "8", "0", "14", "8"],
-        ["Cross-Site Scripting (XSSScanner, CSRFScanner)", "12", "1", "19", "13"],
-        ["Misconfig & Recon (Misconfig, DirBrute, Nikto, Nmap, TLS, Secrets)", "15", "0", "26", "15"],
-        ["Access & Traversal (BOLAIdor, Auth, PathTrav, SSRF)", "6", "0", "9", "6"],
-        ["API & Tokens (APIAbuse, JWT, CORS)", "5", "0", "8", "5"],
-        ["Total / Summary", "46", "1", "76", "47 (38.2% fewer than raw)"]
-    ]
-    add_table_data("TABLE IV   VULNERABILITY DETECTION AND CONSOLIDATION METRICS ACROSS 19 PLUGINS (AUTHOR-REPORTED)", t4_headers, t4_rows, highlight_row=5, widths=[2.9, 0.9, 0.9, 0.8, 1.2])
+    t4_headers = ["Testbed", "Runs", "Planted", "TP mean (range)", "FP", "Precision", "Recall (mean)", "Raw alerts to merged findings*"]
+    t4_rows = []
+    for name, A in (("testbed1", A1), ("testbed2 (login, 2 decoys)", A2)):
+        t4_rows.append([
+            name, str(A['n']), str(A['total']),
+            f"{statistics.fmean(A['tp']):.1f} ({min(A['tp'])}-{max(A['tp'])})",
+            str(A['fp']), f"{A['prec']:.2f}", f"{A['rec']:.2f}",
+            f"{A['raw']:.0f} to {A['merged']:.0f} ({100.0 * (A['raw'] - A['merged']) / A['raw']:.0f}% fewer)",
+        ])
+    add_table_data("TABLE IV   DETECTION ACCURACY ON THE BUILT-IN TESTBEDS (* COMPLETE SCANS ONLY)", t4_headers, t4_rows, widths=[1.35, 0.45, 0.6, 1.0, 0.35, 0.7, 0.75, 1.5])
 
     add_p(
-        "In the reported run, 76 raw alerts were consolidated into 47 findings (46 TP + 1 FP), a 38.2% reduction in alert volume ((76-47)/76; Fig. 3). Against the 52 labelled vulnerabilities, this gives precision 97.9% (46/47), recall 88.5% (46/52, with 6 FN), and F1 92.9% (2*46/(2*46+1+6)). These are results for one benchmark and one run. They do not show that false positives are absent in other applications, and the single false positive shows they are not eliminated even here. Reproducibility caveat: the released Correlator groups findings by host and port and annotates related findings but does not merge them (Sec. III-C), so the 76-to-47 consolidation cannot be reproduced from the released pipeline; the consolidation rule used in the reported run should be documented and released."
+        f"Alert merging. The pipeline merges findings that several plugins report for the same weakness on a canonical key (Sec. III-C). On complete scans, the {A1['raw']:.0f} raw plugin alerts of testbed 1 became {A1['merged']:.0f} findings ({red1:.0f}% fewer) and the {A2['raw']:.0f} alerts of testbed 2 became {A2['merged']:.0f} ({red2:.0f}% fewer; Fig. 3). "
+        "Because the merge key was designed with these applications in view, the reduction is specific to them, and we did not measure whether any merge hid a distinct vulnerability beyond checking that all planted items remained matched."
     )
 
-    add_figure('paper/figures/fig3_noise_reduction.png', "Fig. 3.  Raw alerts vs. consolidated findings by evaluation class (Table IV; 76 to 47, a 38.2% reduction in alert volume).", width_in=4.5)
+    add_figure('paper/figures/fig3_noise_reduction.png', "Fig. 3.  Mean raw plugin alerts and merged findings per scan on complete scans of each testbed.", width_in=4.0)
 
     add_h2("C.  Delta Comparison Behavior (RQ3)")
     add_p(
-        "Delta comparison was exercised on a three-build synthetic sequence (Fig. 4): "
-        "(1) Build v1.0 (baseline): 47 findings; "
-        "(2) Build v1.1: 10 findings removed and 3 added, giving 3 Delta_NEW, 10 Delta_FIXED, and 37 Delta_UNCHANGED (47 - 10 + 3 = 40 active findings); and "
-        "(3) Build v1.2: 14 findings removed, giving 0 Delta_NEW, 14 Delta_FIXED, and 26 Delta_UNCHANGED (40 - 14 = 26 active findings). "
-        "We re-ran the repository's DeltaAnalyzer on identifier sets constructed to match these counts (paper/revision_audit/verify_delta_sequence.py), and it produced the same partitions. Because the identifier sets were constructed by hand, this confirms only that the set arithmetic is implemented as described for this one sequence; it is not evidence of reliability on real builds. As Sec. III-C explains, identifier-based matching misclassifies renumbered findings and findings that share an identifier, so no general fidelity figure is claimed."
+        "Delta comparison was tested on three consecutive real scans of testbed 1 whose application build was changed on purpose: build v1 hides the /template route, build v2 is the full application, and build v3 hides the /view route. "
+        f"From the ground truth, the expected result of v1 to v2 is {len(dl2['expected_new_items'])} new findings (SSTI and XSS at /template) and none fixed, and of v2 to v3 is {len(dl2['expected_fixed_items'])} fixed findings (path traversal and XSS at /view) and none new. "
+        f"The experiment was executed twice. In the second execution all three scans were complete ({dl2['v1_findings']}, {dl2['v2_findings']}, and {dl2['v3_findings']} findings), and the delta was exact: v1 to v2 gave {d2a['new_count']} new, {d2a['fixed_count']} fixed, and {d2a['unchanged_count']} unchanged findings, and v2 to v3 gave {d2b['new_count']} new, {d2b['fixed_count']} fixed, and {d2b['unchanged_count']} unchanged (Fig. 4). "
+        f"In the first execution the scans were incomplete (they returned fewer findings than a complete scan; the engine's degraded flag was not logged) and returned {dl1['v1_findings']}, {dl1['v2_findings']}, and {dl1['v3_findings']} findings; the delta then reported {d1a['new_count']} new and {d1a['fixed_count']} fixed findings for v1 to v2 and {d1b['new_count']} new and {d1b['fixed_count']} fixed for v2 to v3, which includes findings that had not changed (the admin page and the exposed .env file each appeared as both new and fixed, and the IDOR finding was absent from one scan). "
+        "In the complete scans the fingerprints of identical findings were identical. The first execution did not log fingerprints, so the cause of the paired new/fixed entries is untested; it is consistent with a change in the set of plugins that reported the finding, because the reporting tool is part of the fingerprint (Sec. III-C). "
+        "A delta is therefore only as reliable as the scans it compares, and a release gate should refuse to compare scans that the engine marks as degraded or that return fewer findings than expected. "
+        "This check covers one application and two build changes and is not a general fidelity figure."
     )
 
-    add_figure('paper/figures/fig4_delta_diff.png', "Fig. 4.  Delta partitions for the synthetic three-build sequence (counts constructed to match Sec. IV-C).", width_in=4.5)
+    add_figure('paper/figures/fig4_delta_diff.png', "Fig. 4.  Delta results per build transition in two executions, compared with the expected counts (hatched).", width_in=4.8)
 
-    add_h2("D.  Test Suite Status (RQ4)")
+    add_h2("D.  Test Suite and Safety Checks (RQ4)")
     add_p(
-        "The repository contains 165 tests collected by pytest. In our verification run, 164 passed and 1 failed: test_auth.py asserts that registering the user 'testdev' succeeds, and it failed because that account already existed in the persistent user database, so the test is not idempotent. The project's unittest runner (run_tests.py) discovers 161 tests, all of which passed; pytest additionally collects function-style tests that unittest discovery does not. The tests cover plugin behavior (mostly in mock mode), the timing engine, the JSON fuzzer, the danger engine and recipes, MCP message handling, scan profiles, target reachability, and the --fail-on exit code. Mock-mode tests check parsing and control flow, not detection accuracy against live targets, and no test covers the 47-40-26 delta sequence or the 76-to-47 consolidation."
+        f"The project's runner (run_tests.py) executed {TEST_COUNT} tests in our verification run (parallel worker processes, with timing-sensitive modules re-run alone); {TEST_COUNT - 1} passed and 1 failed. The failure is the benchmark regression test test_benchmark_builtin_testbed1_and_testbed2, which asserts zero false positives and failed because testbed 2 reported the cookie finding described in Sec. IV-B; it failed again when re-run alone, so the suite is not fully green. The tests are isolated from the persistent user database by a per-worker temporary data directory, which fixes the non-idempotent authentication test noted in an earlier version. "
+        "They cover plugin behavior, the timing engine, the JSON fuzzer, the danger engine and recipes, MCP message handling, scan profiles, target reachability, report escaping, and the --fail-on exit code, and several run real scans against local fixture servers. "
+        "Regression tests also check safety properties: logout and other state-changing paths are never probed (test_probe_safety.py), redirects to out-of-scope hosts are not followed (test_b09_shared_http_client.py), the dashboard rejects POST requests without a CSRF token, throttles repeated failed logins, sets session cookie attributes, requires a POST with a CSRF token to log out, and hides one user's reports from another (test_b05_web_hardening.py and test_b20_dashboard_ownership_and_session.py), and the dashboard binds to 127.0.0.1 by default. "
+        "These are regression checks written by the developers, not an independent security assessment, and they do not show that no vulnerability remains in the tool itself."
     )
 
     # 8. Section V: DISCUSSION
     add_h1("V.  DISCUSSION, LIMITATIONS, AND DEPLOYMENT CONSIDERATIONS")
     add_p(
-        "Deployment considerations. (1) Single-page applications: regular-expression extraction finds API routes embedded in the HTML of visited pages, but externally loaded JavaScript bundles are not analyzed; pairing the crawler with a headless browser (for example Playwright) would be needed for full DOM-driven discovery. (2) Offline operation: CVSS enrichment applies only to findings that carry a CVE identifier, uses 2 s network timeouts, and is skipped silently when NVD and CIRCL are unreachable; there is no embedded offline CVE dictionary. The CWE and PCI DSS tables used by the compliance mapper are built in. (3) Enterprise authentication: SAML 2.0 and mTLS flows are not supported by the automatic authenticator; pre-authenticated headers can be supplied with the --headers option. (4) Default mode: the configuration default is mock mode (AUTOSEC_MOCK_MODE=true), which returns simulated findings, so real scans must be requested explicitly. (5) Transport: scanner requests disable TLS certificate verification."
+        "Deployment considerations. (1) Single-page applications: regular-expression extraction finds API routes embedded in the HTML of visited pages, but externally loaded JavaScript bundles are not analyzed; pairing the crawler with a headless browser (for example Playwright) would be needed for full DOM-driven discovery. (2) Offline operation: CVSS enrichment applies only to findings that carry a CVE identifier, uses 2 s network timeouts, and is skipped silently when NVD and CIRCL are unreachable; there is no embedded offline CVE dictionary. The CWE and PCI DSS tables used by the compliance mapper are built in. (3) Enterprise authentication: SAML 2.0 and mTLS flows are not supported by the automatic authenticator; pre-authenticated headers can be supplied with the --headers option. (4) Default mode: the configuration default is mock mode (AUTOSEC_MOCK_MODE=true), and the MCP autosec_scan tool also defaults to mock, so real scans must be requested explicitly. (5) Transport: scanner requests disable TLS certificate verification. (6) Scan completeness: a scan that reaches its deadline is marked degraded, and such a scan should not be used for release gating or delta comparison (Sec. IV-A and IV-C)."
     )
     add_p(
-        "Limitations and threats to validity. The evaluation uses one benchmark, one host, and one configuration, and the measurements are author-reported without retained raw logs or repetitions, so no variance can be given. Some plugins contain Juice Shop-specific paths and credentials, which favors the benchmark. Ground-truth labelling was not performed by an independent annotator. The 76-to-47 consolidation depends on a merge rule that the released Correlator does not implement. The delta comparison relies on plugin-assigned identifiers and is fragile when identifiers shift. The target guardrail is lexical and is not an authorization control. The MCP findings-retrieval tool returned no findings for saved reports because of a field-name mismatch, and the verification tool does not re-test a live target. OpenAPI endpoints are parsed but not yet fed to the plugins, the JWT plugin inspects tokens passively, and the recon profile contains active probes. No head-to-head comparison with ZAP, Burp Suite, Nuclei, or other tools was performed, and the fix recipes and danger grades were not validated with developers or executives."
+        "Limitations and threats to validity. The evaluation uses two small applications that the authors wrote together with the tool and its ground truth, one machine that was not isolated, and five repetitions per setting, so the accuracy figures describe known cases and not real-world performance, and no statistical inference is made. "
+        "The parallel speedup reported in earlier versions is not reproduced: scan time did not fall with more threads, the cause was not profiled, and scans were intermittently slow or truncated by the 300 s deadline. Only 17 of the 19 plugins ran in the evaluation because the Nmap and Nikto wrappers need external binaries. "
+        "The merge key and the delta fingerprint were designed with these testbeds in view, delta behavior was checked on one application and two build changes, and the scope guard resolves names once, so a changing DNS answer is not detected. "
+        "The JWT plugin inspects tokens passively, and the fix recipes cover seven finding classes and were not applied to a vulnerable application and re-scanned. No head-to-head comparison with ZAP, Burp Suite, Nuclei, or other tools was performed, and the fix recipes and danger grades were not validated with developers or executives."
     )
     add_p(
-        "Recommended follow-up work. (a) Repeat the k-sweep at least ten times per setting with a pinned Juice Shop version and report medians and dispersion. (b) Publish the ground-truth list, per-finding labels, and raw alerts, ideally with two independent annotators. (c) Implement and evaluate an explicit consolidation rule such as <host, port, normalized endpoint, CWE>. (d) Replace positional identifiers with a content-derived key and test renumbering cases. (e) Fix the MCP findings key mismatch and make verification run against the live target. (f) Run an agent-in-the-loop study that applies recipes, re-scans, and checks for regressions. (g) Compare against ZAP baseline and API scans on the same target."
+        "Recommended follow-up work. (a) Profile a scan to find the serial work that sets the 53 s floor and the cause of the intermittent slow and truncated scans, then repeat the thread sweep on an idle machine. (b) Evaluate on independent intentionally vulnerable applications such as VAmPI, PyGoat, Vulpy, and a pinned OWASP Juice Shop image [15], using the ground-truth files and harness in the benchmark directory, with two independent annotators. (c) Make delta comparison refuse, or flag, scans that the engine marks as degraded. (d) Run an agent-in-the-loop study that applies recipes, re-scans, and checks for regressions. (e) Compare against ZAP baseline and API scans on the same targets. (f) Add recipes for the finding classes that have none."
     )
 
     # 9. Section VI: CONCLUSION
     add_h1("VI.  CONCLUSION AND FUTURE WORK")
     add_p(
-        "AutoSecAudit is an open, extensible DAST orchestration framework that runs 19 scanner plugins concurrently, adds heuristic false-positive reduction, cross-references and annotates findings with compliance and business-risk context, offers predefined fix recipes, and exposes scanning and recipe lookup to AI coding assistants through an MCP server. In a preliminary single-configuration evaluation on OWASP Juice Shop, eight worker threads reduced scan latency by 64.8% (2.84x speedup) relative to sequential execution, and the reported run yielded 97.9% precision and 88.5% recall on the labelled vulnerabilities with 38.2% fewer alerts after consolidation. These measurements are author-reported, were not independently replicated, and apply to this benchmark only; the consolidation step is not reproducible from the released code path. The delta comparison reproduced the expected partitions on a synthetic identifier sequence but depends on plugin-assigned identifiers. Closed-loop AI remediation, in which an agent applies a patch and a live re-scan confirms the fix without regressions, remains future work. Further work will address the limitations in Sec. V, evaluate local LLM agents for patch synthesis, and explore distributed multi-node scanning."
+        f"AutoSecAudit is an open, extensible DAST orchestration framework that runs 19 scanner plugins concurrently through one shared HTTP client, applies heuristic false-positive reduction, merges duplicate findings, annotates them with compliance and business-risk context, offers predefined fix recipes, and exposes scanning, recipe lookup, and targeted re-testing to AI coding assistants through an MCP server. "
+        f"On two small purpose-built applications it found all planted vulnerabilities when its scans completed ({A1['n_complete']} of {A1['n']} runs on testbed 1 and all {A2['n']} on testbed 2), and merging reduced raw alerts by {red1:.0f}% and {red2:.0f}%; false positives were absent in ten measured runs but one appeared in a further run. "
+        f"The evaluation also exposed weaknesses: more worker threads did not shorten scans, some scans were slow or reached the scan deadline and lost findings, and delta comparison gave spurious changes when scans were incomplete. "
+        "These results are small-scale, come from applications the authors wrote, and replace earlier figures that could not be reproduced. Closed-loop AI remediation, in which an agent applies a patch and a live re-scan confirms the fix without regressions, remains future work. Further work will address the limitations in Sec. V, evaluate independent vulnerable applications, and explore distributed multi-node scanning."
     )
 
     # 10. ACKNOWLEDGMENT
@@ -620,13 +705,13 @@ def build_paper():
     add_h1("REFERENCES")
     refs = [
         "[1] G. F. Lyon, Nmap Network Scanning: The Official Nmap Project Guide to Network Discovery and Vulnerability Scanning. Insecure.Com LLC, 2009.",
-        "[2] C. Sullo and D. Lodge, \"Nikto Web Server Scanner,\" Open Source Security Tool, 2023. Available: https://cirt.net/Nikto2",
+        "[2] C. Sullo, \"Nikto web server scanner,\" open-source software, version 2.6. Available: https://github.com/sullo/nikto (accessed Oct. 2026)",
         "[3] ProjectDiscovery, \"Nuclei: Fast and Customizable Vulnerability Scanner Based on Simple YAML DSL,\" 2024. Available: https://github.com/projectdiscovery/nuclei",
         "[4] OWASP Foundation, \"OWASP Zed Attack Proxy (ZAP),\" 2024. Available: https://www.zaproxy.org/",
         "[5] OWASP Foundation, \"OWASP DefectDojo: Vulnerability Management Orchestration,\" 2024. Available: https://www.defectdojo.org/",
         "[6] OWASP Top 10 Team, \"OWASP Top 10: 2021 The Ten Most Critical Web Application Security Risks,\" OWASP Foundation, 2021. Available: https://owasp.org/Top10/",
-        "[7] PCI Security Standards Council, Payment Card Industry Data Security Standard (PCI DSS): Requirements and Testing Procedures, Version 4.0, 2022.",
-        "[8] National Institute of Standards and Technology (NIST), \"National Vulnerability Database (NVD) REST API v2.0,\" U.S. Department of Commerce, 2023.",
+        "[7] PCI Security Standards Council, Payment Card Industry Data Security Standard (PCI DSS): Requirements and Testing Procedures, Version 4.0, 2022. Available: https://www.pcisecuritystandards.org/document_library/ (accessed Oct. 2026)",
+        "[8] National Institute of Standards and Technology (NIST), \"National Vulnerability Database (NVD) REST API v2.0,\" U.S. Department of Commerce, 2023. Available: https://nvd.nist.gov/developers/vulnerabilities (accessed Oct. 2026)",
         "[9] M. Myrbakken and R. Colomo-Palacios, \"DevSecOps: A Multivocal Literature Review,\" in Communications in Computer and Information Science, vol. 770, Springer, 2017, pp. 17\u201329.",
         "[10] J. Bau, E. Bursztein, D. Gupta, and J. C. Mitchell, \"State of the Art: Automated Black-Box Web Application Vulnerability Testing,\" in Proc. 31st IEEE Symposium on Security and Privacy (S&P '10), 2010, pp. 332\u2013345.",
         "[11] A. Doup\u00e9, M. Cova, and G. Vigna, \"Enemy of the State: A State-Aware Black-Box Web Vulnerability Scanner,\" in Proc. 21st USENIX Security Symposium (USENIX Security '12), 2012, pp. 523\u2013538.",

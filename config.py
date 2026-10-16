@@ -11,6 +11,25 @@ BASE_DIR = Path(__file__).parent
 PLUGINS_DIR = str(BASE_DIR / "plugins")
 
 
+def _load_env_file() -> None:
+    env_file = BASE_DIR / ".env"
+    if env_file.is_file():
+        try:
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip().strip("'\"")
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+        except Exception as e:
+            logger.debug("Failed to read .env: %s", e)
+
+
+_load_env_file()
+
+
+
 def _get_data_dir() -> str:
     return os.environ.get("AUTOSEC_DATA_DIR") or str(BASE_DIR / "data")
 
@@ -32,6 +51,7 @@ def __dir__():
 
 
 MOCK_MODE = os.environ.get("AUTOSEC_MOCK_MODE", "true").lower() == "true"
+ALLOW_REGISTRATION = os.environ.get("AUTOSEC_ALLOW_REGISTRATION", "false").lower() in ("true", "1", "yes")
 
 
 def _is_loopback(host_str: str) -> bool:
@@ -268,7 +288,7 @@ SCAN_PROFILES = {
         ]
     },
     "recon": {
-        "name": "Passive & Non-Intrusive Recon",
+        "name": "Reconnaissance (Low-Impact Active Probing)",
         "description": "External reconnaissance, SSL/TLS validation, directory discovery, and port enumeration.",
         "plugins": [
             "SSLTLSScanner", "MisconfigScanner", "DirBruteScanner", "NiktoPlugin",

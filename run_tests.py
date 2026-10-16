@@ -35,6 +35,7 @@ import unittest
 
 # Modules that take the longest run first so the pool does not end with one long straggler.
 SLOW_FIRST = (
+    "test_benchmark",
     "test_b25_regression_testbed",
     "test_auto_authenticator",
     "test_b18_accuracy",
@@ -54,6 +55,7 @@ RUN_ALONE = (
     # parallel CPU contention, and retrying it after a parallel failure doubles that large cost, so run
     # it alone from the start. The other e2e modules stay parallel and rely on the alone-retry fallback.
     "test_b25_regression_testbed",
+    "test_benchmark",
 )
 
 LOOPBACK_PROBE_SECONDS = 0.3

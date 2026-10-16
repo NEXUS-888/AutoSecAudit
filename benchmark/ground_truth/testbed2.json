@@ -1,0 +1,92 @@
+{
+  "target": "testbed2",
+  "description": "AutoSecAudit Regression Testbed Sandbox Application 2 (testbed/app2.py)",
+  "items": [
+    {
+      "id": "tb2-sqli-labs",
+      "vuln_type": "sqli",
+      "endpoint": "/labs/sqli",
+      "classification": "real",
+      "source": "testbed/app2.py:lab_sqli",
+      "description": "Simulated SQL syntax error leak in form submission"
+    },
+    {
+      "id": "tb2-xss-labs",
+      "vuln_type": "xss",
+      "endpoint": "/labs/xss",
+      "classification": "real",
+      "source": "testbed/app2.py:lab_xss",
+      "description": "Reflected Cross-Site Scripting via unescaped POST body"
+    },
+    {
+      "id": "tb2-cmdi-labs",
+      "vuln_type": "command_injection",
+      "endpoint": "/labs/rce",
+      "classification": "real",
+      "source": "testbed/app2.py:lab_rce",
+      "description": "Simulated OS command injection with token markers"
+    },
+    {
+      "id": "tb2-ssti-labs",
+      "vuln_type": "ssti",
+      "endpoint": "/labs/ssti",
+      "classification": "real",
+      "source": "testbed/app2.py:lab_ssti",
+      "description": "Server-Side Template Injection via render_template_string"
+    },
+    {
+      "id": "tb2-sqli-bare500",
+      "vuln_type": "sqli",
+      "endpoint": "/labs/sqli_bare500",
+      "classification": "real",
+      "source": "testbed/app2.py:lab_sqli_bare500",
+      "description": "Bare 500 error status differential on lone quote"
+    },
+    {
+      "id": "tb2-cookie-session",
+      "vuln_type": "insecure_cookie",
+      "endpoint": "/",
+      "classification": "real",
+      "source": "testbed/app2.py:index",
+      "description": "Session cookie missing HttpOnly and SameSite flags"
+    },
+    {
+      "id": "tb2-api-openapi",
+      "vuln_type": "api_abuse",
+      "endpoint": "/openapi.json",
+      "classification": "real",
+      "source": "testbed/app2.py:openapi_spec",
+      "description": "Exposed OpenAPI specification enumerating API routes"
+    },
+    {
+      "id": "tb2-api-debug",
+      "vuln_type": "api_abuse",
+      "endpoint": "/api/v1/_debug",
+      "classification": "real",
+      "source": "testbed/app2.py:api_debug",
+      "description": "Unauthenticated debug route exposing user database records"
+    },
+    {
+      "id": "tb2-decoy-redirect",
+      "vuln_type": "open_redirect",
+      "endpoint": "/go",
+      "classification": "decoy",
+      "source": "testbed/app2.py:slash_redirect",
+      "description": "Same-site slash redirect (/go -> /go/?next=...)"
+    },
+    {
+      "id": "tb2-decoy-csrf",
+      "vuln_type": "csrf",
+      "endpoint": "/login",
+      "classification": "decoy",
+      "source": "testbed/app2.py:login",
+      "description": "Anti-CSRF token protected form (not vulnerable to CSRF)"
+    }
+  ],
+  "informational": [
+    "misconfig",
+    "port_scan",
+    "info_disclosure",
+    "ssl_tls"
+  ]
+}

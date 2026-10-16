@@ -244,7 +244,8 @@ def interactive_menu():
                 mock = prompt_mode_selection(default_mock=True)
                 config.MOCK_MODE = mock
                 mode_str = "MOCK DEMO" if mock else "REAL SCAN"
-                print(f"\n[STARTING SERVER in {mode_str} MODE]")
+                os.environ.setdefault("AUTOSEC_ALLOW_REGISTRATION", "true")
+                print(f"\n[STARTING SERVER in {mode_str} MODE] (Registration: ENABLED)")
                 print("Open http://localhost:5000 in your browser (Press Ctrl+C to stop)\n")
                 from ui.app import app
                 app.run(debug=config.DEBUG, host=config.HOST, port=5000)
@@ -320,12 +321,25 @@ def main():
     server_mode_group = server_parser.add_mutually_exclusive_group()
     server_mode_group.add_argument("--real", action="store_true", help="Force REAL active scanning mode")
     server_mode_group.add_argument("--mock", "--demo", dest="mock", action="store_true", help="Force MOCK demo mode")
+    server_reg_group = server_parser.add_mutually_exclusive_group()
+    server_reg_group.add_argument("--allow-registration", action="store_true", default=None, help="Enable self-registration on the dashboard (default: enabled)")
+    server_reg_group.add_argument("--disable-registration", action="store_true", default=None, help="Disable self-registration on the dashboard")
 
     testbed_parser = subparsers.add_parser("testbed", help="Launch the local vulnerable sandbox testbed")
     testbed_parser.add_argument("--port", type=int, default=8080, help="Port to run testbed on (default: 8080)")
     testbed_parser.add_argument("--host", default="127.0.0.1", help="Host address (default: 127.0.0.1)")
     testbed_parser.add_argument("--app", choices=["1", "2", "app", "app2"], default="app", help="Select testbed app (app or app2, default: app)")
     testbed_parser.add_argument("--app2", action="store_true", help="Launch testbed app2 instead of app")
+    
+    benchmark_parser = subparsers.add_parser("benchmark", help="Run precision and recall benchmark harness")
+    benchmark_parser.add_argument("--target", choices=["testbed1", "testbed2", "all"], default="all", help="Target testbed (default: all)")
+    benchmark_parser.add_argument("--url", help="URL of an already-running local target (e.g. http://127.0.0.1:8000)")
+    benchmark_parser.add_argument("--truth", help="Name or path of ground-truth file (e.g. testbed1, pygoat, vampi, vulpy)")
+    benchmark_parser.add_argument("--login-user", help="Username for authenticated scanning")
+    benchmark_parser.add_argument("--login-pass", help="Password for authenticated scanning")
+    benchmark_parser.add_argument("--login-url", help="Login form URL path (e.g. /login)")
+    benchmark_parser.add_argument("--output", help="Custom path to output JSON results file")
+    benchmark_parser.add_argument("--write-markdown", action="store_true", help="Regenerate committed benchmark/RESULTS.md")
     
     args = parser.parse_args()
     
@@ -376,14 +390,25 @@ def main():
             run_testbed(host=args.host, port=args.port)
         return 0
     elif args.command == "server":
+        if getattr(args, "disable_registration", False):
+            os.environ["AUTOSEC_ALLOW_REGISTRATION"] = "false"
+        elif getattr(args, "allow_registration", False):
+            os.environ["AUTOSEC_ALLOW_REGISTRATION"] = "true"
+        else:
+            os.environ.setdefault("AUTOSEC_ALLOW_REGISTRATION", "true")
         from ui.app import app
         mode_str = "MOCK DEMO" if config.MOCK_MODE else "REAL ACTIVE SCAN"
+        reg_str = "ENABLED" if os.environ.get("AUTOSEC_ALLOW_REGISTRATION", "").lower() in ("true", "1", "yes") else "DISABLED"
         print("\n" + "=" * 60)
-        print(f"Starting AutoSecAudit Web Dashboard [{mode_str} MODE]...")
+        print(f"Starting AutoSecAudit Web Dashboard [{mode_str} MODE] (Registration: {reg_str})...")
         print("Open http://localhost:5000 in your browser")
         print("=" * 60 + "\n")
         app.run(debug=config.DEBUG, host=config.HOST, port=5000)
         return 0
+    elif args.command == "benchmark":
+        from benchmark.run_benchmark import main as run_benchmark_main
+        sys.argv = [sys.argv[0] + " benchmark"] + sys.argv[2:]
+        return run_benchmark_main()
     else:
         parser.print_help()
         return 0
