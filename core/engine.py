@@ -329,6 +329,8 @@ class Engine:
                     logger.warning(f"Automated authentication failed on {self.target}: {self.auth_result.message}")
             except Exception as e:
                 logger.error(f"Error during automated login: {e}", exc_info=True)
+                from core.authenticator import AuthResult
+                self.auth_result = AuthResult(success=False, message=f"Authentication exception: {e}")
 
         # Setup shared HTTP client early so crawler and openapi probe can use it
         self.setup_shared_http_client(auth_headers=auth_headers, auth_cookies=auth_cookies)
@@ -550,6 +552,8 @@ class Engine:
         auth_status = None
         if self.auth_result:
             auth_status = "Authenticated" if self.auth_result.success else f"Auth Failed ({self.auth_result.message})"
+        elif self.auth_credentials and not self.mock_mode:
+            auth_status = "Auth Failed (Automated login could not be completed)"
         elif self.custom_headers:
             auth_status = "Custom Headers"
 

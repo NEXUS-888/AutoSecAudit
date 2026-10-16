@@ -1508,16 +1508,16 @@ HTML_FORM = """
                         </summary>
                         <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; cursor: default;">
                             <div>
-                                <label style="display: block; font-size: 11px; color: var(--fg-muted); margin-bottom: 4px;">Username or Email</label>
-                                <input type="text" name="login_user" placeholder="e.g. admin or testuser" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 12px;" />
+                                <label for="login_user_input" style="display: block; font-size: 11px; color: var(--fg-muted); margin-bottom: 4px;">Username or Email</label>
+                                <input type="text" id="login_user_input" name="login_user" aria-label="Username or Email" placeholder="e.g. admin or testuser" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 12px;" />
                             </div>
                             <div>
-                                <label style="display: block; font-size: 11px; color: var(--fg-muted); margin-bottom: 4px;">Password</label>
-                                <input type="password" name="login_pass" placeholder="••••••••••••" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 12px;" />
+                                <label for="login_pass_input" style="display: block; font-size: 11px; color: var(--fg-muted); margin-bottom: 4px;">Password</label>
+                                <input type="password" id="login_pass_input" name="login_pass" aria-label="Password" autocomplete="off" placeholder="••••••••••••" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 12px;" />
                             </div>
                             <div style="grid-column: 1 / -1;">
-                                <label style="display: block; font-size: 11px; color: var(--fg-muted); margin-bottom: 4px;">Login URL Path (Optional, auto-detects /login if empty)</label>
-                                <input type="text" name="login_url" placeholder="/login or /api/auth/login" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 12px;" />
+                                <label for="login_url_input" style="display: block; font-size: 11px; color: var(--fg-muted); margin-bottom: 4px;">Login URL Path (Optional, auto-detects /login if empty)</label>
+                                <input type="text" id="login_url_input" name="login_url" aria-label="Login URL Path" placeholder="/login or /api/auth/login" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 12px;" />
                             </div>
                         </div>
                     </details>
@@ -2736,6 +2736,20 @@ def scan_async():
     else:
         is_demo = False  # Omitted mode parameter defaults to Real Mode validation
 
+    login_user = request.form.get("login_user", "").strip() or None
+    login_pass = request.form.get("login_pass", "").strip() or None
+    login_url = request.form.get("login_url", "").strip() or None
+
+    if is_demo:
+        login_user = None
+        login_pass = None
+        login_url = None
+    elif login_url:
+        from core.authenticator import validate_login_url
+        valid, err_msg = validate_login_url(login_url, target)
+        if not valid:
+            return jsonify({"error": err_msg}), 400
+
     # Target presence check ONLY in Real Mode; completely bypassed in Demo Mode!
     if not is_demo and not skip_reachability:
         reachable, reach_msg = check_target_reachable(target, timeout=2.5)
@@ -2787,10 +2801,6 @@ def scan_async():
             with tempfile.NamedTemporaryFile(delete=False, dir=config.DATA_DIR, prefix=f"temp_openapi_{filename}_", suffix=".json") as tmp:
                 openapi_file.save(tmp.name)
                 openapi_path = tmp.name
-
-        login_user = request.form.get("login_user", "").strip() or None
-        login_pass = request.form.get("login_pass", "").strip() or None
-        login_url = request.form.get("login_url", "").strip() or None
 
         _scan_executor.submit(
             scan_jobs[scan_id],

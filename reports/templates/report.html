@@ -1602,6 +1602,11 @@
                         {{ report.timestamp }}
                     </span>
                     <span class="status-badge">Scan Complete</span>
+                    {% if report.auth_status %}
+                    <span class="hero-meta-item" style="{% if 'fail' in report.auth_status.lower() %}color: #ef4444;{% else %}color: #22c55e;{% endif %} font-weight: 600;">
+                        Auth: {{ report.auth_status }}
+                    </span>
+                    {% endif %}
                 </div>
             </div>
         </div>

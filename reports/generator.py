@@ -211,7 +211,11 @@ class ReportGenerator:
         story.append(Spacer(1, 4))
         target_val = saxutils.escape(str(report_data.get('target', 'Unknown')))
         ts_val = saxutils.escape(str(report_data.get('timestamp', 'N/A')))
-        story.append(Paragraph(f'<b>Target:</b> {target_val} &nbsp;|&nbsp; <b>Timestamp:</b> {ts_val}', sub_style))
+        meta_line = f'<b>Target:</b> {target_val} &nbsp;|&nbsp; <b>Timestamp:</b> {ts_val}'
+        if report_data.get('auth_status'):
+            auth_val = saxutils.escape(str(report_data['auth_status']))
+            meta_line += f' &nbsp;|&nbsp; <b>Auth:</b> {auth_val}'
+        story.append(Paragraph(meta_line, sub_style))
         story.append(Spacer(1, 8))
         if report_data.get('scan_mode') == 'demo':
             story.append(Paragraph('<b>DEMO MODE - simulated results.</b> No live scan was run against this target.', sub_style))

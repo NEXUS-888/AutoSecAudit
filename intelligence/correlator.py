@@ -120,7 +120,14 @@ class Correlator:
                 continue
 
             # Multiple findings sharing canonical key: merge!
-            best = max(group, key=lambda x: CONF_RANK.get((getattr(x, "confidence", "medium") or "medium").lower(), 2))
+            best = max(
+                group,
+                key=lambda x: (
+                    CONF_RANK.get((getattr(x, "confidence", "medium") or "medium").lower(), 2),
+                    getattr(x, "id", "") or "",
+                    getattr(x, "tool_name", "") or "",
+                ),
+            )
             highest_conf = best.confidence or "medium"
             evidence = best.evidence or best.raw_output
 
@@ -194,7 +201,7 @@ class Correlator:
 
         for key, group in endpoint_param_map.items():
             if len(group) > 1:
-                related_ids = [item.id for item in group if item.id]
+                related_ids = sorted([item.id for item in group if item.id])
                 ref_str = f"Related findings: {', '.join(related_ids[:3])}"
                 for f in group:
                     if f.references is None:

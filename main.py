@@ -50,7 +50,7 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
              fail_on: str = None, webhook: str = None, openapi: str = None, headers: str = None,
              mock_mode: Optional[bool] = None, profile: str = "full", skip_reachability: bool = False,
              login_user: str = None, login_pass: str = None, login_url: str = None,
-             treat_dev_artifacts_as_info: bool = False):
+             treat_dev_artifacts_as_info: bool = False, sarif: str = None, junit: str = None):
     
     if mock_mode is not None:
         config.MOCK_MODE = mock_mode
@@ -142,6 +142,14 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
     json_path = paths.json
     html_path = paths.html
 
+    if sarif:
+        from reports.sarif import generate_sarif_report
+        generate_sarif_report(report, sarif)
+
+    if junit:
+        from reports.junit import generate_junit_report
+        generate_junit_report(report, junit, fail_on=fail_on)
+
     print(f"\n{'='*50}")
     print(f"Scan Complete! [{mode_label}]")
     print(f"{'='*50}")
@@ -166,6 +174,10 @@ def run_scan(target: str, previous_report: str = None, output_json: str = None, 
     print(f"\nReports:")
     print(f"  JSON: {json_path}")
     print(f"  HTML: {html_path}")
+    if sarif:
+        print(f"  SARIF: {sarif}")
+    if junit:
+        print(f"  JUnit: {junit}")
 
     # CI/CD Gating Check
     if fail_on:
@@ -301,6 +313,8 @@ def main():
     scan_parser.add_argument("-p", "--previous", help="Path to previous report for delta comparison")
     scan_parser.add_argument("--json", help="Output JSON file path")
     scan_parser.add_argument("--html", help="Output HTML file path")
+    scan_parser.add_argument("--sarif", help="Output SARIF 2.1.0 file path for CI/CD pipelines")
+    scan_parser.add_argument("--junit", help="Output JUnit XML file path for CI/CD test reporting")
     scan_parser.add_argument("--fail-on", choices=["critical", "high", "medium", "low"], help="Fail CI/CD pipeline if findings equal or exceed severity threshold")
     scan_parser.add_argument("--webhook", help="URL for Slack/Discord webhook alerts")
     scan_parser.add_argument("--openapi", help="Path or URL to OpenAPI/Swagger spec")
@@ -375,7 +389,9 @@ def main():
             login_user=getattr(args, "login_user", None),
             login_pass=getattr(args, "login_pass", None),
             login_url=getattr(args, "login_url", None),
-            treat_dev_artifacts_as_info=getattr(args, "treat_dev_artifacts_as_info", False)
+            treat_dev_artifacts_as_info=getattr(args, "treat_dev_artifacts_as_info", False),
+            sarif=getattr(args, "sarif", None),
+            junit=getattr(args, "junit", None)
         )
 
     elif args.command == "plugins":

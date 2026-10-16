@@ -391,6 +391,10 @@ python main.py scan http://localhost:3000 --real --login-user admin --login-pass
 # ── CI/CD Build Gating (Fails build if severity exceeds threshold) ───────
 python main.py scan http://localhost:3000 --fail-on high
 
+# ── CI/CD SARIF and JUnit Outputs (GitHub Code Scanning & Test Runners) ───
+# Exports SARIF 2.1.0 for GitHub Security tab and JUnit XML for test dashboards:
+python main.py scan http://localhost:3000 --real --sarif autosec-report.sarif --junit autosec-junit.xml --fail-on high
+
 # ── OpenAPI / Swagger Specification Import ──────────────────────────────
 python main.py scan http://localhost:3000 --openapi ./swagger.json
 
