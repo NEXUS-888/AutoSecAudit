@@ -141,6 +141,10 @@ REPORT_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 # HTTP scanning settings
 HTTP_TIMEOUT = int(os.environ.get("AUTOSEC_HTTP_TIMEOUT", "10"))
 SCAN_TIMEOUT = int(os.environ.get("AUTOSEC_SCAN_TIMEOUT", "300"))
+# Login-endpoint SQL injection probing limit (AUD-71)
+MAX_LOGIN_PROBE_REQUESTS = int(os.environ.get("AUTOSEC_MAX_LOGIN_PROBE_REQUESTS", "25"))
+SQLI_MAX_LOGIN_REQUESTS = MAX_LOGIN_PROBE_REQUESTS
+
 USER_AGENT = "AutoSecAudit/2.0"
 
 DEFAULT_MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MiB

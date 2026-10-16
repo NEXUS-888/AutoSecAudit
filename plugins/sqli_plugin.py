@@ -4,6 +4,7 @@ import logging
 import urllib.parse
 from typing import Dict, Any, List, Optional
 
+import config
 from plugins.base_plugin import BaseScanner
 from core.utils import format_severity
 from core.cookies import (describe_issue, insecure_cookie_flags, raw_set_cookie_headers,
@@ -223,9 +224,147 @@ class SQLiScanner(BaseScanner):
             })
             logger.info(f"[SQLi] Detected error status differential at {path}?{param}")
 
+    def _probe_login_with_retry(
+        self,
+        url: str,
+        body: Dict[str, Any],
+        is_control: bool,
+        kwargs_builder: Any,
+        login_posts_sent: List[int],
+        max_login_requests: int,
+    ) -> Optional[requests.Response]:
+        """Send a login probe POST with a single GET re-fetch retry if response is None, 404, 429, or 5xx for control."""
+        if login_posts_sent[0] >= max_login_requests:
+            return None
+
+        login_posts_sent[0] += 1
+        resp = self._safe_request(
+            "POST",
+            url,
+            timeout=REQUEST_TIMEOUT,
+            allow_redirects=False,
+            **kwargs_builder(body),
+        )
+
+        should_retry = (
+            resp is None
+            or resp.status_code in (404, 429)
+            or (is_control and resp.status_code >= 500)
+        )
+        if should_retry and login_posts_sent[0] < max_login_requests:
+            # Re-fetch form with GET to re-establish session and retry that probe once
+            self._safe_request("GET", url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+            login_posts_sent[0] += 1
+            resp = self._safe_request(
+                "POST",
+                url,
+                timeout=REQUEST_TIMEOUT,
+                allow_redirects=False,
+                **kwargs_builder(body),
+            )
+
+        return resp
+
+    def _eval_login_status_differential(
+        self,
+        url: str,
+        login_path: str,
+        user_field: str,
+        pass_field: str,
+        mode_name: str,
+        kwargs_builder: Any,
+        login_posts_sent: List[int],
+        max_login_requests: int,
+    ) -> bool:
+        """Evaluate status differential on 3 probes made back to back with the form warmed up."""
+        if login_posts_sent[0] >= max_login_requests:
+            return False
+
+        # Warm up form with GET first
+        self._safe_request("GET", url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+
+        # 1. Test user_field
+        ctrl_body = {user_field: "safe123", pass_field: "wrong_password_999"}
+        ctrl_resp = self._probe_login_with_retry(
+            url, ctrl_body, is_control=True, kwargs_builder=kwargs_builder,
+            login_posts_sent=login_posts_sent, max_login_requests=max_login_requests,
+        )
+        if ctrl_resp is not None and ctrl_resp.status_code < 500:
+            single_body = {user_field: "'", pass_field: "wrong_password_999"}
+            single_resp = self._probe_login_with_retry(
+                url, single_body, is_control=False, kwargs_builder=kwargs_builder,
+                login_posts_sent=login_posts_sent, max_login_requests=max_login_requests,
+            )
+            if single_resp is not None and single_resp.status_code >= 500:
+                double_body = {user_field: "''", pass_field: "wrong_password_999"}
+                double_resp = self._probe_login_with_retry(
+                    url, double_body, is_control=False, kwargs_builder=kwargs_builder,
+                    login_posts_sent=login_posts_sent, max_login_requests=max_login_requests,
+                )
+                if double_resp is not None and double_resp.status_code < 500:
+                    self.results.append({
+                        "endpoint": login_path,
+                        "param": user_field,
+                        "payload": "'",
+                        "matched_signature": "error_status_differential",
+                        "status_code": single_resp.status_code,
+                        "evidence": (
+                            f"Login {mode_name} probe lone quote returned {single_resp.status_code} "
+                            f"while control ({ctrl_resp.status_code}) and doubled quote ({double_resp.status_code}) returned normal status."
+                        ),
+                        "type": "status_differential",
+                        "verified": True,
+                        "confidence": "medium",
+                    })
+                    logger.info(f"[SQLi] Detected login error status differential at {login_path} ({user_field})")
+                    return True
+
+        # 2. Test pass_field if user_field did not trigger
+        if login_posts_sent[0] < max_login_requests:
+            self._safe_request("GET", url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+            ctrl_body_p = {user_field: "autosec_user", pass_field: "safe123"}
+            ctrl_resp_p = self._probe_login_with_retry(
+                url, ctrl_body_p, is_control=True, kwargs_builder=kwargs_builder,
+                login_posts_sent=login_posts_sent, max_login_requests=max_login_requests,
+            )
+            if ctrl_resp_p is not None and ctrl_resp_p.status_code < 500:
+                single_body_p = {user_field: "autosec_user", pass_field: "'"}
+                single_resp_p = self._probe_login_with_retry(
+                    url, single_body_p, is_control=False, kwargs_builder=kwargs_builder,
+                    login_posts_sent=login_posts_sent, max_login_requests=max_login_requests,
+                )
+                if single_resp_p is not None and single_resp_p.status_code >= 500:
+                    double_body_p = {user_field: "autosec_user", pass_field: "''"}
+                    double_resp_p = self._probe_login_with_retry(
+                        url, double_body_p, is_control=False, kwargs_builder=kwargs_builder,
+                        login_posts_sent=login_posts_sent, max_login_requests=max_login_requests,
+                    )
+                    if double_resp_p is not None and double_resp_p.status_code < 500:
+                        self.results.append({
+                            "endpoint": login_path,
+                            "param": pass_field,
+                            "payload": "'",
+                            "matched_signature": "error_status_differential",
+                            "status_code": single_resp_p.status_code,
+                            "evidence": (
+                                f"Login {mode_name} probe lone quote on password returned {single_resp_p.status_code} "
+                                f"while control ({ctrl_resp_p.status_code}) and doubled quote ({double_resp_p.status_code}) returned normal status."
+                            ),
+                            "type": "status_differential",
+                            "verified": True,
+                            "confidence": "medium",
+                        })
+                        logger.info(f"[SQLi] Detected login error status differential at {login_path} ({pass_field})")
+                        return True
+
+        return False
+
     def _test_login_endpoints(self, base_url: str) -> None:
         """POST common login forms with SQL injection payloads using both JSON and form encoding."""
-        login_paths = list(LOGIN_ENDPOINTS)
+        max_login_requests = getattr(config, "MAX_LOGIN_PROBE_REQUESTS", 25)
+        login_posts_sent = [0]
+
+        discovered_login_paths = []
         fields_by_path: Dict[str, List[str]] = {}
         for ep in self.discovered_endpoints or []:
             p = ep.get("path", "")
@@ -234,17 +373,26 @@ class SQLiScanner(BaseScanner):
                 continue
             p_lower = p.lower()
             if any(kw in p_lower for kw in ("login", "signin", "auth", "session")):
-                if p not in login_paths:
-                    login_paths.append(p)
+                if p not in discovered_login_paths:
+                    discovered_login_paths.append(p)
             if param:
                 fields_by_path.setdefault(p, []).append(param)
 
+        login_paths = list(discovered_login_paths)
+        for p in LOGIN_ENDPOINTS:
+            if p not in login_paths:
+                login_paths.append(p)
+
+        modes = [
+            ("form", lambda b: {"data": b, "headers": {**HEADERS, "Content-Type": "application/x-www-form-urlencoded"}}),
+            ("json", lambda b: {"json_data": b, "headers": {**HEADERS, "Content-Type": "application/json"}}),
+        ]
+
         for login_path in login_paths:
+            if login_posts_sent[0] >= max_login_requests:
+                break
             url = f"{base_url}{login_path}"
-            # Warm up the form with a GET first, as a browser (and the authenticator) does: some apps
-            # serve the real login handler only after the form has been fetched in the same session,
-            # and return 404/error for a cold POST. Without this, a genuine login SQLi is missed.
-            self._safe_request("GET", url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+
             disc_fields = fields_by_path.get(login_path, [])
             candidate_pairs = []
             if disc_fields:
@@ -263,35 +411,49 @@ class SQLiScanner(BaseScanner):
                     seen_pairs.add((u, p))
                     unique_pairs.append((u, p))
 
-            for user_field, pass_field in unique_pairs:
-                modes = [
-                    ("form", lambda b: {"data": b, "headers": {**HEADERS, "Content-Type": "application/x-www-form-urlencoded"}}),
-                    ("json", lambda b: {"json_data": b, "headers": {**HEADERS, "Content-Type": "application/json"}}),
-                ]
+            hit = False
+
+            # (1) Run status-differential check for the discovered form's real field names BEFORE
+            # the bypass-payload loop and before trying the hard-coded alternative pairs
+            if disc_fields and unique_pairs:
+                real_user_f, real_pass_f = unique_pairs[0]
                 for mode_name, kwargs_builder in modes:
-                    # 1. Send control login with invalid credentials to establish baseline
+                    if self._eval_login_status_differential(
+                        url, login_path, real_user_f, real_pass_f, mode_name, kwargs_builder,
+                        login_posts_sent, max_login_requests
+                    ):
+                        hit = True
+                        break
+                if hit:
+                    if discovered_login_paths and login_path in discovered_login_paths:
+                        break
+                    continue
+
+            # (2) Bypass payload loop
+            for user_field, pass_field in unique_pairs:
+                if hit or login_posts_sent[0] >= max_login_requests:
+                    break
+                for mode_name, kwargs_builder in modes:
+                    if hit or login_posts_sent[0] >= max_login_requests:
+                        break
+
                     ctrl_body = {user_field: "autosec_invalid_user", pass_field: "wrong_password_999"}
-                    ctrl_resp = self._safe_request(
-                        "POST",
-                        url,
-                        timeout=REQUEST_TIMEOUT,
-                        allow_redirects=False,
-                        **kwargs_builder(ctrl_body),
+                    ctrl_resp = self._probe_login_with_retry(
+                        url, ctrl_body, is_control=True, kwargs_builder=kwargs_builder,
+                        login_posts_sent=login_posts_sent, max_login_requests=max_login_requests
                     )
                     ctrl_status = ctrl_resp.status_code if ctrl_resp is not None else None
                     ctrl_loc = (ctrl_resp.headers.get("Location") or "").strip() if ctrl_resp and getattr(ctrl_resp, "headers", None) else ""
                     ctrl_cookies = set(ctrl_resp.cookies.keys()) if ctrl_resp and getattr(ctrl_resp, "cookies", None) else set()
                     ctrl_text = ctrl_resp.text.lower() if ctrl_resp and getattr(ctrl_resp, "text", None) else ""
 
-                    hit = False
                     for payload in ["' OR 1=1--", "' OR '1'='1'--", "admin'--", "' OR 1=1", "' OR '1'='1"]:
+                        if login_posts_sent[0] >= max_login_requests:
+                            break
                         body = {user_field: payload, pass_field: "password"}
-                        resp = self._safe_request(
-                            "POST",
-                            url,
-                            timeout=REQUEST_TIMEOUT,
-                            allow_redirects=False,
-                            **kwargs_builder(body),
+                        resp = self._probe_login_with_retry(
+                            url, body, is_control=False, kwargs_builder=kwargs_builder,
+                            login_posts_sent=login_posts_sent, max_login_requests=max_login_requests
                         )
                         if resp is None:
                             continue
@@ -323,7 +485,7 @@ class SQLiScanner(BaseScanner):
                         new_cookies = resp_cookies - ctrl_cookies
                         has_new_session_cookie = any(any(k in c.lower() for k in ("session", "token", "auth", "sid", "jwt")) for c in new_cookies)
 
-                        # Redirect bypass: control did not redirect (or redirected to error), but injected redirected to valid dashboard/target
+                        # Redirect bypass
                         is_redirect_bypass = False
                         if resp.status_code in (301, 302, 303, 307, 308):
                             if ctrl_status not in (301, 302, 303, 307, 308):
@@ -333,17 +495,17 @@ class SQLiScanner(BaseScanner):
                                 if resp_loc != ctrl_loc and resp_loc not in (login_path, ctrl_loc) and not any(err in resp_loc.lower() for err in ("error", "fail", "invalid", "login?")):
                                     is_redirect_bypass = True
 
-                        # Status code bypass: control got 401/403 and injection got 200 without error phrases
+                        # Status code bypass
                         is_status_bypass = (
                             ctrl_status in (401, 403)
                             and resp.status_code == 200
                             and not any(err in resp.text.lower() for err in ("invalid", "incorrect", "unauthorized", "failed", "try again"))
                         )
 
-                        # Cookie bypass: new session cookie was set that control did not receive
+                        # Cookie bypass
                         is_cookie_bypass = has_new_session_cookie and (is_redirect_bypass or resp.status_code == 200)
 
-                        # Heuristic bypass: 200 with auth token where control lacked it
+                        # Heuristic bypass
                         is_heuristic_bypass = (
                             resp.status_code == 200
                             and ("token" in resp.text.lower() or "authentication" in resp.text.lower())
@@ -381,32 +543,21 @@ class SQLiScanner(BaseScanner):
                 if hit:
                     break
 
-            if not hit:
-                for mode_name, kwargs_builder in modes:
-                    def probe_login(val: str):
-                        return self._safe_request(
-                            "POST",
-                            url,
-                            timeout=REQUEST_TIMEOUT,
-                            allow_redirects=False,
-                            **kwargs_builder({user_field: val, pass_field: "wrong_password_999"}),
-                        )
+            if hit and discovered_login_paths and login_path in discovered_login_paths:
+                break
 
-                    if self._check_status_differential(probe_login):
-                        self.results.append({
-                            "endpoint": login_path,
-                            "param": user_field,
-                            "payload": "'",
-                            "matched_signature": "error_status_differential",
-                            "status_code": 500,
-                            "evidence": f"Login {mode_name} probe lone quote returned 5xx while control and doubled quote returned normal status.",
-                            "type": "status_differential",
-                            "verified": True,
-                            "confidence": "medium",
-                        })
-                        logger.info(f"[SQLi] Detected login error status differential at {login_path} ({user_field})")
+            # (3) If not hit yet and this was not already tested on discovered fields, try status differential on primary pair
+            if not hit and not disc_fields and unique_pairs and login_posts_sent[0] < max_login_requests:
+                u_f, p_f = unique_pairs[0]
+                for mode_name, kwargs_builder in modes:
+                    if self._eval_login_status_differential(
+                        url, login_path, u_f, p_f, mode_name, kwargs_builder,
+                        login_posts_sent, max_login_requests
+                    ):
                         hit = True
                         break
+            if hit and discovered_login_paths and login_path in discovered_login_paths:
+                break
 
     def _test_url_path_injection(self, base_url: str) -> None:
         """Try path-based injection on REST-style numeric IDs."""
@@ -488,6 +639,9 @@ class SQLiScanner(BaseScanner):
                 p = str(ep.get("path") or "")
                 param = ep.get("param")
                 if p:
+                    p_lower = p.lower()
+                    if any(kw in p_lower for kw in ("login", "signin", "auth", "session")):
+                        continue
                     if p not in discovered_json_eps:
                         discovered_json_eps[p] = {"path": p, "body": {}}
                     if param:
