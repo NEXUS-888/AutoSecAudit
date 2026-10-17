@@ -37,9 +37,26 @@
         [data-theme="light"] {
             --bg-deep: #f5f5f7; --bg-base: #eeeef0; --bg-elevated: #ffffff;
             --surface: rgba(0,0,0,0.04); --surface-hover: rgba(0,0,0,0.07);
-            --fg: #1a1a2e; --fg-muted: #6b7280; --fg-faint: #9ca3af;
+            --fg: #1a1a2e; --fg-muted: #334155; --fg-faint: #475569;
             --accent: #4f46e5; --accent-bright: #6366f1; --accent-glow: rgba(79,70,229,0.2);
             --border: rgba(0,0,0,0.08); --border-hover: rgba(0,0,0,0.15);
+            --sev-critical: #b91c1c;
+            --sev-high: #9a3412;
+            --sev-medium: #854d0e;
+            --sev-low: #166534;
+            --sev-info: #1d4ed8;
+        }
+        [data-theme="light"] .sev-bar {
+            color: #ffffff !important;
+            font-weight: 700;
+        }
+        [data-theme="light"] .back-link {
+            color: #4338ca !important;
+            border-color: #c7d2fe !important;
+        }
+        [data-theme="light"] .view-btn {
+            color: #4338ca !important;
+            border-color: #c7d2fe !important;
         }
 
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -178,8 +195,8 @@
             align-items: center;
             padding-left: 10px;
             font-size: 12px;
-            font-weight: 600;
-            color: rgba(0,0,0,0.7);
+            font-weight: 700;
+            color: #000000;
             min-width: fit-content;
         }
 
@@ -285,7 +302,7 @@
     </style>
 </head>
 <body>
-    <div class="container">
+    <main class="container">
         <!-- Header -->
         <div class="header animate-in">
             <div style="display: flex; align-items: center; gap: 14px;">
@@ -476,7 +493,7 @@
             <a href="/" class="back-link" style="display: inline-block; margin-top: 16px;">← Start Scanning</a>
         </div>
         {% endif %}
-    </div>
+    </main>
     <script>
         function toggleTheme() {
             var html = document.documentElement;

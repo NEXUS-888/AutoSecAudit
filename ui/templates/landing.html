@@ -244,6 +244,9 @@
             color: var(--fg-primary);
             width: 36px;
             height: 36px;
+            min-width: 36px;
+            min-height: 36px;
+            flex-shrink: 0;
             border-radius: 8px;
             display: flex;
             align-items: center;
@@ -467,7 +470,7 @@
         }
 
         .telemetry-section-title {
-            color: var(--fg-muted);
+            color: var(--fg-secondary);
             font-size: 0.7rem;
             font-weight: 700;
             text-transform: uppercase;
@@ -567,6 +570,7 @@
             border: 1px solid rgba(244, 63, 94, 0.4);
             padding: 3px 8px;
             border-radius: 4px;
+            color: #ffe4e6;
         }
 
         /* Live Terminal Log */
@@ -897,9 +901,9 @@
             width: fit-content;
         }
 
-        .sev-crit { background: rgba(244, 63, 94, 0.18); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.35); }
-        .sev-high { background: rgba(245, 158, 11, 0.18); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.35); }
-        .sev-med { background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); }
+        .sev-crit { background: rgba(244, 63, 94, 0.2); color: #fda4af; border: 1px solid rgba(244, 63, 94, 0.4); }
+        .sev-high { background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.4); }
+        .sev-med { background: rgba(56, 189, 248, 0.2); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.4); }
 
         /* ── Action Box ─────────────────────────────────────── */
         .action-box {
@@ -1136,7 +1140,7 @@
             color: #0f172a !important;
         }
         [data-theme="light"] .metric-block .metric-lbl {
-            color: #64748b !important;
+            color: #475569 !important;
         }
 
         [data-theme="light"] .telemetry-console {
@@ -1161,11 +1165,28 @@
         [data-theme="light"] .scanner-tag {
             color: #2563eb !important;
         }
+        [data-theme="light"] .scanner-res {
+            color: #15803d !important;
+        }
+        [data-theme="light"] .scanner-res.alert {
+            color: #b91c1c !important;
+        }
 
         [data-theme="light"] .corr-gate-row {
             background: #f8fafc !important;
             border: 1px solid #e2e8f0 !important;
         }
+        [data-theme="light"] .flow-math .num-raw { color: #854d0e !important; }
+        [data-theme="light"] .flow-math .num-corr { color: #0369a1 !important; }
+        [data-theme="light"] .flow-math .num-conf { color: #991b1b !important; }
+        [data-theme="light"] #discoveryProgressText { color: #0369a1 !important; }
+        [data-theme="light"] .pill-target { background: #e0f2fe !important; color: #0369a1 !important; }
+        [data-theme="light"] .pill-running { background: #dcfce7 !important; border-color: #86efac !important; color: #15803d !important; }
+
+        .log-alert { color: #f43f5e; font-weight: 700; }
+        .log-success { color: #10b981; font-weight: 600; }
+        [data-theme="light"] .log-alert { color: #b91c1c !important; }
+        [data-theme="light"] .log-success { color: #15803d !important; }
 
         [data-theme="light"] .console-stream {
             background: #f8fafc !important;
@@ -1178,6 +1199,9 @@
             border: 1px solid #cbd5e1 !important;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
         }
+        [data-theme="light"] .chip-1 { color: #15803d !important; border-color: #86efac !important; }
+        [data-theme="light"] .chip-2 { color: #b91c1c !important; border-color: #fca5a5 !important; }
+        [data-theme="light"] .chip-3 { color: #854d0e !important; border-color: #fde047 !important; }
 
         [data-theme="light"] .section-title {
             color: #0f172a !important;
@@ -1360,11 +1384,31 @@
             border-bottom-color: #e2e8f0 !important;
         }
         [data-theme="light"] .auth-tab {
-            color: #64748b !important;
+            color: #475569 !important;
         }
         [data-theme="light"] .auth-tab.active {
             color: #4f46e5 !important;
             border-bottom-color: #4f46e5 !important;
+        }
+        [data-theme="light"] .gate-fail-pill {
+            background: #fee2e2 !important;
+            border-color: #fca5a5 !important;
+            color: #991b1b !important;
+        }
+        [data-theme="light"] .sev-crit {
+            background: #fee2e2 !important;
+            color: #991b1b !important;
+            border-color: #fca5a5 !important;
+        }
+        [data-theme="light"] .sev-high {
+            background: #ffedd5 !important;
+            color: #9a3412 !important;
+            border-color: #fdba74 !important;
+        }
+        [data-theme="light"] .sev-med {
+            background: #fef3c7 !important;
+            color: #854d0e !important;
+            border-color: #fde047 !important;
         }
         [data-theme="light"] .btn-secondary {
             background: #ffffff !important;
@@ -1392,12 +1436,47 @@
             .findings-row-head span:last-child, .findings-row span:last-child { display: none; }
             .floating-chip { display: none; }
         }
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
         @media (max-width: 640px) {
+            .navbar { padding: 0 0.5rem; }
+            .nav-brand { font-size: 0.95rem; gap: 0.4rem; }
+            .brand-badge-icon { width: 28px; height: 28px; }
+            .nav-actions { gap: 0.35rem; }
+            #userAuthControls { display: flex; align-items: center; gap: 0.35rem; }
+            .navbar .btn { padding: 0.4rem 0.65rem; font-size: 0.78rem; min-height: 24px; min-width: 24px; }
+            .nav-cta-btn { padding: 0.4rem 0.65rem; font-size: 0.78rem; min-height: 24px; min-width: 24px; }
+            .section { padding: 40px 1rem; min-width: 0; max-width: 100%; box-sizing: border-box; }
+            .section-header { margin: 0 auto 2rem; max-width: 100%; }
+            .hero { padding: 95px 1rem 40px; min-width: 0; max-width: 100%; box-sizing: border-box; }
+            .hero-left { min-width: 0; max-width: 100%; box-sizing: border-box; }
+            .hero-telemetry-wrapper { min-width: 0; max-width: 100%; box-sizing: border-box; }
+            .telemetry-console { min-width: 0; max-width: 100%; box-sizing: border-box; }
+            .value-chip-row { width: 100%; max-width: 100%; white-space: normal; }
             .pipeline-track { grid-template-columns: 1fr; }
-            .evidence-metrics-bar { grid-template-columns: 1fr 1fr; }
-            .action-form { flex-direction: column; }
-            .hero-title { font-size: 2.35rem; }
-            .auth-card { padding: 1.75rem 1.25rem; }
+            .evidence-metrics-bar { grid-template-columns: 1fr 1fr; max-width: 100%; }
+            .flow-compare-grid { grid-template-columns: 1fr; }
+            .flow-panel { padding: 1.25rem 1rem; min-width: 0; max-width: 100%; }
+            .pipeline-card { padding: 1.25rem 1rem; min-width: 0; max-width: 100%; }
+            .attack-graph-card { padding: 1.25rem 0.75rem; min-width: 0; max-width: 100%; }
+            .graph-flow-horizontal { min-width: 0; max-width: 100%; }
+            .findings-table-wrap { overflow-x: auto; max-width: 100%; min-width: 0; }
+            .action-box { padding: 2rem 1rem; margin: 30px auto 50px; min-width: 0; max-width: 100%; }
+            .action-form { flex-direction: column; width: 100%; max-width: 100%; }
+            .action-input { width: 100%; max-width: 100%; }
+            .hero-title { font-size: 2.1rem; word-break: break-word; }
+            .auth-card { padding: 1.75rem 1.25rem; max-width: 100%; }
+            .discovery-stats-row { grid-template-columns: 1fr 1fr; }
+            .scanner-nodes-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -1466,12 +1545,13 @@
                     </form>
                 {% else %}
                     <button onclick="openAuthModal('login')" class="btn btn-secondary">Sign In</button>
-                    <button onclick="requireAuthPrompt('Please sign in or create an account to start scanning.')" class="btn btn-primary">Launch Scanner</button>
+                    <button onclick="requireAuthPrompt('Please sign in or create an account to start scanning.')" class="btn btn-primary nav-cta-btn">Launch Scanner</button>
                 {% endif %}
             </div>
         </div>
     </nav>
 
+    <main id="main-content">
     <!-- ── Hero Section ───────────────────────────────────── -->
     <section class="hero" id="sec-hero">
         <div class="hero-left">
@@ -1557,7 +1637,7 @@
             <div class="telemetry-console" id="telemetryCard">
                 <div class="console-topbar">
                     <div class="console-pills">
-                        <span style="color: var(--fg-muted); font-size: 0.72rem;">TARGET</span>
+                        <span style="color: var(--fg-secondary); font-size: 0.72rem;">TARGET</span>
                         <span class="pill-target">http://localhost:3000</span>
                     </div>
                     <div class="pill-running">
@@ -1627,7 +1707,7 @@
                                 <span class="num-conf" id="numConf">11 Criticals</span>
                             </div>
                             <div class="gate-status-box">
-                                <span style="font-size: 0.72rem; color: var(--fg-muted);">CI/CD:</span>
+                                <span style="font-size: 0.72rem; color: var(--fg-secondary);">CI/CD:</span>
                                 <span class="gate-fail-pill" id="gatePill">● GATE FAILED (Exit 1)</span>
                             </div>
                         </div>
@@ -1883,11 +1963,13 @@
                 Enter a target URL to trigger surface discovery, 14 parallel plugins, and automated compliance mapping.
             </p>
             <form class="action-form" id="quickScanForm" onsubmit="handleQuickScan(event)">
-                <input type="text" id="quickScanInput" name="target" class="action-input" placeholder="TARGET: http://localhost:3000" value="http://localhost:3000" required>
+                <label for="quickScanInput" class="visually-hidden">Target URL</label>
+                <input type="text" id="quickScanInput" name="target" class="action-input" placeholder="TARGET: http://localhost:3000" value="http://localhost:3000" aria-label="Target URL" required>
                 <button type="submit" class="btn btn-primary" style="padding: 0 1.6rem;">Launch Scan</button>
             </form>
         </div>
     </section>
+    </main>
 
     <!-- ── High-Contrast Centered Auth Modal ──────────────── -->
     <div class="modal-overlay" id="authModal" onclick="handleOverlayClick(event)">
@@ -1904,12 +1986,12 @@
             <!-- Login Form -->
             <form id="loginForm" onsubmit="handleAuthSubmit(event, 'login')">
                 <div class="form-group">
-                    <label class="form-label">Username or Email</label>
-                    <input type="text" id="loginIdentifier" class="form-control" placeholder="admin or dev@example.com" required autocomplete="username">
+                    <label class="form-label" for="loginIdentifier">Username or Email</label>
+                    <input type="text" id="loginIdentifier" class="form-control" placeholder="admin or dev@example.com" aria-label="Username or Email" required autocomplete="username">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Password</label>
-                    <input type="password" id="loginPassword" class="form-control" placeholder="••••••••" required autocomplete="current-password">
+                    <label class="form-label" for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" class="form-control" placeholder="••••••••" aria-label="Password" required autocomplete="current-password">
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.75rem; padding: 0.75rem;">Sign In</button>
             </form>
@@ -1917,20 +1999,20 @@
             <!-- Register Form -->
             <form id="registerForm" style="display: none;" onsubmit="handleAuthSubmit(event, 'register')">
                 <div class="form-group">
-                    <label class="form-label">Full Name</label>
-                    <input type="text" id="regFullName" class="form-control" placeholder="Alex Developer">
+                    <label class="form-label" for="regFullName">Full Name</label>
+                    <input type="text" id="regFullName" class="form-control" placeholder="Alex Developer" aria-label="Full Name">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Username</label>
-                    <input type="text" id="regUsername" class="form-control" placeholder="alex_sec" required autocomplete="username">
+                    <label class="form-label" for="regUsername">Username</label>
+                    <input type="text" id="regUsername" class="form-control" placeholder="alex_sec" aria-label="Username" required autocomplete="username">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Work Email</label>
-                    <input type="email" id="regEmail" class="form-control" placeholder="alex@company.com" required autocomplete="email">
+                    <label class="form-label" for="regEmail">Work Email</label>
+                    <input type="email" id="regEmail" class="form-control" placeholder="alex@company.com" aria-label="Work Email" required autocomplete="email">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Password (min. 6 characters)</label>
-                    <input type="password" id="regPassword" class="form-control" placeholder="••••••••" required autocomplete="new-password">
+                    <label class="form-label" for="regPassword">Password (min. 6 characters)</label>
+                    <input type="password" id="regPassword" class="form-control" placeholder="••••••••" aria-label="Password" required autocomplete="new-password">
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.75rem; padding: 0.75rem;">Create Account</button>
             </form>
@@ -2198,10 +2280,9 @@
                 div.style.marginBottom = "3px";
                 div.textContent = liveLogs[idx];
                 if (liveLogs[idx].includes("CONFIRMED") || liveLogs[idx].includes("EXIT 1")) {
-                    div.style.color = "#f43f5e";
-                    div.style.fontWeight = "700";
+                    div.className = "log-alert";
                 } else if (liveLogs[idx].includes("Merged") || liveLogs[idx].includes("Discovered")) {
-                    div.style.color = "#10b981";
+                    div.className = "log-success";
                 }
                 container.appendChild(div);
                 container.scrollTop = container.scrollHeight;

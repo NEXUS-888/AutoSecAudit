@@ -150,9 +150,13 @@
         }
 
         .auth-footer a {
-            color: var(--accent-indigo);
+            color: #818cf8;
             text-decoration: none;
             font-weight: 600;
+        }
+
+        [data-theme="light"] .auth-footer a {
+            color: #4338ca;
         }
 
         .auth-footer a:hover { text-decoration: underline; }
@@ -168,7 +172,7 @@
     </style>
 </head>
 <body>
-    <div class="auth-container">
+    <main class="auth-container">
         <a href="/" class="brand-header">
             <div class="brand-icon">
                 <img src="/static/logo.jpg" alt="AutoSecAudit Logo">
@@ -230,7 +234,7 @@
                 Need an account? <a href="/register">Sign up</a>
             {% endif %}
         </div>
-    </div>
+    </main>
 
     <script>
         (function() {

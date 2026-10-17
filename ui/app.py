@@ -676,6 +676,10 @@ HTML_FORM = """
             font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
             font-weight: 500;
             padding: 4px 10px;
+            min-height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             border-radius: 6px;
             cursor: pointer;
             transition: all 180ms ease;
@@ -688,6 +692,17 @@ HTML_FORM = """
         }
         .preset-pill:active {
             transform: translateY(0);
+        }
+
+        input[type="radio"], input[type="checkbox"] {
+            width: 24px;
+            height: 24px;
+            min-width: 24px;
+            min-height: 24px;
+            cursor: pointer;
+            accent-color: var(--accent);
+            flex-shrink: 0;
+            vertical-align: middle;
         }
         .input-highlight-pulse {
             animation: inputGlowPulse 0.6s ease;
@@ -873,7 +888,11 @@ HTML_FORM = """
             font-weight: 600;
             color: var(--accent-bright);
             cursor: pointer;
-            padding: 2px 6px;
+            padding: 4px 8px;
+            min-height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
         .policy-details {
             display: none;
@@ -1131,7 +1150,6 @@ HTML_FORM = """
         .footer-text {
             font-size: 12px;
             color: var(--fg-muted);
-            opacity: 0.6;
         }
 
         /* ── Reduced Motion ────────────────────────────────────────── */
@@ -1161,7 +1179,7 @@ HTML_FORM = """
             --surface:          rgba(0,0,0,0.03);
             --surface-hover:    rgba(0,0,0,0.06);
             --fg:               #0f172a;
-            --fg-muted:         #64748b;
+            --fg-muted:         #475569;
             --accent:           #4f46e5;
             --accent-bright:    #6366f1;
             --accent-glow:      rgba(79,70,229,0.18);
@@ -1228,8 +1246,8 @@ HTML_FORM = """
 
         /* Form Labels & Target URL Input */
         [data-theme="light"] .form-label { color: #0f172a !important; }
-        [data-theme="light"] .label-hint { color: #64748b !important; }
-        [data-theme="light"] .input-icon-glyph { color: #64748b !important; }
+        [data-theme="light"] .label-hint { color: #475569 !important; }
+        [data-theme="light"] .input-icon-glyph { color: #475569 !important; }
         [data-theme="light"] .input-with-icon:focus-within .input-icon-glyph { color: #4f46e5 !important; }
         [data-theme="light"] .custom-url-input {
             background: #ffffff !important;
@@ -1245,7 +1263,7 @@ HTML_FORM = """
         }
 
         /* Presets */
-        [data-theme="light"] .presets-label { color: #64748b !important; }
+        [data-theme="light"] .presets-label { color: #475569 !important; }
         [data-theme="light"] .preset-pill {
             background: #f8fafc !important;
             border: 1px solid #e2e8f0 !important;
@@ -1298,7 +1316,7 @@ HTML_FORM = """
         }
 
         /* Recent Reports & History link */
-        [data-theme="light"] .section-title { color: #64748b !important; }
+        [data-theme="light"] .section-title { color: #475569 !important; }
         [data-theme="light"] .section-line { background: #e2e8f0 !important; }
         [data-theme="light"] .report-item {
             background: #ffffff !important;
@@ -1317,7 +1335,46 @@ HTML_FORM = """
         [data-theme="light"] .scan-console { background: #f1f5f9 !important; border: 1px solid #e2e8f0 !important; color: #1e293b !important; }
         [data-theme="light"] .scan-console-text { color: #334155 !important; }
         [data-theme="light"] .footer-line { background: linear-gradient(90deg, transparent 0%, #e2e8f0 50%, transparent 100%) !important; }
-        [data-theme="light"] .footer-text { color: #64748b !important; }
+        [data-theme="light"] .footer-text { color: #475569 !important; }
+        [data-theme="light"] .mode-badge-demo {
+            background: #eef2ff !important;
+            color: #4338ca !important;
+        }
+        [data-theme="light"] .mode-badge-real {
+            background: #fee2e2 !important;
+            color: #991b1b !important;
+        }
+        .history-link-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #a5b4fc;
+            background: rgba(255, 255, 255, 0.04);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            min-height: 24px;
+            min-width: 24px;
+            transition: all 0.2s ease;
+        }
+        .history-link-btn:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+        [data-theme="light"] .history-link-btn {
+            color: #4338ca !important;
+            border-color: #c7d2fe !important;
+            background: #eef2ff !important;
+        }
+        [data-theme="light"] .history-link-btn:hover {
+            color: #312e81 !important;
+            background: #e0e7ff !important;
+        }
     </style>
 </head>
 <body>
@@ -1377,24 +1434,24 @@ HTML_FORM = """
                         <label id="modeOptionDemo" style="display: flex; flex-direction: column; gap: 4px; cursor: pointer; background: var(--surface); padding: 12px 14px; border-radius: 8px; border: 1.5px solid {% if is_demo %}var(--accent){% else %}var(--border){% endif %}; transition: all 0.2s ease;">
                             <div style="display: flex; align-items: center; justify-content: space-between;">
                                 <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; color: var(--fg);">
-                                    <input type="radio" name="mode" value="demo" id="radioDemo" {% if is_demo %}checked{% endif %} onchange="updateModeUI()" />
+                                    <input type="radio" name="mode" value="demo" id="radioDemo" aria-label="Demo Mode (Simulation)" {% if is_demo %}checked{% endif %} onchange="updateModeUI()" />
                                     <span>🧪 Demo Mode (Simulation)</span>
                                 </div>
-                                <span style="font-size: 10px; font-weight: 600; background: rgba(99, 102, 241, 0.15); color: #818cf8; padding: 2px 7px; border-radius: 4px;">NO LIVE SERVER NEEDED</span>
+                                <span class="mode-badge-demo" style="font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px;">NO LIVE SERVER NEEDED</span>
                             </div>
-                            <span style="font-size: 11px; color: var(--fg-muted); padding-left: 24px; line-height: 1.4;">
+                            <span style="font-size: 11px; color: var(--fg-muted); padding-left: 32px; line-height: 1.4;">
                                 Safe offline demo using simulated telemetry. Target website reachability is <strong>never checked</strong> — works with any target URL.
                             </span>
                         </label>
                         <label id="modeOptionReal" style="display: flex; flex-direction: column; gap: 4px; cursor: pointer; background: var(--surface); padding: 12px 14px; border-radius: 8px; border: 1.5px solid {% if not is_demo %}var(--accent){% else %}var(--border){% endif %}; transition: all 0.2s ease;">
                             <div style="display: flex; align-items: center; justify-content: space-between;">
                                 <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; color: var(--fg);">
-                                    <input type="radio" name="mode" value="real" id="radioReal" {% if not is_demo %}checked{% endif %} onchange="updateModeUI()" />
+                                    <input type="radio" name="mode" value="real" id="radioReal" aria-label="Real Active Scan" {% if not is_demo %}checked{% endif %} onchange="updateModeUI()" />
                                     <span>⚡ Real Active Scan</span>
                                 </div>
-                                <span style="font-size: 10px; font-weight: 600; background: rgba(239, 68, 68, 0.15); color: #f87171; padding: 2px 7px; border-radius: 4px;">ONLINE TARGET REQUIRED</span>
+                                <span class="mode-badge-real" style="font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px;">ONLINE TARGET REQUIRED</span>
                             </div>
-                            <span style="font-size: 11px; color: var(--fg-muted); padding-left: 24px; line-height: 1.4;">
+                            <span style="font-size: 11px; color: var(--fg-muted); padding-left: 32px; line-height: 1.4;">
                                 Live vulnerability probing and attack payloads. Verifies target is active and reachable before scanning.
                             </span>
                         </label>
@@ -1415,6 +1472,7 @@ HTML_FORM = """
                             name="target"
                             class="custom-url-input"
                             placeholder="http://localhost:3000"
+                            aria-label="Target URL or Host"
                             autocomplete="off"
                             required
                         />
@@ -1435,16 +1493,16 @@ HTML_FORM = """
                     </label>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 6px;">
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; background: var(--surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
-                            <input type="radio" name="profile" value="full" checked /> 🌐 Full DAST
+                            <input type="radio" name="profile" value="full" aria-label="Full DAST" checked /> 🌐 Full DAST
                         </label>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; background: var(--surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
-                            <input type="radio" name="profile" value="owasp" /> 🛡️ OWASP 10
+                            <input type="radio" name="profile" value="owasp" aria-label="OWASP 10" /> 🛡️ OWASP 10
                         </label>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; background: var(--surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
-                            <input type="radio" name="profile" value="api" /> ⚡ API Security
+                            <input type="radio" name="profile" value="api" aria-label="API Security" /> ⚡ API Security
                         </label>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; background: var(--surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">
-                            <input type="radio" name="profile" value="recon" /> 🔍 Passive Recon
+                            <input type="radio" name="profile" value="recon" aria-label="Passive Recon" /> 🔍 Passive Recon
                         </label>
                     </div>
                 </div>
@@ -1463,6 +1521,7 @@ HTML_FORM = """
                                 name="openapi_spec"
                                 class="file-hidden-input"
                                 accept=".json"
+                                aria-label="Upload OpenAPI Specification (JSON)"
                                 onchange="handleFileSelected(this, 'openapiBadge', 'openapiDropzone', 'openapiDropContent', 'openapiFileName')"
                             />
                             <div class="dropzone-content" id="openapiDropContent">
@@ -1484,6 +1543,7 @@ HTML_FORM = """
                                 name="previous_report"
                                 class="file-hidden-input"
                                 accept=".json"
+                                aria-label="Upload Previous Audit Report (JSON)"
                                 onchange="handleFileSelected(this, 'deltaBadge', 'deltaDropzone', 'deltaDropContent', 'deltaFileName')"
                             />
                             <div class="dropzone-content" id="deltaDropContent">
@@ -1525,7 +1585,7 @@ HTML_FORM = """
 
                 <div style="margin-top: 14px; margin-bottom: 6px; display: flex; align-items: center; justify-content: flex-start;">
                     <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--fg-muted); cursor: pointer; user-select: none;">
-                        <input type="checkbox" name="skip_reachability" value="true" />
+                        <input type="checkbox" name="skip_reachability" value="true" aria-label="Simulate offline demo (skip target liveness probe)" />
                         <span>Simulate offline demo (skip target liveness probe)</span>
                     </label>
                 </div>
@@ -1625,9 +1685,7 @@ HTML_FORM = """
         {% endif %}
 
         <div style="text-align: center; margin-top: 16px;">
-            <a href="/history" style="color: var(--accent-bright); text-decoration: none; font-size: 14px; font-weight: 500; padding: 8px 20px; border: 1px solid rgba(94,106,210,0.3); border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"
-               onmouseover="this.style.background='rgba(94,106,210,0.1)'"
-               onmouseout="this.style.background='transparent'">
+            <a href="/history" class="history-link-btn">
                 📊 View All History →
             </a>
         </div>
