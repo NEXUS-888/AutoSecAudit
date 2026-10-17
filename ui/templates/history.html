@@ -250,6 +250,20 @@
 
         .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        .scan-checkbox { color-scheme: dark; }
+        [data-theme="light"] .scan-checkbox { color-scheme: light; }
+
         /* Mini severity dots */
         .sev-dots {
             display: flex;
