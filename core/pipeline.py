@@ -194,6 +194,11 @@ def run_scan_pipeline(
     mode_label = "MOCK DEMO" if mock_mode else "REAL ACTIVE SCAN"
     emit("init", f"Initializing {mode_label} engine [{profile.upper()} profile]...", 10)
     engine = engine_cls(mock_mode=mock_mode, profile=profile)
+    if cancel_check:
+        try:
+            engine.cancel_check = cancel_check
+        except Exception:
+            pass
     if report_id and hasattr(engine, "report_id"):
         engine.report_id = report_id
     if header_dict and hasattr(engine, "set_custom_headers"):
@@ -318,35 +323,66 @@ def run_scan_pipeline(
         raise ScanCancelledError("Scan cancelled or timed out before saving reports.")
 
     # 14. Save JSON + HTML
-    emit("saving", "Saving JSON report...", 90)
-    save_result = engine.save_report(report, file_path=output_json)
-    if isinstance(save_result, (tuple, list)):
-        json_path = str(save_result[0])
-    else:
-        json_path = str(save_result)
+    json_path = None
+    html_path = None
+    output_pdf = req_dict.get("output_pdf")
+    try:
+        emit("saving", "Saving JSON report...", 90)
+        save_result = engine.save_report(report, file_path=output_json)
+        if isinstance(save_result, (tuple, list)):
+            json_path = str(save_result[0])
+        else:
+            json_path = str(save_result)
 
-    emit("saving", "Generating HTML report...", 95)
-    generator = generator_cls()
-    if output_html:
-        gen_result = generator.generate_html(report, output_path=output_html)
-    else:
-        gen_result = generator.generate_report(report)
-    if isinstance(gen_result, (tuple, list)):
-        html_path = str(gen_result[0])
-    else:
-        html_path = str(gen_result)
+        if cancel_check and cancel_check():
+            logger.warning("Scan cancelled after saving JSON report; halting.")
+            raise ScanCancelledError("Scan cancelled after saving JSON report.")
 
-    # Webhook
-    if webhook:
-        try:
-            from core.notifications import WebhookNotifier
-            notifier = WebhookNotifier(webhook)
-            notifier.send_notification(report.summary, report.target)
-        except Exception as e:
-            logger.warning(f"Webhook notification failed: {e}")
+        emit("saving", "Generating HTML report...", 95)
+        generator = generator_cls()
+        if output_html:
+            gen_result = generator.generate_html(report, output_path=output_html)
+        else:
+            gen_result = generator.generate_report(report)
+        if isinstance(gen_result, (tuple, list)):
+            html_path = str(gen_result[0])
+        else:
+            html_path = str(gen_result)
 
-    rep_name = Path(json_path).stem.replace("scan_", "").replace("report_", "")
-    emit("done", f"Scan complete — {len(report.all_findings)} findings", 100, detail=rep_name, status="done")
+        # Checkpoint before webhook (AUD-81: cancel check precedes webhook)
+        if cancel_check and cancel_check():
+            logger.warning("Scan cancelled before webhook notification; halting.")
+            raise ScanCancelledError("Scan cancelled before webhook notification.")
+
+        # Webhook
+        if webhook:
+            try:
+                from core.notifications import WebhookNotifier
+                notifier = WebhookNotifier(webhook)
+                notifier.send_notification(report.summary, report.target)
+            except Exception as e:
+                logger.warning(f"Webhook notification failed: {e}")
+
+        # Checkpoint before completion
+        if cancel_check and cancel_check():
+            logger.warning("Scan cancelled before completion; halting.")
+            raise ScanCancelledError("Scan cancelled before completion.")
+
+        rep_name = Path(json_path).stem.replace("scan_", "").replace("report_", "")
+        emit("done", f"Scan complete — {len(report.all_findings)} findings", 100, detail=rep_name, status="done")
+    except ScanCancelledError:
+        cleanup_targets = [json_path, html_path, output_pdf]
+        if json_path:
+            cleanup_targets.append(str(Path(json_path).with_suffix(".pdf")))
+            cleanup_targets.append(os.path.splitext(json_path)[0] + ".pdf")
+        for p in cleanup_targets:
+            if p and os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+        logger.warning("Scan cancelled; discarded report files.")
+        raise
 
     paths = PipelinePaths(json_path=json_path, html_path=html_path)
     return report, paths

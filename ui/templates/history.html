@@ -71,12 +71,18 @@
 
         .container { max-width: 1200px; margin: 0 auto; padding: 40px 24px; }
 
-        /* Header */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 40px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        @media (max-width: 600px) {
+            .container { padding: 20px 14px; }
+            .header { flex-direction: column; align-items: flex-start; gap: 16px; }
+            .header-controls { width: 100%; }
         }
         .header h1 {
             font-size: 28px;
@@ -314,9 +320,12 @@
                     <div class="header-sub">{{ scans|length }} scan{{ 's' if scans|length != 1 }} recorded</div>
                 </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="header-controls" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <button type="button" id="compareScansBtn" data-testid="compare-scans" disabled onclick="compareSelectedScans()" class="back-link" aria-label="Compare two selected scans" style="cursor: not-allowed; opacity: 0.5; background: var(--surface);">
+                    Compare Scans (0/2)
+                </button>
                 <a href="/" class="back-link">← New Scan</a>
-                <button id="themeToggle" onclick="toggleTheme()" style="background: var(--surface); border: 1px solid var(--border); border-radius: 50%; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--fg-muted); transition: all 0.2s;" title="Toggle theme">
+                <button id="themeToggle" onclick="toggleTheme()" aria-label="Toggle theme" style="background: var(--surface); border: 1px solid var(--border); border-radius: 50%; width: 36px; height: 36px; min-width: 36px; min-height: 36px; flex-shrink: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--fg-muted); transition: all 0.2s;" title="Toggle theme">
                     <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
                 </button>
             </div>
@@ -456,6 +465,7 @@
                 <table>
                     <thead>
                         <tr>
+                            <th style="width: 44px; text-align: center;">Select</th>
                             <th>Date / Time</th>
                             <th>Target</th>
                             <th>Findings</th>
@@ -466,6 +476,10 @@
                     <tbody>
                         {% for scan in scans | reverse %}
                         <tr>
+                            <td style="text-align: center;">
+                                <label for="select-scan-{{ scan.report_id }}" class="visually-hidden">Select scan {{ scan.report_id }}</label>
+                                <input type="checkbox" id="select-scan-{{ scan.report_id }}" class="scan-checkbox" data-scan-id="{{ scan.report_id }}" data-timestamp="{{ scan.timestamp }}" onchange="onScanSelectChange()" aria-label="Select scan {{ scan.report_id }}" style="width: 24px; height: 24px; min-width: 24px; min-height: 24px; cursor: pointer; accent-color: var(--accent);">
+                            </td>
                             <td class="mono">{{ scan.timestamp }}</td>
                             <td class="mono">{{ scan.target }}</td>
                             <td style="font-weight: 700;">{{ scan.total }}</td>
@@ -505,6 +519,39 @@
                 ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'
                 : '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
         }
+        function onScanSelectChange() {
+            var checkboxes = document.querySelectorAll('.scan-checkbox:checked');
+            var btn = document.getElementById('compareScansBtn');
+            if (!btn) return;
+            if (checkboxes.length === 2) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+                btn.textContent = 'Compare Scans (2/2) →';
+            } else {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'not-allowed';
+                btn.textContent = 'Compare Scans (' + checkboxes.length + '/2)';
+            }
+        }
+
+        function compareSelectedScans() {
+            var checkboxes = document.querySelectorAll('.scan-checkbox:checked');
+            if (checkboxes.length !== 2) return;
+            var scan1 = checkboxes[0].getAttribute('data-scan-id');
+            var scan2 = checkboxes[1].getAttribute('data-scan-id');
+            var ts1 = checkboxes[0].getAttribute('data-timestamp') || '';
+            var ts2 = checkboxes[1].getAttribute('data-timestamp') || '';
+            var older = scan1;
+            var newer = scan2;
+            if (ts1 && ts2 && ts1 > ts2) {
+                older = scan2;
+                newer = scan1;
+            }
+            window.location.href = '/compare/' + encodeURIComponent(older) + '/' + encodeURIComponent(newer);
+        }
+
         (function() {
             var saved = localStorage.getItem('autosec-theme');
             if (saved) { document.documentElement.setAttribute('data-theme', saved); toggleTheme(); toggleTheme(); }

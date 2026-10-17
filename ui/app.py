@@ -15,6 +15,7 @@ from pathlib import Path
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect, CSRFError
 import json
+import tempfile
 
 import config
 import core.auth as auth
@@ -78,7 +79,7 @@ csrf = AutoSecCSRFProtect(app)
 
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
-    if request.is_json or request.path.startswith("/api/") or request.path.startswith("/scan/"):
+    if request.is_json or request.path.startswith("/api/") or request.path.startswith("/scan/") or request.path.startswith("/report/"):
         return jsonify({"success": False, "error": e.description, "message": "CSRF validation failed."}), 400
     return render_template("auth.html", mode="login", error=f"CSRF Error: {e.description}"), 400
 
@@ -253,11 +254,13 @@ def _emit_job_event(job: dict, stage: str, message: str, progress: int = 0, deta
     cond = job.get("condition")
     if cond is None:
         if status and job is not None:
-            job["status"] = status
+            if not (job.get("status") in ("cancelled", "error") and status not in ("cancelled", "error")):
+                job["status"] = status
         return
     with cond:
         if status:
-            job["status"] = status
+            if not (job.get("status") in ("cancelled", "error") and status not in ("cancelled", "error")):
+                job["status"] = status
         events = job.setdefault("events", [])
         event_id = len(events) + 1
         event = {
@@ -310,7 +313,7 @@ def _cleanup_stale_jobs():
 # ---------------------------------------------------------------------------
 # Security: Validate report IDs to prevent path traversal
 # ---------------------------------------------------------------------------
-REPORT_ID_PATTERN = re.compile(r"^[\w-]+$")
+REPORT_ID_PATTERN = re.compile(r"^(?!.*\.\.)[\w\.-]+$")
 
 
 def _validate_report_id(report_id: str) -> str:
@@ -330,6 +333,8 @@ def add_security_headers(response):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["X-XSS-Protection"] = "1; mode=block"
+    if response.mimetype != "text/event-stream":
+        response.headers["Connection"] = "close"
     return response
 
 
@@ -1619,6 +1624,15 @@ HTML_FORM = """
                     <span class="scan-console-dot"></span>
                     <span id="scanConsoleText" class="scan-console-text">Initializing security scanners...</span>
                 </div>
+
+                <div style="margin-top: 20px; display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                    <button type="button" id="cancelScanBtn" data-testid="cancel-scan" onclick="cancelCurrentScan()" aria-label="Cancel running scan" style="padding: 10px 20px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #fca5a5; border-radius: var(--radius-sm); font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s; min-height: 40px;">
+                        Cancel Scan
+                    </button>
+                    <button type="button" id="newScanBtn" onclick="resetToNewScan()" aria-label="Start a new scan" class="btn-primary" style="display: none; padding: 10px 20px; border-radius: var(--radius-sm); font-weight: 600; font-size: 14px; cursor: pointer; min-height: 40px;">
+                        Start New Scan
+                    </button>
+                </div>
             </div>
 
             <!-- Authorized Targets Policy Badge (Collapsible) -->
@@ -1780,11 +1794,17 @@ HTML_FORM = """
             })
             .then(function (data) {
                 var scanId = data.scan_id;
+                window.currentActiveScanId = scanId;
                 var evtSource = new EventSource('/scan/progress/' + scanId);
+                window.activeEvtSource = evtSource;
 
                 evtSource.onmessage = function (event) {
                     try {
                         var payload = JSON.parse(event.data);
+                        if (payload.stage === 'cancelled' || payload.status === 'cancelled') {
+                            handleScanCancelled();
+                            return;
+                        }
                         if (payload.percent !== undefined) {
                             progressFill.style.width = Math.max(5, payload.percent) + '%';
                         }
@@ -1839,6 +1859,9 @@ HTML_FORM = """
                                 } else {
                                     window.location.href = '/history';
                                 }
+                            } else if (statusData.status === 'cancelled') {
+                                clearInterval(pollInterval);
+                                handleScanCancelled();
                             } else if (statusData.status === 'error') {
                                 clearInterval(pollInterval);
                                 consoleText.style.color = '#ef4444';
@@ -1855,6 +1878,66 @@ HTML_FORM = """
                 consoleText.textContent = 'Error: ' + err.message;
                 showRetryButton();
             });
+
+        function cancelCurrentScan() {
+            if (!window.currentActiveScanId) return;
+            var cancelBtn = document.getElementById('cancelScanBtn');
+            if (cancelBtn) {
+                cancelBtn.disabled = true;
+                cancelBtn.textContent = 'Cancelling...';
+            }
+            var csrfInput = document.querySelector('input[name="csrf_token"]');
+            var csrfHeader = csrfInput ? csrfInput.value : '';
+            fetch('/scan/cancel/' + encodeURIComponent(window.currentActiveScanId), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(csrfHeader ? { 'X-CSRFToken': csrfHeader } : {})
+                }
+            })
+            .then(function (r) {
+                return r.json().then(function (d) { return { ok: r.ok, status: r.status, data: d }; });
+            })
+            .then(function (res) {
+                if (res.ok) {
+                    handleScanCancelled();
+                } else {
+                    if (cancelBtn) {
+                        cancelBtn.disabled = false;
+                        cancelBtn.textContent = 'Cancel Scan';
+                    }
+                    var msg = (res.data && res.data.error) ? res.data.error : ('Failed to cancel scan (status ' + res.status + ')');
+                    alert(msg);
+                }
+            })
+            .catch(function (err) {
+                console.error('Cancel error:', err);
+                if (cancelBtn) {
+                    cancelBtn.disabled = false;
+                    cancelBtn.textContent = 'Cancel Scan';
+                }
+                alert('Network error while cancelling scan.');
+            });
+        }
+
+        function handleScanCancelled() {
+            if (window.activeEvtSource) {
+                window.activeEvtSource.close();
+            }
+            var consoleText = document.getElementById('scanConsoleText');
+            if (consoleText) {
+                consoleText.style.color = '#ef4444';
+                consoleText.textContent = 'Scan cancelled';
+            }
+            var cancelBtn = document.getElementById('cancelScanBtn');
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            var newScanBtn = document.getElementById('newScanBtn');
+            if (newScanBtn) newScanBtn.style.display = 'inline-block';
+        }
+
+        function resetToNewScan() {
+            window.location.reload();
+        }
 
             function showRetryButton() {
                 var retryBtn = document.createElement('button');
@@ -2701,7 +2784,7 @@ def history():
 # ---------------------------------------------------------------------------
 # SSE: Async scan with real-time progress streaming
 # ---------------------------------------------------------------------------
-def _run_scan_background(scan_id: str, target: str, previous_path: str = None, openapi_path: str = None, profile: str = "full", skip_reachability: bool = False, login_user: str = None, login_pass: str = None, login_url: str = None, is_demo: bool = True):
+def _run_scan_background(scan_id: str, target: str, previous_path: str = None, openapi_path: str = None, profile: str = "full", skip_reachability: bool = False, login_user: str = None, login_pass: str = None, login_url: str = None, is_demo: bool = True, webhook: str = None):
     """Run a scan in a background thread, pushing progress events to subscribers."""
     with scan_jobs_lock:
         job = scan_jobs.get(scan_id)
@@ -2710,20 +2793,28 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
         return
 
     def emit(stage, message, progress=0, detail="", status=None):
-        if job.get("status") == "error" and status != "error":
+        if check_cancelled():
+            raise ScanCancelledError("Scan cancelled during execution")
+        if job.get("status") in ("error", "cancelled"):
             return
-        _emit_job_event(job, stage, message, progress, detail, status=status)
+        if status == "done":
+            with scan_jobs_lock:
+                if check_cancelled():
+                    raise ScanCancelledError("Scan cancelled during execution")
+                _emit_job_event(job, stage, message, progress, detail, status=status)
+        else:
+            _emit_job_event(job, stage, message, progress, detail, status=status)
 
     def check_cancelled():
-        return job.get("status") == "error"
+        return job.get("status") in ("error", "cancelled")
 
-    if check_cancelled():
-        logger.warning(f"Scan {scan_id} is already in error/cancelled state, aborting")
-        return
-
-    try:
+    with scan_jobs_lock:
+        if check_cancelled():
+            logger.warning(f"Scan {scan_id} is already in error/cancelled state, aborting")
+            return
         job["status"] = "running"
 
+    try:
         req = ScanRequest(
             target=target,
             profile=profile,
@@ -2738,15 +2829,35 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
             progress_callback=emit,
             cancel_check=check_cancelled,
             owner=job.get("owner"),
+            webhook=webhook,
         )
 
         try:
+            with scan_jobs_lock:
+                if check_cancelled():
+                    if job.get("status") != "error":
+                        job["status"] = "cancelled"
+                    return
             report, paths = run_scan_pipeline(req)
-            if not check_cancelled():
+            with scan_jobs_lock:
+                if check_cancelled():
+                    if job.get("status") != "error":
+                        job["status"] = "cancelled"
+                    if paths:
+                        for p in [getattr(paths, "json_path", None), getattr(paths, "html_path", None), getattr(paths, "json", None), getattr(paths, "html", None)]:
+                            if p and os.path.exists(p):
+                                try:
+                                    os.remove(p)
+                                except OSError:
+                                    pass
+                    return
                 report_name = Path(paths.json).stem.replace("scan_", "").replace("report_", "")
                 job["report_name"] = report_name
         except ScanCancelledError:
             logger.warning(f"Scan {scan_id} cancelled or timed out; halting.")
+            with scan_jobs_lock:
+                if job.get("status") != "error":
+                    job["status"] = "cancelled"
             return
 
     except Exception as e:
@@ -2757,9 +2868,11 @@ def _run_scan_background(scan_id: str, target: str, previous_path: str = None, o
         job["error"] = str(e)
         emit("error", f"Scan failed: {str(e)}", 0, status="error")
     finally:
-        if job.get("status") in ("starting", "running") and not check_cancelled():
+        if job.get("status") in ("error", "cancelled"):
+            pass
+        elif job.get("status") in ("starting", "running"):
             job["error"] = "Scan terminated unexpectedly"
-            emit("error", "Scan terminated unexpectedly", 0, status="error")
+            _emit_job_event(job, "error", "Scan terminated unexpectedly", 0, status="error")
         for tmp_path in [previous_path, openapi_path]:
             if tmp_path and os.path.exists(tmp_path):
                 try:
@@ -2797,6 +2910,7 @@ def scan_async():
     login_user = request.form.get("login_user", "").strip() or None
     login_pass = request.form.get("login_pass", "").strip() or None
     login_url = request.form.get("login_url", "").strip() or None
+    webhook = (request.get_json(silent=True) or {}).get("webhook") if request.is_json else request.form.get("webhook", "").strip() or None
 
     if is_demo:
         login_user = None
@@ -2864,7 +2978,8 @@ def scan_async():
             scan_jobs[scan_id],
             _run_scan_background,
             scan_id, target, previous_path, openapi_path, profile,
-            skip_reachability, login_user, login_pass, login_url, is_demo
+            skip_reachability, login_user, login_pass, login_url, is_demo,
+            webhook
         )
 
         return jsonify({"scan_id": scan_id, "profile": profile, "mode": "demo" if is_demo else "real"})
@@ -2926,7 +3041,7 @@ def scan_progress(scan_id):
                     ev = events[cursor]
                     cursor += 1
                     events_to_send.append(ev)
-                    if ev.get("stage") in ("done", "error"):
+                    if ev.get("stage") in ("done", "error", "cancelled") or ev.get("status") in ("done", "error", "cancelled"):
                         is_done = True
                         break
 
@@ -2970,6 +3085,38 @@ def scan_status(scan_id):
         "report_name": job["report_name"],
         "error": job["error"],
     })
+
+
+@app.route("/scan/cancel/<scan_id>", methods=["POST"])
+@login_required
+def cancel_scan(scan_id):
+    """Cancel a running scan job (AUD-81)."""
+    current_user = get_current_user()
+    with scan_jobs_lock:
+        job = scan_jobs.get(scan_id)
+        if not job:
+            return jsonify({"error": "Scan job not found", "status": "not_found"}), 404
+
+        if not _can_access_job(current_user, job):
+            return jsonify({"error": "Scan job not found", "status": "not_found"}), 404
+
+        current_status = job.get("status")
+        if current_status in ("done", "error"):
+            return jsonify({"error": f"Scan has already finished ({current_status})", "status": current_status}), 409
+
+        if current_status == "cancelled":
+            return jsonify({"status": "cancelled", "message": "Scan already cancelled"}), 200
+
+        job["status"] = "cancelled"
+        if job.get("stop_event"):
+            try:
+                job["stop_event"].set()
+            except Exception as e:
+                logger.warning(f"Error setting stop_event for job {scan_id}: {e}")
+
+        _emit_job_event(job, "cancelled", "Scan cancelled by user", progress=0, status="cancelled")
+
+    return jsonify({"status": "cancelled", "scan_id": scan_id}), 200
 
 
 
@@ -3074,8 +3221,10 @@ def _resolve_report_data(report_id: str):
     
     candidate_paths = [
         f"{config.REPORTS_DIR}/scan_{clean_id}.json",
+        f"{config.REPORTS_DIR}/scan_{report_id}.json",
         f"{config.REPORTS_DIR}/{report_id}.json",
         f"{config.REPORTS_DIR}/report_{clean_id}.json",
+        f"{config.REPORTS_DIR}/report_{report_id}.json",
         f"{config.REPORTS_DIR}/{clean_id}.json",
     ]
     for cp in candidate_paths:
@@ -3085,6 +3234,16 @@ def _resolve_report_data(report_id: str):
                 return data, clean_id
 
     return None, clean_id
+
+
+_triage_lock = threading.Lock()
+
+
+def _get_triage_path(report_id: str) -> Path:
+    clean = report_id.replace("scan_", "").replace("report_", "").replace(".triage", "").replace(".json", "").replace(".html", "")
+    triage_dir = Path(config.REPORTS_DIR) / "triage"
+    triage_dir.mkdir(parents=True, exist_ok=True)
+    return triage_dir / f"{clean}.json"
 
 
 @app.route("/report/<report_id>")
@@ -3125,16 +3284,202 @@ def view_report(report_id):
     
     report_data = _enrich_report_data(report_data)
 
+    if not report_data.get("summary") or not isinstance(report_data.get("summary"), dict):
+        findings = report_data.get("all_findings") or report_data.get("findings") or []
+        crit = sum(1 for f in findings if isinstance(f, dict) and (f.get("severity") or "").upper() == "CRITICAL")
+        high = sum(1 for f in findings if isinstance(f, dict) and (f.get("severity") or "").upper() == "HIGH")
+        med = sum(1 for f in findings if isinstance(f, dict) and (f.get("severity") or "").upper() == "MEDIUM")
+        low = sum(1 for f in findings if isinstance(f, dict) and (f.get("severity") or "").upper() == "LOW")
+        info = sum(1 for f in findings if isinstance(f, dict) and (f.get("severity") or "").upper() in ("INFO", "INFORMATIONAL"))
+        report_data["summary"] = {
+            "total": len(findings),
+            "critical": crit,
+            "high": high,
+            "medium": med,
+            "low": low,
+            "info": info
+        }
+
+    clean_report_id = resolved_id or clean_id
+    triage_path = _get_triage_path(clean_report_id)
+    triage_data = {}
+    if triage_path.exists():
+        with _triage_lock:
+            try:
+                loaded = load_json(str(triage_path))
+                if isinstance(loaded, dict):
+                    triage_data = loaded
+            except Exception as e:
+                logger.warning(f"Failed to load triage data from {triage_path}: {e}")
+
+    triaged_count = 0
+    all_findings = report_data.get("all_findings") or report_data.get("findings") or []
+    for f in all_findings:
+        if not isinstance(f, dict):
+            continue
+        fid = f.get("id")
+        if fid and fid in triage_data:
+            entry = triage_data[fid]
+            f["triage_state"] = entry.get("state", "open")
+            f["triage_note"] = entry.get("note", "")
+            f["triage_updated_at"] = entry.get("updated_at")
+            f["triage_user"] = entry.get("user")
+        else:
+            f["triage_state"] = "open"
+            f["triage_note"] = ""
+        if f.get("triage_state") in ("false_positive", "accepted_risk"):
+            triaged_count += 1
+
     template_path = Path(__file__).parent.parent / "reports" / "templates" / "report.html"
     with open(template_path, "r", encoding="utf-8") as f:
         template_content = f.read()
-    
+
+    from flask_wtf.csrf import generate_csrf
+    csrf_token_val = generate_csrf()
+
     from jinja2 import Environment, select_autoescape
     env = Environment(autoescape=select_autoescape(default=True, default_for_string=True))
     template = env.from_string(template_content)
-    html = template.render(report=report_data, report_id=resolved_id or clean_id)
-    
+    html = template.render(
+        report=report_data,
+        report_id=clean_report_id,
+        csrf_token=csrf_token_val,
+        triaged_count=triaged_count,
+        triage_data=triage_data
+    )
+
     return html
+
+
+@app.route("/report/<report_id>/triage", methods=["POST"])
+@login_required
+def triage_finding(report_id):
+    """Update finding triage status (AUD-79)."""
+    if not REPORT_ID_PATTERN.match(report_id):
+        return jsonify({"error": "Invalid report ID"}), 400
+
+    current_user = get_current_user()
+    report_data, resolved_id = _resolve_report_data(report_id)
+    if not report_data:
+        return jsonify({"error": "Report not found"}), 404
+
+    if not _can_access_report(current_user, report_data):
+        return jsonify({"error": "Forbidden"}), 403
+
+    clean_id = resolved_id or report_id.replace("scan_", "").replace("report_", "").replace(".json", "").replace(".html", "")
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Invalid payload format. Expected JSON object."}), 400
+
+    finding_id = payload.get("finding_id")
+    if not isinstance(finding_id, str):
+        return jsonify({"error": "Invalid finding_id format. Expected string."}), 400
+
+    state = payload.get("state")
+    note = payload.get("note", "")
+
+    if not state or state not in ("open", "false_positive", "accepted_risk"):
+        return jsonify({"error": "Invalid state. Must be 'open', 'false_positive', or 'accepted_risk'."}), 400
+
+    if not isinstance(note, str) or len(note) > 500:
+        return jsonify({"error": "Note must be a string of at most 500 characters."}), 400
+
+    all_findings = report_data.get("all_findings") or report_data.get("findings") or []
+    finding_ids = {f.get("id") for f in all_findings if isinstance(f, dict) and f.get("id")}
+    if not finding_id or finding_id not in finding_ids:
+        return jsonify({"error": "Finding ID not found in report."}), 400
+
+    triage_path = _get_triage_path(clean_id)
+
+    with _triage_lock:
+        triage_map = {}
+        if triage_path.exists():
+            try:
+                loaded = load_json(str(triage_path))
+                if isinstance(loaded, dict):
+                    triage_map = loaded
+                else:
+                    return jsonify({"error": "Corrupted triage file"}), 500
+            except Exception as e:
+                logger.error(f"Failed to read triage data from {triage_path}: {e}")
+                return jsonify({"error": "Failed to read triage data"}), 500
+
+        triage_map[finding_id] = {
+            "state": state,
+            "note": note,
+            "updated_at": time.time(),
+            "user": current_user.get("username") if current_user else None,
+        }
+
+        try:
+            triage_dir = triage_path.parent
+            triage_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile("w", dir=str(triage_dir), delete=False, encoding="utf-8") as tf:
+                json.dump(triage_map, tf, indent=2)
+                temp_name = tf.name
+            os.replace(temp_name, str(triage_path))
+        except Exception as e:
+            logger.error(f"Failed to save triage data: {e}")
+            if "temp_name" in locals() and os.path.exists(temp_name):
+                try:
+                    os.remove(temp_name)
+                except OSError:
+                    pass
+            return jsonify({"error": "Failed to save triage state"}), 500
+
+    return jsonify({
+        "status": "ok",
+        "state": state,
+        "finding_id": finding_id,
+        "note": note
+    }), 200
+
+
+@app.route("/compare/<older_id>/<newer_id>")
+@login_required
+def compare_scans(older_id, newer_id):
+    """Compare two scans for delta analysis (AUD-80)."""
+    current_user = get_current_user()
+    if not REPORT_ID_PATTERN.match(older_id) or not REPORT_ID_PATTERN.match(newer_id):
+        abort(404, description="Invalid scan identifier")
+
+    older_data, older_clean = _resolve_report_data(older_id)
+    newer_data, newer_clean = _resolve_report_data(newer_id)
+
+    if not older_data or not newer_data:
+        abort(404, description="Report not found")
+
+    if not _can_access_report(current_user, older_data) or not _can_access_report(current_user, newer_data):
+        abort(404, description="Report not found")
+
+    from intelligence.delta import DeltaAnalyzer
+    analyzer = DeltaAnalyzer()
+
+    newer_findings = newer_data.get("all_findings") or newer_data.get("findings") or []
+    delta = analyzer.compare_with_dict(newer_findings, older_data)
+
+    target_older = older_data.get("target", "Unknown")
+    target_newer = newer_data.get("target", "Unknown")
+    targets_differ = (target_older != target_newer)
+
+    date_older = older_data.get("timestamp") or older_data.get("created_at") or "Unknown"
+    date_newer = newer_data.get("timestamp") or newer_data.get("created_at") or "Unknown"
+
+    return render_template(
+        "compare.html",
+        older_id=older_clean or older_id,
+        newer_id=newer_clean or newer_id,
+        older_report=older_data,
+        newer_report=newer_data,
+        target_older=target_older,
+        target_newer=target_newer,
+        targets_differ=targets_differ,
+        date_older=date_older,
+        date_newer=date_newer,
+        delta=delta,
+        user=current_user
+    )
 
 
 @app.route("/download/<report_id>")

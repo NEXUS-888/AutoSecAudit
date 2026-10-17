@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan Comparison — AutoSecAudit</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        :root {
+            --bg-deep: #020203;
+            --bg-base: #050506;
+            --bg-elevated: #0a0a0c;
+            --surface: rgba(255,255,255,0.05);
+            --surface-hover: rgba(255,255,255,0.08);
+            --fg: #EDEDEF;
+            --fg-muted: #94a3b8;
+            --accent: #5E6AD2;
+            --accent-bright: #6872D9;
+            --border: rgba(255,255,255,0.08);
+            --border-hover: rgba(255,255,255,0.15);
+            --sev-critical: #ef4444;
+            --sev-high: #f97316;
+            --sev-medium: #eab308;
+            --sev-low: #22c55e;
+            --sev-info: #3b82f6;
+            --delta-new: #ef4444;
+            --delta-fixed: #22c55e;
+            --delta-unchanged: #3b82f6;
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+            --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        [data-theme="light"] {
+            --bg-deep: #f8fafc;
+            --bg-base: #f1f5f9;
+            --bg-elevated: #ffffff;
+            --surface: #ffffff;
+            --surface-hover: #f8fafc;
+            --fg: #0f172a;
+            --fg-muted: #475569;
+            --accent: #4f46e5;
+            --accent-bright: #6366f1;
+            --border: #e2e8f0;
+            --border-hover: #cbd5e1;
+            --sev-critical: #dc2626;
+            --sev-high: #ea580c;
+            --sev-medium: #ca8a04;
+            --sev-low: #16a34a;
+            --sev-info: #2563eb;
+            --delta-new: #dc2626;
+            --delta-fixed: #16a34a;
+            --delta-unchanged: #2563eb;
+        }
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg-deep);
+            color: var(--fg);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        h1 {
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .header-sub {
+            font-size: 14px;
+            color: var(--fg-muted);
+            margin-top: 4px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--fg);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .back-link:hover {
+            border-color: var(--accent);
+            color: var(--accent-bright);
+        }
+
+        .warning-banner {
+            background: rgba(234, 179, 8, 0.12);
+            border: 1px solid rgba(234, 179, 8, 0.35);
+            border-radius: var(--radius-md);
+            padding: 14px 18px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            color: var(--fg);
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        .meta-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 18px 20px;
+        }
+
+        .meta-title {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--fg-muted);
+            margin-bottom: 8px;
+        }
+
+        .meta-val {
+            font-size: 14px;
+            font-weight: 600;
+            word-break: break-all;
+        }
+
+        .meta-date {
+            font-size: 13px;
+            color: var(--fg-muted);
+            font-family: 'JetBrains Mono', monospace;
+            margin-top: 4px;
+        }
+
+        .summary-bar {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .summary-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            text-align: center;
+        }
+
+        .summary-num {
+            font-size: 32px;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+            line-height: 1;
+        }
+
+        .summary-label {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-top: 6px;
+        }
+
+        .num-new { color: var(--delta-new); }
+        .num-fixed { color: var(--delta-fixed); }
+        .num-unchanged { color: var(--delta-unchanged); }
+
+        .section-block {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .section-heading {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .findings-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .finding-row {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 14px 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .finding-main {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .finding-title-text {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--fg);
+        }
+
+        .finding-endpoint-text {
+            font-size: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--fg-muted);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .badge-critical { background: rgba(239,68,68,0.15); color: var(--sev-critical); border: 1px solid rgba(239,68,68,0.3); }
+        .badge-high { background: rgba(249,115,22,0.15); color: var(--sev-high); border: 1px solid rgba(249,115,22,0.3); }
+        .badge-medium { background: rgba(234,179,8,0.15); color: var(--sev-medium); border: 1px solid rgba(234,179,8,0.3); }
+        .badge-low { background: rgba(34,197,94,0.15); color: var(--sev-low); border: 1px solid rgba(34,197,94,0.3); }
+        .badge-info { background: rgba(59,130,246,0.15); color: var(--sev-info); border: 1px solid rgba(59,130,246,0.3); }
+
+        .empty-section {
+            padding: 18px;
+            text-align: center;
+            color: var(--fg-muted);
+            font-size: 13px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <main class="container">
+        <!-- Header -->
+        <header class="header">
+            <div>
+                <h1>Scan Comparison</h1>
+                <div class="header-sub">Differential audit analysis between two security scans</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <a href="/history" class="back-link">← Back to History</a>
+                <button id="themeToggle" onclick="toggleTheme()" aria-label="Toggle theme" style="background: var(--surface); border: 1px solid var(--border); border-radius: 50%; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--fg-muted); transition: all 0.2s;" title="Toggle theme">
+                    <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                </button>
+            </div>
+        </header>
+
+        {% if targets_differ %}
+        <div class="warning-banner" role="alert">
+            <span style="font-size: 18px;">⚠️</span>
+            <div>
+                <strong>Target Mismatch:</strong> These scans target different targets (<code>{{ target_older }}</code> vs <code>{{ target_newer }}</code>). Comparative findings may reflect different surfaces rather than remediated vulnerabilities.
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Metadata Grid -->
+        <div class="meta-grid">
+            <div class="meta-card">
+                <div class="meta-title">Baseline Scan (Older)</div>
+                <div class="meta-val">{{ target_older }}</div>
+                <div class="meta-date">Date: {{ date_older }} (ID: {{ older_id }})</div>
+            </div>
+            <div class="meta-card">
+                <div class="meta-title">Target Scan (Newer)</div>
+                <div class="meta-val">{{ target_newer }}</div>
+                <div class="meta-date">Date: {{ date_newer }} (ID: {{ newer_id }})</div>
+            </div>
+        </div>
+
+        <!-- Summary Bar -->
+        <div class="summary-bar">
+            <div class="summary-box">
+                <div class="summary-num num-new">{{ delta.summary.new_count }}</div>
+                <div class="summary-label num-new">New Findings</div>
+            </div>
+            <div class="summary-box">
+                <div class="summary-num num-fixed">{{ delta.summary.fixed_count }}</div>
+                <div class="summary-label num-fixed">Fixed Findings</div>
+            </div>
+            <div class="summary-box">
+                <div class="summary-num num-unchanged">{{ delta.summary.unchanged_count }}</div>
+                <div class="summary-label num-unchanged">Unchanged Findings</div>
+            </div>
+        </div>
+
+        <!-- New Findings Section -->
+        <section class="section-block">
+            <h2 class="section-heading" style="color: var(--delta-new);">
+                <span class="badge badge-critical" style="font-size: 13px;">{{ delta.summary.new_count }}</span>
+                New Findings
+            </h2>
+            {% if delta.new_issues %}
+            <div class="findings-list">
+                {% for f in delta.new_issues %}
+                <div class="finding-row">
+                    <div class="finding-main">
+                        <span class="finding-title-text">{{ f.title }}</span>
+                        <span class="finding-endpoint-text">{{ f.endpoint or (f.host ~ ':' ~ f.port if f.host else '/') }}</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span class="badge badge-{{ f.severity | lower }}">{{ f.severity }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-section">No new vulnerabilities introduced.</div>
+            {% endif %}
+        </section>
+
+        <!-- Fixed Findings Section -->
+        <section class="section-block">
+            <h2 class="section-heading" style="color: var(--delta-fixed);">
+                <span class="badge badge-low" style="font-size: 13px;">{{ delta.summary.fixed_count }}</span>
+                Fixed Findings
+            </h2>
+            {% if delta.fixed_issues %}
+            <div class="findings-list">
+                {% for f in delta.fixed_issues %}
+                <div class="finding-row">
+                    <div class="finding-main">
+                        <span class="finding-title-text">{{ f.title }}</span>
+                        <span class="finding-endpoint-text">{{ f.endpoint or (f.host ~ ':' ~ f.port if f.host else '/') }}</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span class="badge badge-{{ f.severity | lower }}">{{ f.severity }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-section">No previously reported vulnerabilities resolved.</div>
+            {% endif %}
+        </section>
+
+        <!-- Unchanged Findings Section -->
+        <section class="section-block">
+            <h2 class="section-heading" style="color: var(--delta-unchanged);">
+                <span class="badge badge-info" style="font-size: 13px;">{{ delta.summary.unchanged_count }}</span>
+                Unchanged Findings
+            </h2>
+            {% if delta.unchanged_issues %}
+            <div class="findings-list">
+                {% for f in delta.unchanged_issues %}
+                <div class="finding-row">
+                    <div class="finding-main">
+                        <span class="finding-title-text">{{ f.title }}</span>
+                        <span class="finding-endpoint-text">{{ f.endpoint or (f.host ~ ':' ~ f.port if f.host else '/') }}</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span class="badge badge-{{ f.severity | lower }}">{{ f.severity }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-section">No unchanged vulnerabilities.</div>
+            {% endif %}
+        </section>
+    </main>
+
+    <script>
+        function toggleTheme() {
+            var html = document.documentElement;
+            var next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', next);
+            localStorage.setItem('autosec-theme', next);
+            var icon = document.getElementById('themeIcon');
+            if (icon) icon.innerHTML = next === 'light'
+                ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'
+                : '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+        }
+        (function() {
+            var saved = localStorage.getItem('autosec-theme');
+            if (saved) {
+                document.documentElement.setAttribute('data-theme', saved);
+                var icon = document.getElementById('themeIcon');
+                if (icon && saved === 'light') {
+                    icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+                }
+            }
+        })();
+    </script>
+</body>
+</html>
