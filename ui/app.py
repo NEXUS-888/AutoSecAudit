@@ -1360,7 +1360,7 @@ HTML_FORM = """
                     <span class="status-pill-text">ENGINE READY</span>
                 </div>
                 <div class="card-meta-chips">
-                    <span class="meta-chip">19 PLUGINS</span>
+                    <span class="meta-chip">20 PLUGINS</span>
                     <span id="modeChip" class="meta-chip meta-chip-mode">{% if is_demo %}DEMO SIMULATION{% else %}REAL ACTIVE SCAN{% endif %}</span>
                 </div>
             </div>
@@ -1431,7 +1431,7 @@ HTML_FORM = """
                 <div style="margin-bottom: 20px;">
                     <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
                         <span>Attack Profile</span>
-                        <span style="font-size: 11px; color: var(--fg-muted);">19 Attack Simulation Scanners</span>
+                        <span style="font-size: 11px; color: var(--fg-muted);">20 Attack Simulation Scanners</span>
                     </label>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 6px;">
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; background: var(--surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);">

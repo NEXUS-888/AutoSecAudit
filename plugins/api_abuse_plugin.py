@@ -615,43 +615,8 @@ class APIAbuseScanner(BaseScanner):
     def _check_graphql_introspection(
         self, base_url: str, host: str, port: int
     ) -> None:
-        """Test whether the GraphQL endpoint allows introspection queries."""
-        graphql_paths = ["/graphql", "/api/graphql", "/graphql/v1"]
-        introspection_query = {"query": "{__schema{types{name}}}"}
-
-        for path in graphql_paths:
-            url = base_url + path
-            resp = self._safe_post(url, json_body=introspection_query)
-            if resp is None:
-                continue
-
-            if resp.status_code == 200:
-                try:
-                    body = resp.json()
-                except (ValueError, TypeError):
-                    continue
-
-                if "data" in body and "__schema" in (body.get("data") or {}):
-                    type_names = [
-                        t.get("name")
-                        for t in body["data"]["__schema"].get("types", [])
-                    ]
-                    self._add_finding(
-                        title=f"GraphQL Introspection Enabled ({path})",
-                        severity="Medium",
-                        host=host,
-                        port=port,
-                        description=(
-                            f"The GraphQL endpoint at {path} responds to "
-                            "introspection queries, revealing the full schema "
-                            f"({len(type_names)} types exposed). Disable "
-                            "introspection in production."
-                        ),
-                        raw_output=json.dumps(
-                            {"types_sample": type_names[:15]}
-                        ),
-                        owasp_tag="A01:2021 Broken Access Control",
-                    )
+        """GraphQL introspection and injection is handled by dedicated GraphQLScanner plugin."""
+        return
 
     # ------------------------------------------------------------------
     # Phase 6 – API versioning issues

@@ -288,7 +288,7 @@ SCAN_PROFILES = {
         "description": "Headless API security audit covering BOLA/IDOR, JWT flaws, rate limiting, and CORS.",
         "plugins": [
             "BOLAIdorScanner", "JWTScanner", "CORSScanner", "APIAbuseScanner",
-            "AuthScanner", "SQLiScanner", "XSSScanner"
+            "AuthScanner", "SQLiScanner", "XSSScanner", "GraphQLScanner"
         ]
     },
     "recon": {

@@ -7,6 +7,7 @@ human-readable fix suggestions. The Enricher or Engine can call
 """
 
 import logging
+import re
 from typing import Optional, List
 from core.models import Finding
 from intelligence.taxonomy import get_taxonomy, infer_taxonomy_from_text
@@ -335,6 +336,23 @@ REMEDIATION_KEY_DATABASE = {
         "4. Use a reverse proxy (Nginx, API Gateway) for rate limiting.\n"
         "5. Implement circuit breakers for downstream services."
     ),
+    "graphql_introspection": (
+        "1. Disable GraphQL introspection in production environments.\n"
+        "2. Implement field-level authorization and validation on query types.\n"
+        "3. Apply rate limiting and query complexity / depth limits.\n"
+        "4. Require authentication for sensitive GraphQL queries.\n"
+        "5. Suppress verbose schema error messages in API responses."
+    ),
+    "graphql_endpoint": (
+        "1. Ensure GraphQL endpoints are properly authenticated and authorized.\n"
+        "2. Disable schema introspection in production.\n"
+        "3. Enforce query depth and breadth limiting to prevent resource exhaustion."
+    ),
+    "graphql": (
+        "1. Disable GraphQL introspection in production environments.\n"
+        "2. Parameterize queries and validate all input arguments against strict schemas.\n"
+        "3. Enforce query depth and complexity limits."
+    ),
 }
 
 
@@ -372,7 +390,7 @@ def get_remediation(finding: Finding) -> Optional[str]:
                         "idor": {"idor"},
                         "bola_idor": {"idor"},
                         "misconfig": {"server_info_leak", "missing_header", "misconfig"},
-                        "api_abuse": {"rate_limit", "sensitive_data", "api_abuse"},
+                        "api_abuse": {"rate_limit", "sensitive_data", "api_abuse", "graphql_introspection", "graphql_endpoint"},
                     }
                     allowed = FAMILY_SUBTYPES.get(rem_key, {rem_key} if rem_key else None)
                     if allowed is None or sub_type in allowed:
@@ -396,6 +414,10 @@ def get_remediation(finding: Finding) -> Optional[str]:
     if finding.owasp_tag:
         if finding.owasp_tag in OWASP_REMEDIATIONS:
             return OWASP_REMEDIATIONS[finding.owasp_tag]
+        # Match OWASP code prefix e.g. "A01:2021", "A01:2021-Broken", "API1:2023"
+        m = re.match(r"^([A-Za-z0-9]+:\d{4})", finding.owasp_tag)
+        if m and m.group(1) in OWASP_REMEDIATIONS:
+            return OWASP_REMEDIATIONS[m.group(1)]
         tag_key = finding.owasp_tag.split()[0] if " " in finding.owasp_tag else finding.owasp_tag
         if tag_key in OWASP_REMEDIATIONS:
             return OWASP_REMEDIATIONS[tag_key]

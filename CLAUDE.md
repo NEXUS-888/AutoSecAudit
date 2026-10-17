@@ -1,7 +1,7 @@
 # AutoSecAudit 2.0 — Assistant Guidelines & Project Manual
 
 ## Project Overview
-AutoSecAudit is an automated Dynamic Application Security Testing (DAST) framework, attack simulator, and AI remediation platform built with Python. It features 19 dynamic vulnerability scanners, a web crawler, statistical timing verification, plain-English executive danger analysis, multi-framework code remediation recipes, an interactive Flask dashboard with SSE progress streaming, and a Model Context Protocol (MCP) server.
+AutoSecAudit is an automated Dynamic Application Security Testing (DAST) framework, attack simulator, and AI remediation platform built with Python. It features 20 dynamic vulnerability scanners, a web crawler, statistical timing verification, plain-English executive danger analysis, multi-framework code remediation recipes, an interactive Flask dashboard with SSE progress streaming, and a Model Context Protocol (MCP) server.
 
 ## Tech Stack
 - **Language**: Python 3.10+ (type annotations, dataclasses)
@@ -33,7 +33,7 @@ AutoSecAudit is an automated Dynamic Application Security Testing (DAST) framewo
   - `enricher.py`: CVE / CVSS enrichment via external APIs.
   - `delta.py`: Differential scan analysis (New, Fixed, Unchanged).
   - `remediation.py`: Step-by-step remediation advice by vulnerability type.
-- `plugins/`: 19 dynamic attack scanner plugins extending `BaseScanner`.
+- `plugins/`: 20 dynamic attack scanner plugins extending `BaseScanner`.
   - `base_plugin.py`: Abstract base class with baseline verification and safe request methods.
 - `reports/`: HTML and PDF report generator (`generator.py`) and Jinja2 templates.
 - `ui/`: Flask web application (`app.py`), static assets, and SSE event streaming.

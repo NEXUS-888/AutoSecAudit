@@ -88,8 +88,8 @@ In modern software engineering, assessing a web application or API for vulnerabi
 
 ## ✨ Key Capabilities
 
-### 1. 🔌 19 Dynamic Vulnerability Scanner Plugins
-AutoSecAudit automatically discovers and executes 19 attack simulation scanner plugins:
+### 1. 🔌 20 Dynamic Vulnerability Scanner Plugins
+AutoSecAudit automatically discovers and executes 20 attack simulation scanner plugins:
 
 - **Web Application Injections**:
   - `SQLiScanner`: Error-based, boolean-based, and statistical time-based blind SQL injection.
@@ -98,6 +98,7 @@ AutoSecAudit automatically discovers and executes 19 attack simulation scanner p
   - `OpenRedirectScanner`: Unvalidated redirect parameters (`next`, `redirect`, `url`, `return`).
   - `MisconfigScanner`: Missing security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options) and cookie hygiene.
 - **API & Access Control**:
+  - `GraphQLScanner`: Schema introspection exposure, injection testing across query arguments (SQLi error patterns, XSS reflection in HTML strings) with strict query-only safety.
   - `BOLAIdorScanner`: Broken Object-Level Authorization (IDOR) with numeric/UUID parameter manipulation.
   - `APIAbuseScanner`: Mass assignment, excessive data exposure, rate limiting, and HTTP verb tampering.
   - `AuthScanner`: Default credentials, weak password policies, and account enumeration.
@@ -120,9 +121,9 @@ AutoSecAudit automatically discovers and executes 19 attack simulation scanner p
 ### 2. 🎯 Selectable Scan Profiles
 Tailor your security audit to specific contexts using predefined scan profiles:
 
-- 🌐 **`full` (Full Spectrum DAST)**: Executes all 19 scanner plugins concurrently.
+- 🌐 **`full` (Full Spectrum DAST)**: Executes all 20 scanner plugins concurrently.
 - 🛡️ **`owasp` (OWASP Top 10 Suite)**: Focuses on core injection, auth, CSRF, SSRF, and misconfigurations (11 plugins).
-- ⚡ **`api` (API & Microservices Suite)**: Tailored for headless JSON REST APIs — BOLA/IDOR, JWT, CORS, rate limits (7 plugins).
+- ⚡ **`api` (API & Microservices Suite)**: Tailored for headless JSON REST APIs — BOLA/IDOR, JWT, CORS, rate limits (8 plugins).
 - 🔍 **`recon` (Passive Reconnaissance)**: Non-intrusive scanning — SSL/TLS, security headers, directory discovery, port scans (6 plugins).
 
 ---
@@ -193,7 +194,7 @@ AutoSecAudit includes an official standard **JSON-RPC 2.0 stdio MCP Server** (`m
 | `autosec_get_findings` | Retrieve findings enriched with Plain-English Danger assessments (`business`, `technical`, or `both`). |
 | `autosec_get_fix_recipe` | Fetch drop-in code patches for AI agents to edit source code directly (`nodejs`, `python`, `nginx`, `waf`). |
 | `autosec_verify_fix` | Run targeted re-verification to confirm if an AI code fix resolved the vulnerability. |
-| `autosec_list_scanners` | List all 19 available dynamic scanner plugins and their descriptions. |
+| `autosec_list_scanners` | List all 20 available dynamic scanner plugins and their descriptions. |
 
 ---
 
@@ -366,7 +367,7 @@ python main.py
 ============================================================
   [1] Start Web Dashboard Server (http://localhost:5000)
   [2] Run CLI Target Security Scan
-  [3] List Discovered Scanner Plugins (19 Plugins)
+  [3] List Discovered Scanner Plugins (20 Plugins)
   [4] Run Automated Verification Proof (verify_proof.py)
   [5] Run Full Test Suite (run_tests.py)
   [6] Exit
@@ -433,7 +434,7 @@ AutoSecAudit cross-references all discovered vulnerabilities against leading ind
 
 ## 🧪 Testing & Quality Assurance
 
-AutoSecAudit maintains an automated test suite covering all 19 plugins, the crawler, pre-flight target reachability, statistical timing, deep JSON fuzzing, rate limiter backoff, danger assessments, fix recipes, ReportLab PDF generation, and SSE streaming:
+AutoSecAudit maintains an automated test suite covering all 20 plugins, the crawler, pre-flight target reachability, statistical timing, deep JSON fuzzing, rate limiter backoff, danger assessments, fix recipes, ReportLab PDF generation, and SSE streaming:
 
 ```bash
 python run_tests.py

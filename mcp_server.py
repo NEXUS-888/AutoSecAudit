@@ -61,7 +61,7 @@ TOOLS_MANIFEST = [
                 "profile": {
                     "type": "string",
                     "enum": ["full", "owasp", "api", "recon"],
-                    "description": "Scan profile: 'full' (all 19 plugins), 'owasp' (OWASP Top 10), 'api' (API & Microservices), 'recon' (Passive Recon). Defaults to 'full'.",
+                    "description": "Scan profile: 'full' (all 20 plugins), 'owasp' (OWASP Top 10), 'api' (API & Microservices), 'recon' (Passive Recon). Defaults to 'full'.",
                     "default": "full"
                 },
                 "skip_reachability": {

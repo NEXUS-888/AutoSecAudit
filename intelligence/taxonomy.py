@@ -282,6 +282,9 @@ TAXONOMY_ALIASES: Dict[str, str] = {
     "security headers": VulnType.MISCONFIG.value,
     "x_xss_protection": VulnType.MISCONFIG.value,
     "x-xss-protection": VulnType.MISCONFIG.value,
+    "graphql": VulnType.API_ABUSE.value,
+    "graphql_introspection": VulnType.API_ABUSE.value,
+    "graphql_endpoint": VulnType.API_ABUSE.value,
 }
 
 
